@@ -4,67 +4,184 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>LLM Chat Module</title>
-  <!-- relative so it works under /modules/llm-chat/ -->
   <link rel="stylesheet" href="./css/theme.css" />
 </head>
 <body>
   <div class="header">
     <div class="status"><span class="dot" id="dot"></span><span id="statusText">Idle</span></div>
     <div class="grow"></div>
-    <button onclick="openConfig()">Config</button>
   </div>
 
-  <div class="chat">
-    <div class="toolbar">
-      <div class="row">
-        <label for="profileSelect">Profile</label>
-        <select id="profileSelect"></select>
-      </div>
-      <div class="row">
-        <label for="providerSelect">Provider</label>
-        <select id="providerSelect" title="Provider for this chat">
-          <option value="openai">OpenAI</option>
-          <option value="openai-compatible">OpenAI-compatible</option>
-          <option value="ollama">Ollama</option>
-        </select>
-      </div>
-      <div class="row">
-        <label for="modelInput">Model</label>
-        <input id="modelInput" class="w-clip" placeholder="e.g. gpt-4o-mini, gpt-5, llama3" />
-      </div>
-      <div class="row">
-        <label for="baseUrlInput">Base URL</label>
-        <input id="baseUrlInput" class="w-clip" placeholder="https://api.openai.com / http://ollama:11434" />
-      </div>
-      <div class="row">
-        <label for="tempInput">Temp</label>
-        <input id="tempInput" type="number" step="0.1" min="0" max="2" style="width:7ch" />
-      </div>
-      <div class="row">
-        <label for="maxTokInput">Max tokens</label>
-        <input id="maxTokInput" type="number" style="width:10ch" />
-      </div>
-      <div class="inline">
-        <button id="resetBtn" title="Reset toolbar fields from the selected profile">Reset</button>
-        <button onclick="openConfig()">Manage Profiles</button>
-      </div>
-    </div>
-
-    <div class="sys-wrap">
-      <label for="sysInput">System prompt (editable, applies to next send)</label>
-      <textarea id="sysInput" placeholder="Optional system prompt..."></textarea>
-    </div>
-
-    <div id="msgs" class="msgs"></div>
-    <div class="composer">
-      <textarea id="input" placeholder="Type a message..."></textarea>
-      <button class="primary" id="sendBtn">Send</button>
-      <button id="stopBtn">Stop</button>
-      <button id="clearBtn">Clear</button>
-    </div>
+  <!-- Top-level tabs -->
+  <div class="main-tabs">
+    <button class="tab active" id="tabBtnChat" type="button">Chat</button>
+    <button class="tab" id="tabBtnSettings" type="button">Settings</button>
+    <!-- (Add more buttons here later to add more top-level tabs) -->
   </div>
 
-  <!-- relative so it works under /modules/llm-chat/ -->
+  <!-- ============ CHAT TAB ============ -->
+  <section id="tab-chat">
+    <div class="chat">
+      <!-- Toolbar -->
+      <div class="toolbar">
+        <div class="row">
+          <label for="profileSelect">Profile</label>
+          <select id="profileSelect"></select>
+        </div>
+        <div class="row">
+          <label for="providerSelect">Provider</label>
+          <select id="providerSelect" title="Provider for this chat">
+            <option value="openai">OpenAI</option>
+            <option value="openai-compatible">OpenAI-compatible</option>
+            <option value="ollama">Ollama</option>
+          </select>
+        </div>
+        <div class="row">
+          <label for="modelInput">Model</label>
+          <input id="modelInput" class="w-clip" placeholder="e.g. gpt-4o-mini, gpt-5, llama3" />
+        </div>
+        <div class="row">
+          <label for="baseUrlInput">Base URL</label>
+          <input id="baseUrlInput" class="w-clip" placeholder="https://api.openai.com / http://ollama:11434" />
+        </div>
+        <div class="row">
+          <label for="tempInput">Temp</label>
+          <input id="tempInput" type="number" step="0.1" min="0" max="2" style="width:7ch" />
+        </div>
+        <div class="row">
+          <label for="maxTokInput">Max tokens</label>
+          <input id="maxTokInput" type="number" style="width:10ch" />
+        </div>
+        <div class="inline">
+          <button id="resetBtn" title="Reset toolbar fields from the selected profile">Reset</button>
+          <button id="manageBtn" title="Open settings tab">Manage Profiles</button>
+        </div>
+      </div>
+
+      <!-- System Prompt -->
+      <div class="sys-wrap">
+        <label for="sysInput">System prompt (editable, applies to next send)</label>
+        <textarea id="sysInput" placeholder="Optional system prompt..."></textarea>
+      </div>
+
+      <!-- Messages -->
+      <div id="msgs" class="msgs"></div>
+      <div class="composer">
+        <textarea id="input" placeholder="Type a message..."></textarea>
+        <button class="primary" id="sendBtn">Send</button>
+        <button id="stopBtn">Stop</button>
+        <button id="clearBtn">Clear</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SETTINGS TAB (embedded config wizard) ============ -->
+  <section id="tab-settings" style="display:none">
+    <div class="pane">
+      <h2 style="margin:10px 0 12px">⚙️ LLM Chat – Settings</h2>
+
+      <!-- Sub-tabs inside settings -->
+      <div class="tabs">
+        <div class="tab active" id="tGlobal">Global</div>
+        <div class="tab" id="tProfiles">Profiles</div>
+      </div>
+
+      <!-- Global settings -->
+      <div id="global" class="card">
+        <div class="row3">
+          <div>
+            <label>Default Provider</label>
+            <select id="provider">
+              <option value="openai">OpenAI</option>
+              <option value="openai-compatible">OpenAI-compatible</option>
+              <option value="ollama">Ollama</option>
+            </select>
+          </div>
+          <div>
+            <label>Default Model</label>
+            <input id="model" placeholder="gpt-4o-mini or llama3" />
+          </div>
+          <div>
+            <label>Temperature</label>
+            <input id="temperature" type="number" step="0.1" min="0" max="2" />
+          </div>
+        </div>
+        <label>Base URL</label>
+        <input id="baseUrl" placeholder="https://api.openai.com" />
+        <label>API Key <span class="muted">(not required for Ollama)</span></label>
+        <input id="apiKey" placeholder="sk-..." />
+
+        <div class="row">
+          <div>
+            <label>Max tokens (optional)</label>
+            <input id="max_tokens" type="number" />
+          </div>
+          <div>
+            <label>&nbsp;</label>
+            <button id="saveGlobalBtn">Save Global</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Profiles -->
+      <div id="profiles" class="card" style="display:none">
+        <h3>Profiles</h3>
+        <div class="muted">Profiles override global settings when selected in the chat toolbar. Each can set provider/base URL/model/API key and a system prompt.</div>
+        <div class="row3">
+          <div>
+            <label>Name</label>
+            <input id="pName" />
+          </div>
+          <div>
+            <label>Provider</label>
+            <select id="pProvider">
+              <option value="">(inherit global)</option>
+              <option value="openai">OpenAI</option>
+              <option value="openai-compatible">OpenAI-compatible</option>
+              <option value="ollama">Ollama</option>
+            </select>
+          </div>
+          <div>
+            <label>Model</label>
+            <input id="pModel" placeholder="(inherit or set)" />
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>Base URL</label>
+            <input id="pBaseUrl" placeholder="(inherit or set)" />
+          </div>
+          <div>
+            <label>API Key</label>
+            <input id="pApiKey" placeholder="(inherit or set)" />
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>Temperature</label>
+            <input id="pTemp" type="number" step="0.1" min="0" max="2" placeholder="(inherit)" />
+          </div>
+          <div>
+            <label>Max tokens</label>
+            <input id="pMax" type="number" placeholder="(inherit)" />
+          </div>
+        </div>
+        <label>System prompt</label>
+        <textarea id="pSystem" rows="6" placeholder="e.g., Act as a senior React engineer ..."></textarea>
+
+        <div>
+          <button id="saveProfileBtn">Save Profile</button>
+          <button class="ghost" id="loadDefaultsBtn">Load Default Profiles</button>
+          <button class="ghost" id="exportBtn">Export</button>
+          <input type="file" id="importFile" accept="application/json" style="display:none" />
+          <button class="ghost" id="importBtn">Import</button>
+        </div>
+
+        <div class="list" id="profileList"></div>
+      </div>
+    </div>
+  </section>
+
   <script type="module" src="./js/index.page.js"></script>
 </body>
 </html>

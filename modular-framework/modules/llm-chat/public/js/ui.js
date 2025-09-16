@@ -20,11 +20,11 @@ export function toast(msg){ alert(msg); }
 /** Detects the base path of the module (handles /, /modules/llm-chat/, and /modules/llm-chat/config) */
 export function detectBasePath() {
   const p = window.location.pathname;
-  // strip trailing 'config' if present, ensure trailing slash
   const base = p.replace(/\/config\/?$/, '/');
   return base.endsWith('/') ? base : (base + '/');
 }
 
+/** Sub-tab helper for Settings (switches between 'global' and 'profiles') */
 export function showTab(tab){
   const map = { global:'tGlobal', profiles:'tProfiles' };
   Object.entries(map).forEach(([id, tabId])=>{
