@@ -4,39 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>LLM Chat Module</title>
-  <style>
-    :root { --bg:#1e1e1e; --panel:#252526; --line:#3e3e42; --txt:#d4d4d4; --muted:#969696; --accent:#0e639c; }
-    *{box-sizing:border-box}
-    body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--txt);height:100vh;display:flex;flex-direction:column}
-    .header{display:flex;gap:8px;align-items:center;padding:10px;border-bottom:1px solid var(--line);background:var(--panel)}
-    .dot{width:8px;height:8px;border-radius:50%;background:#f48771}
-    .dot.on{background:#4ec9b0}
-    .grow{flex:1}
-    select,input,textarea{background:#1e1e1e;border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:6px;font-size:12px}
-    button{background:#3e3e42;border:none;color:var(--txt);border-radius:6px;padding:6px 10px;cursor:pointer;font-size:12px}
-    button.primary{background:var(--accent)} button:hover{filter:brightness(1.08)}
-    .chat{flex:1;display:flex;flex-direction:column;min-height:0}
-    .toolbar{display:grid;grid-template-columns:auto 1fr auto auto auto auto auto auto;gap:8px;align-items:center;padding:8px 10px;background:var(--panel);border-bottom:1px solid var(--line)}
-    .toolbar label{font-size:11px;color:var(--muted)}
-    .toolbar .row{display:contents}
-    .msgs{flex:1;overflow:auto;background:var(--bg);padding:16px}
-    .msg{max-width:90%;padding:10px 12px;border-radius:8px;margin-bottom:10px;white-space:pre-wrap;word-wrap:break-word}
-    .user{background:#2a2a2a;align-self:flex-end}
-    .assistant{background:#1f2a33;border:1px solid #203747}
-    .composer{display:flex;gap:8px;border-top:1px solid var(--line);padding:10px;background:var(--panel)}
-    textarea#input{flex:1;min-height:48px;max-height:160px;resize:vertical}
-    .status{display:flex;align-items:center;gap:6px;font-size:12px}
-    .muted{color:var(--muted);font-size:11px}
-    .inline{display:flex;gap:6px;align-items:center}
-    .w-clip{max-width:38ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .sys-wrap{padding:8px 10px;background:var(--panel);border-bottom:1px solid var(--line)}
-    .sys-wrap label{display:block;font-size:11px;color:var(--muted);margin-bottom:6px}
-    .sys-wrap textarea{width:100%;min-height:64px;resize:vertical}
-    @media (max-width:1100px){
-      .toolbar{grid-template-columns: 1fr 1fr 1fr 1fr; grid-auto-rows: auto}
-      .w-clip{max-width:22ch}
-    }
-  </style>
+  <!-- relative so it works under /modules/llm-chat/ -->
+  <link rel="stylesheet" href="./css/theme.css" />
 </head>
 <body>
   <div class="header">
@@ -46,13 +15,11 @@
   </div>
 
   <div class="chat">
-    <!-- Top toolbar: live per-chat overrides (not saved automatically) -->
     <div class="toolbar">
       <div class="row">
         <label for="profileSelect">Profile</label>
-        <select id="profileSelect" onchange="onProfileChange()"></select>
+        <select id="profileSelect"></select>
       </div>
-
       <div class="row">
         <label for="providerSelect">Provider</label>
         <select id="providerSelect" title="Provider for this chat">
@@ -61,34 +28,28 @@
           <option value="ollama">Ollama</option>
         </select>
       </div>
-
       <div class="row">
         <label for="modelInput">Model</label>
         <input id="modelInput" class="w-clip" placeholder="e.g. gpt-4o-mini, gpt-5, llama3" />
       </div>
-
       <div class="row">
         <label for="baseUrlInput">Base URL</label>
         <input id="baseUrlInput" class="w-clip" placeholder="https://api.openai.com / http://ollama:11434" />
       </div>
-
       <div class="row">
         <label for="tempInput">Temp</label>
         <input id="tempInput" type="number" step="0.1" min="0" max="2" style="width:7ch" />
       </div>
-
       <div class="row">
         <label for="maxTokInput">Max tokens</label>
         <input id="maxTokInput" type="number" style="width:10ch" />
       </div>
-
       <div class="inline">
-        <button onclick="resetFieldsToProfile()" title="Reset toolbar fields from the selected profile">Reset</button>
+        <button id="resetBtn" title="Reset toolbar fields from the selected profile">Reset</button>
         <button onclick="openConfig()">Manage Profiles</button>
       </div>
     </div>
 
-    <!-- Editable System Prompt (used immediately, not saved unless you do so in Config) -->
     <div class="sys-wrap">
       <label for="sysInput">System prompt (editable, applies to next send)</label>
       <textarea id="sysInput" placeholder="Optional system prompt..."></textarea>
@@ -97,234 +58,13 @@
     <div id="msgs" class="msgs"></div>
     <div class="composer">
       <textarea id="input" placeholder="Type a message..."></textarea>
-      <button class="primary" id="sendBtn" onclick="send()">Send</button>
-      <button id="stopBtn" onclick="stop()">Stop</button>
-      <button onclick="clearChat()">Clear</button>
+      <button class="primary" id="sendBtn">Send</button>
+      <button id="stopBtn">Stop</button>
+      <button id="clearBtn">Clear</button>
     </div>
   </div>
 
-  <script>
-    // ---- Storage keys ----
-    const LS_GLOBAL  = 'llmChatConfig';        // default provider/model/baseUrl/apiKey
-    const LS_PROFILES= 'llmChatProfiles';      // array of profiles
-    const LS_ACTIVE  = 'llmChatActiveProfile'; // active profile name
-
-    // Built-in starter profiles
-    const defaultProfiles = [
-      { name:'Frontend Engineer', provider:'openai', baseUrl:'https://api.openai.com', model:'gpt-4o-mini',
-        systemPrompt:`You are a senior Frontend Engineer. Give precise, practical advice on HTML, CSS, JS, accessibility, and performance. Prefer code snippets and explain trade-offs briefly.` },
-      { name:'React Specialist', provider:'openai', baseUrl:'https://api.openai.com', model:'gpt-4o-mini',
-        systemPrompt:`You are a React expert. Use modern React (hooks, functional components), TypeScript-friendly patterns, and explain render/performance implications.` },
-      { name:'Security Reviewer', provider:'openai-compatible', baseUrl:'https://api.together.xyz', model:'meta-llama/Meta-Llama-3-70B-Instruct-Turbo',
-        systemPrompt:`Act as an application security reviewer. Identify vulnerabilities, threat models, and provide actionable remediations with clear risk levels.` },
-      { name:'DevOps/SRE', provider:'ollama', baseUrl:'http://ollama:11434', model:'llama3',
-        systemPrompt:`You are a pragmatic SRE. Provide concise, command-ready steps, incident runbooks, and rollback strategies.` },
-      { name:'Data Scientist', provider:'openai-compatible', baseUrl:'https://api.openrouter.ai', model:'mistralai/mixtral-8x7b-instruct',
-        systemPrompt:`You are a data scientist. Explain assumptions, feature engineering, eval metrics, and provide Python snippets when helpful.` },
-      { name:'Socratic Tutor', provider:'openai', baseUrl:'https://api.openai.com', model:'gpt-4o-mini',
-        systemPrompt:`Teach by asking guiding questions. Don’t give the answer outright; scaffold thinking and provide hints in steps.` },
-      { name:'Unit Test Generator', provider:'openai', baseUrl:'https://api.openai.com', model:'gpt-4o-mini',
-        systemPrompt:`Generate high-coverage unit tests with table-driven cases, edge conditions, and clear arrange/act/assert structure.` },
-      { name:'Product Manager', provider:'openai', baseUrl:'https://api.openai.com', model:'gpt-4o-mini',
-        systemPrompt:`Focus on user value, scope, acceptance criteria, and trade-offs. Produce crisp PRDs and success metrics.` }
-    ];
-
-    const state = { controller:null, messages:[], profiles:[], active:null };
-
-    function getEl(id){ return document.getElementById(id); }
-
-    function loadGlobal(){
-      const raw = localStorage.getItem(LS_GLOBAL);
-      const cfg = raw ? JSON.parse(raw) : {};
-      return {
-        provider: cfg.provider || 'openai',
-        baseUrl:  cfg.baseUrl  || 'https://api.openai.com',
-        apiKey:   cfg.apiKey   || '',
-        model:    cfg.model    || 'gpt-4o-mini',
-        temperature: Number(cfg.temperature ?? 0.7),
-        max_tokens: cfg.max_tokens ? Number(cfg.max_tokens) : undefined
-      };
-    }
-
-    function loadProfiles(){
-      const raw = localStorage.getItem(LS_PROFILES);
-      state.profiles = raw ? JSON.parse(raw) : defaultProfiles;
-      if(!raw) localStorage.setItem(LS_PROFILES, JSON.stringify(state.profiles));
-
-      const activeName = localStorage.getItem(LS_ACTIVE) || state.profiles[0]?.name;
-      state.active = state.profiles.find(p => p.name === activeName) || state.profiles[0] || null;
-      localStorage.setItem(LS_ACTIVE, state.active?.name || '');
-
-      // Fill the select
-      const sel = getEl('profileSelect');
-      sel.innerHTML = '';
-      for(const p of state.profiles){
-        const opt = document.createElement('option');
-        opt.value = p.name; opt.textContent = p.name; sel.appendChild(opt);
-      }
-      if(state.active) sel.value = state.active.name;
-
-      // Apply to toolbar fields (but does not persist)
-      applyProfileToFields();
-    }
-
-    function applyProfileToFields(){
-      const g = loadGlobal();
-      const p = state.active || {};
-
-      getEl('providerSelect').value = (p.provider || g.provider);
-      getEl('modelInput').value     = (p.model    || g.model);
-      getEl('baseUrlInput').value   = (p.baseUrl  || g.baseUrl);
-      getEl('tempInput').value      = (p.temperature ?? g.temperature ?? 0.7);
-      getEl('maxTokInput').value    = (p.max_tokens ?? g.max_tokens ?? '');
-      getEl('sysInput').value       = (p.systemPrompt || '');
-    }
-
-    function resetFieldsToProfile(){
-      // Re-read the currently selected profile (latest, in case Config was changed)
-      const profiles = JSON.parse(localStorage.getItem(LS_PROFILES) || '[]');
-      const activeName = localStorage.getItem(LS_ACTIVE);
-      state.active = profiles.find(p => p.name === activeName) || state.active;
-      applyProfileToFields();
-    }
-
-    function onProfileChange(){
-      // Re-read latest profiles to ensure we pick up edits from Config
-      const latest = localStorage.getItem(LS_PROFILES);
-      state.profiles = latest ? JSON.parse(latest) : state.profiles;
-      const sel = getEl('profileSelect');
-      const name = sel.value;
-      state.active = state.profiles.find(p => p.name === name) || null;
-      localStorage.setItem(LS_ACTIVE, state.active?.name || '');
-      applyProfileToFields();
-    }
-
-    // 🔄 Sync changes coming from the Config tab (other window)
-    window.addEventListener('storage', (e) => {
-      if (e.key === LS_PROFILES || e.key === LS_ACTIVE) loadProfiles();
-    });
-
-    function setBusy(busy){
-      const dot = getEl('dot');
-      const st = getEl('statusText');
-      if(busy){ dot.classList.add('on'); st.textContent = 'Streaming…'; }
-      else { dot.classList.remove('on'); st.textContent = 'Idle'; }
-    }
-
-    function addMsg(role, content){
-      const el = document.createElement('div');
-      el.className = `msg ${role === 'user' ? 'user' : 'assistant'}`;
-      el.textContent = content;
-      const msgs = getEl('msgs');
-      msgs.appendChild(el);
-      msgs.scrollTop = msgs.scrollHeight;
-    }
-
-    function clearChat(){ state.messages = []; getEl('msgs').innerHTML = ''; }
-
-    function openConfig(){
-      // Optional: notify the framework (if you want it to load in a sidebar)
-      window.parent?.postMessage({ type:'MODULE_EVENT', eventName:'llm-chat:open-config', payload:{} }, '*');
-      // Fallback: open config in a new tab
-      window.open('./config', '_blank');
-    }
-
-    function getCurrentOverrides(){
-      // Read current toolbar + sys prompt values (not persisted, used for next send)
-      return {
-        provider:    getEl('providerSelect').value.trim() || undefined,
-        baseUrl:     getEl('baseUrlInput').value.trim()   || undefined,
-        model:       getEl('modelInput').value.trim()     || undefined,
-        temperature: getEl('tempInput').value !== '' ? Number(getEl('tempInput').value) : undefined,
-        max_tokens:  getEl('maxTokInput').value !== '' ? Number(getEl('maxTokInput').value) : undefined,
-        system:      getEl('sysInput').value || ''
-      };
-    }
-
-    async function send(){
-      const input = getEl('input');
-      const text = input.value.trim();
-      if(!text) return;
-
-      // Always resolve from latest storage (in case Config changed), then override with toolbar values
-      const gRaw = localStorage.getItem(LS_GLOBAL);
-      const g = gRaw ? JSON.parse(gRaw) : loadGlobal();
-      const activeName = localStorage.getItem(LS_ACTIVE);
-      const profiles = JSON.parse(localStorage.getItem(LS_PROFILES) || '[]');
-      const p = profiles.find(x => x.name === activeName) || state.active || {};
-
-      const o = getCurrentOverrides();
-      const provider    = o.provider    ?? p.provider ?? g.provider;
-      const baseUrl     = o.baseUrl     ?? p.baseUrl  ?? g.baseUrl;
-      const apiKey      = p.apiKey ?? g.apiKey; // not surfaced in toolbar by default (security); profile/global can hold it
-      const model       = o.model       ?? p.model    ?? g.model;
-      const temperature = o.temperature ?? p.temperature ?? g.temperature;
-      const max_tokens  = o.max_tokens  ?? p.max_tokens  ?? g.max_tokens;
-      const sysPrompt   = o.system      || p.systemPrompt || '';
-
-      // Build message list (system prompt is editable field value)
-      const msgs = [];
-      if(sysPrompt) msgs.push({ role:'system', content: sysPrompt });
-      msgs.push(...state.messages, { role:'user', content: text });
-
-      // Render user + placeholder
-      addMsg('user', text);
-      const placeholder = document.createElement('div');
-      placeholder.className = 'msg assistant';
-      placeholder.textContent = '';
-      const msgsDiv = getEl('msgs');
-      msgsDiv.appendChild(placeholder);
-      msgsDiv.scrollTop = msgsDiv.scrollHeight;
-      state.messages.push({ role:'user', content:text });
-      input.value='';
-
-      // Stream
-      state.controller = new AbortController();
-      setBusy(true);
-      try{
-        const resp = await fetch('/api/llm-chat/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ provider, baseUrl, apiKey, model, messages: msgs, temperature, max_tokens, stream: true }),
-          signal: state.controller.signal
-        });
-        if(!resp.ok){ throw new Error(await resp.text() || 'HTTP error'); }
-        const reader = resp.body.getReader();
-        const decoder = new TextDecoder();
-        let done=false, buffer='';
-        while(!done){
-          const chunk = await reader.read();
-          done = chunk.done;
-          if(chunk.value){
-            buffer += decoder.decode(chunk.value, { stream:true });
-            const parts = buffer.split('\n\n');
-            buffer = parts.pop();
-            for(const part of parts){
-              const line = part.trim(); if(!line.startsWith('data:')) continue;
-              const json = line.replace(/^data:\s*/, '');
-              try{
-                const evt = JSON.parse(json);
-                if(evt.type==='delta' && evt.content){ placeholder.textContent += evt.content; }
-                else if(evt.type==='done'){ state.messages.push({ role:'assistant', content: placeholder.textContent }); }
-                else if(evt.type==='error'){ placeholder.textContent += `\n[error] ${evt.message}`; }
-              }catch(_){ /* ignore */ }
-            }
-          }
-        }
-      }catch(e){
-        placeholder.textContent += `\n[stopped] ${e.message}`;
-      } finally {
-        setBusy(false);
-        state.controller=null;
-      }
-    }
-
-    function stop(){ if(state.controller) state.controller.abort(); }
-
-    // boot
-    loadProfiles();
-    // Notify framework we’re ready
-    window.parent?.postMessage({ type:'MODULE_EVENT', eventName:'llm-chat:module-ready', payload:{} }, '*');
-  </script>
+  <!-- relative so it works under /modules/llm-chat/ -->
+  <script type="module" src="./js/index.page.js"></script>
 </body>
 </html>

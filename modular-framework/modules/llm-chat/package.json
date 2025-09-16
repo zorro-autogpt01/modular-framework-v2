@@ -2,10 +2,10 @@
   "name": "llm-chat-module",
   "version": "1.0.0",
   "description": "LLM Chat module for modular web framework",
-  "main": "server.js",
+  "main": "server/index.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js"
+    "start": "node server/index.js",
+    "dev": "nodemon server/index.js"
   },
   "dependencies": {
     "axios": "^1.7.2",
