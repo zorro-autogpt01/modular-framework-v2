@@ -428,6 +428,14 @@
                 description: 'SSH connection to remote systems',
                 configUrl: 'http://localhost:3001/config',
                 status: 'online'
+            },
+            {
+            name: 'LLM Chat',
+            url: '/api/llm-chat',           // << use relative path
+            type: 'other',
+            description: 'Chat with LLMs (OpenAI/Ollama/Compat)',
+            configUrl: '/api/llm-chat/config',
+            status: 'online'
             }
         ];
 

@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LLM Chat – Config & Profiles</title>
+  <style>
+    body{margin:0;padding:20px;background:#1e1e1e;color:#d4d4d4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+    .tabs{display:flex;gap:8px;margin-bottom:14px}
+    .tab{background:#252526;border:1px solid #3e3e42;padding:8px 12px;border-radius:8px;cursor:pointer}
+    .tab.active{background:#0e639c;border-color:#0e639c}
+    .card{background:#252526;border:1px solid #3e3e42;border-radius:8px;padding:16px;max-width:980px}
+    label{font-size:12px;color:#969696;margin-bottom:4px;display:block}
+    input,select,textarea{width:100%;padding:8px;border:1px solid #3e3e42;background:#1e1e1e;color:#d4d4d4;border-radius:6px;margin-bottom:12px}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+    button{background:#0e639c;color:#fff;border:none;border-radius:6px;padding:8px 12px;cursor:pointer;margin-right:8px}
+    .muted{color:#969696;font-size:12px}
+    .list{margin-top:10px}
+    .item{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;border:1px solid #3e3e42;background:#1e1e1e;border-radius:6px;padding:8px;margin-bottom:8px}
+    .danger{background:#a1260d}
+    .ghost{background:#3e3e42}
+    .pill{font-size:11px;color:#ccc;background:#111;border:1px solid #383838;border-radius:999px;padding:3px 8px}
+  </style>
+</head>
+<body>
+  <h2>⚙️ LLM Chat – Settings</h2>
+  <div class="tabs">
+    <div class="tab active" id="tGlobal" onclick="showTab('global')">Global</div>
+    <div class="tab" id="tProfiles" onclick="showTab('profiles')">Profiles</div>
+  </div>
+
+  <!-- Global settings -->
+  <div id="global" class="card">
+    <div class="row3">
+      <div>
+        <label>Default Provider</label>
+        <select id="provider">
+          <option value="openai">OpenAI</option>
+          <option value="openai-compatible">OpenAI-compatible</option>
+          <option value="ollama">Ollama</option>
+        </select>
+      </div>
+      <div>
+        <label>Default Model</label>
+        <input id="model" placeholder="gpt-4o-mini or llama3" />
+      </div>
+      <div>
+        <label>Temperature</label>
+        <input id="temperature" type="number" step="0.1" min="0" max="2" />
+      </div>
+    </div>
+    <label>Base URL</label>
+    <input id="baseUrl" placeholder="https://api.openai.com" />
+    <label>API Key <span class="muted">(not required for Ollama)</span></label>
+    <input id="apiKey" placeholder="sk-..." />
+
+    <div class="row">
+      <div>
+        <label>Max tokens (optional)</label>
+        <input id="max_tokens" type="number" />
+      </div>
+      <div>
+        <label>&nbsp;</label>
+        <button onclick="saveGlobal()">Save Global</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Profiles -->
+  <div id="profiles" class="card" style="display:none">
+    <h3>Profiles</h3>
+    <div class="muted">Profiles override global settings when selected in the chat toolbar. Each can set provider/base URL/model/API key and a system prompt.</div>
+    <div class="row3">
+      <div>
+        <label>Name</label>
+        <input id="pName" />
+      </div>
+      <div>
+        <label>Provider</label>
+        <select id="pProvider">
+          <option value="">(inherit global)</option>
+          <option value="openai">OpenAI</option>
+          <option value="openai-compatible">OpenAI-compatible</option>
+          <option value="ollama">Ollama</option>
+        </select>
+      </div>
+      <div>
+        <label>Model</label>
+        <input id="pModel" placeholder="(inherit or set)" />
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>Base URL</label>
+        <input id="pBaseUrl" placeholder="(inherit or set)" />
+      </div>
+      <div>
+        <label>API Key</label>
+        <input id="pApiKey" placeholder="(inherit or set)" />
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>Temperature</label>
+        <input id="pTemp" type="number" step="0.1" min="0" max="2" placeholder="(inherit)" />
+      </div>
+      <div>
+        <label>Max tokens</label>
+        <input id="pMax" type="number" placeholder="(inherit)" />
+      </div>
+    </div>
+    <label>System prompt</label>
+    <textarea id="pSystem" rows="6" placeholder="e.g., Act as a senior React engineer ..."></textarea>
+
+    <div>
+      <button onclick="addOrUpdateProfile()">Save Profile</button>
+      <button class="ghost" onclick="resetToDefaults()">Load Default Profiles</button>
+      <button class="ghost" onclick="exportProfiles()">Export</button>
+      <input type="file" id="importFile" accept="application/json" style="display:none" />
+      <button class="ghost" onclick="document.getElementById('importFile').click()">Import</button>
+    </div>
+
+    <div class="list" id="profileList"></div>
+  </div>
+
+  <script>
+    const LS_GLOBAL = 'llmChatConfig';
+    const LS_PROFILES = 'llmChatProfiles';
+    const LS_ACTIVE = 'llmChatActiveProfile';
+
+    const defaults = [
+      { name:'Frontend Engineer', provider:'openai', baseUrl:'https://api.openai.com', model:'gpt-4o-mini', systemPrompt:'You are a senior Frontend Engineer. Give precise, practical advice on HTML, CSS, JS, accessibility, and performance. Prefer code snippets and explain trade-offs briefly.' },
+      { name:'React Specialist', provider:'openai', baseUrl:'https://api.openai.com', model:'gpt-4o-mini', systemPrompt:'You are a React expert. Use modern React (hooks, functional comps), TypeScript-friendly patterns, and explain render/perf implications.' },
+      { name:'Security Reviewer', provider:'openai-compatible', baseUrl:'https://api.together.xyz', model:'meta-llama/Meta-Llama-3-70B-Instruct-Turbo', systemPrompt:'Act as an application security reviewer. Identify vulnerabilities, threat models, and provide actionable remediations with clear risk levels.' },
+      { name:'DevOps/SRE', provider:'ollama', baseUrl:'http://ollama:11434', model:'llama3', systemPrompt:'You are a pragmatic SRE. Provide concise, command-ready steps, incident runbooks, and rollback strategies.' },
+      { name:'Data Scientist', provider:'openai-compatible', baseUrl:'https://api.openrouter.ai', model:'mistralai/mixtral-8x7b-instruct', systemPrompt:'You are a data scientist. Explain assumptions, feature engineering, eval metrics, and provide Python snippets when helpful.' },
+      { name:'Socratic Tutor', provider:'openai', baseUrl:'https://api.openai.com', model:'gpt-4o-mini', systemPrompt:'Teach by asking guiding questions. Don’t give the answer outright; scaffold thinking and provide hints in steps.' },
+      { name:'Unit Test Generator', provider:'openai', baseUrl:'https://api.openai.com', model:'gpt-4o-mini', systemPrompt:'Generate high-coverage unit tests with table-driven cases, edge conditions, and clear arrange/act/assert structure.' },
+      { name:'Product Manager', provider:'openai', baseUrl:'https://api.openai.com', model:'gpt-4o-mini', systemPrompt:'Focus on user value, scope, acceptance criteria, and trade-offs. Produce crisp PRDs and success metrics.' }
+    ];
+
+    function showTab(tab){
+      document.getElementById('tGlobal').classList.toggle('active', tab==='global');
+      document.getElementById('tProfiles').classList.toggle('active', tab==='profiles');
+      document.getElementById('global').style.display = tab==='global' ? '' : 'none';
+      document.getElementById('profiles').style.display = tab==='profiles' ? '' : 'none';
+    }
+
+    function loadGlobal(){
+      const raw = localStorage.getItem(LS_GLOBAL);
+      const c = raw ? JSON.parse(raw) : {};
+      provider.value = c.provider || 'openai';
+      baseUrl.value  = c.baseUrl  || 'https://api.openai.com';
+      apiKey.value   = c.apiKey   || '';
+      model.value    = c.model    || 'gpt-4o-mini';
+      temperature.value = c.temperature ?? 0.7;
+      max_tokens.value  = c.max_tokens || '';
+    }
+
+    function saveGlobal(){
+      const c = {
+        provider: provider.value,
+        baseUrl: baseUrl.value.trim(),
+        apiKey: apiKey.value.trim(),
+        model: model.value.trim(),
+        temperature: Number(temperature.value),
+        max_tokens: max_tokens.value ? Number(max_tokens.value) : undefined
+      };
+      localStorage.setItem(LS_GLOBAL, JSON.stringify(c));
+      alert('Global settings saved.');
+    }
+
+    function loadProfiles(){
+      const raw = localStorage.getItem(LS_PROFILES);
+      const arr = raw ? JSON.parse(raw) : defaults;
+      localStorage.setItem(LS_PROFILES, JSON.stringify(arr));
+      renderList(arr);
+    }
+
+    function renderList(arr){
+      const list = document.getElementById('profileList');
+      list.innerHTML = '';
+      const active = localStorage.getItem(LS_ACTIVE) || arr[0]?.name;
+      arr.forEach((p, idx) => {
+        const div = document.createElement('div');
+        div.className = 'item';
+        div.innerHTML = `
+          <div>
+            <strong>${p.name}</strong>
+            <span class="pill">${p.provider || '(inherit)'} · ${p.model || '(inherit)'} </span>
+            <span class="muted">${p.baseUrl || '(inherit baseUrl)'}</span>
+          </div>
+          <button class="ghost">Edit</button>
+          <button class="danger">Delete</button>`;
+        const editBtn = div.children[1];
+        const delBtn  = div.children[2];
+        editBtn.onclick = () => edit(idx);
+        delBtn.onclick  = () => remove(idx);
+
+        if(p.name === active){
+          const b = document.createElement('span');
+          b.className = 'pill'; b.style.marginLeft='8px'; b.textContent = 'Active';
+          div.firstElementChild.appendChild(b);
+        } else {
+          const setBtn = document.createElement('button');
+          setBtn.className = 'ghost';
+          setBtn.textContent = 'Set Active';
+          setBtn.onclick = () => { localStorage.setItem(LS_ACTIVE, p.name); renderList(JSON.parse(localStorage.getItem(LS_PROFILES))); };
+          div.insertBefore(setBtn, editBtn);
+        }
+        list.appendChild(div);
+      });
+    }
+
+    function collect(){
+      return {
+        name: pName.value.trim(),
+        provider: pProvider.value || undefined,
+        baseUrl: pBaseUrl.value.trim() || undefined,
+        apiKey: pApiKey.value.trim() || undefined,
+        model: pModel.value.trim() || undefined,
+        temperature: pTemp.value ? Number(pTemp.value) : undefined,
+        max_tokens: pMax.value ? Number(pMax.value) : undefined,
+        systemPrompt: pSystem.value
+      };
+    }
+
+    function addOrUpdateProfile(){
+      const p = collect();
+      if(!p.name){ alert('Name is required'); return; }
+      const arr = JSON.parse(localStorage.getItem(LS_PROFILES) || '[]');
+      const idx = arr.findIndex(x => x.name === p.name);
+      if(idx >= 0) arr[idx] = p; else arr.push(p);
+      localStorage.setItem(LS_PROFILES, JSON.stringify(arr));
+      renderList(arr);
+      alert('Profile saved.');
+    }
+
+    function edit(idx){
+      const arr = JSON.parse(localStorage.getItem(LS_PROFILES) || '[]');
+      const p = arr[idx]; if(!p) return;
+      pName.value = p.name;
+      pProvider.value = p.provider || '';
+      pModel.value = p.model || '';
+      pBaseUrl.value = p.baseUrl || '';
+      pApiKey.value = p.apiKey || '';
+      pTemp.value = p.temperature ?? '';
+      pMax.value = p.max_tokens ?? '';
+      pSystem.value = p.systemPrompt || '';
+    }
+
+    function remove(idx){
+      const arr = JSON.parse(localStorage.getItem(LS_PROFILES) || '[]');
+      const [removed] = arr.splice(idx, 1);
+      localStorage.setItem(LS_PROFILES, JSON.stringify(arr));
+      const active = localStorage.getItem(LS_ACTIVE);
+      if(active === removed?.name) localStorage.setItem(LS_ACTIVE, arr[0]?.name || '');
+      renderList(arr);
+    }
+
+    function resetToDefaults(){
+      if(!confirm('Replace all profiles with defaults?')) return;
+      localStorage.setItem(LS_PROFILES, JSON.stringify(defaults));
+      localStorage.setItem(LS_ACTIVE, defaults[0].name);
+      renderList(defaults);
+    }
+
+    function exportProfiles(){
+      const arr = localStorage.getItem(LS_PROFILES) || '[]';
+      const blob = new Blob([arr], { type:'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'llm_chat_profiles.json'; a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    document.getElementById('importFile').addEventListener('change', (e) => {
+      const file = e.target.files[0]; if(!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try{
+          const arr = JSON.parse(reader.result);
+          if(!Array.isArray(arr)) throw new Error('Invalid JSON');
+          localStorage.setItem(LS_PROFILES, JSON.stringify(arr));
+          renderList(arr);
+        }catch(err){ alert('Import failed: ' + err.message); }
+      };
+      reader.readAsText(file);
+    });
+
+    // boot
+    loadGlobal();
+    loadProfiles();
+  </script>
+</body>
+</html>
