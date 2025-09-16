@@ -1,0 +1,50 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  # Main Framework Container with Nginx
+  framework:
+    build: ./framework
+    container_name: modular-framework
+    ports:
+      - "80:80"
+    volumes:
+      - ./framework/html:/usr/share/nginx/html
+      - ./framework/nginx.conf:/etc/nginx/nginx.conf
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  # SSH Terminal Module Container
+  ssh-terminal:
+    build: ./modules/ssh-terminal
+    container_name: ssh-terminal-module
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  # Additional Module Examples (can be uncommented)
+  # code-editor:
+  #   build: ./modules/code-editor
+  #   container_name: code-editor-module
+  #   ports:
+  #     - "3002:3002"
+  #   networks:
+  #     - app-network
+  
+  # git-viewer:
+  #   build: ./modules/git-viewer
+  #   container_name: git-viewer-module
+  #   ports:
+  #     - "3003:3003"
+  #   networks:
+  #     - app-network
+
+networks:
+  app-network:
+    driver: bridge
