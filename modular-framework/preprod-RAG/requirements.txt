@@ -1,0 +1,13 @@
+# requirements.txt - lighter version using OpenAI embeddings
+fastapi
+uvicorn
+qdrant-client
+openai
+PyPDF2
+GitPython
+redis
+tiktoken
+loguru
+python-multipart
+numpy
+scikit-learn

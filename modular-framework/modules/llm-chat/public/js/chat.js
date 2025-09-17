@@ -19,6 +19,27 @@ function getRagUrl() {
       || 'http://192.168.0.9:8000';
 }
 
+// Small helper to read tags from the input
+function readConvTags() {
+  const raw = getEl('convTags')?.value || '';
+  return raw.split(',').map(s => s.trim()).filter(Boolean);
+}
+
+function displayMemories(snippets) {
+  if (!snippets || !snippets.length) return;
+  const msgsDiv = getEl('msgs');
+  const memDiv = document.createElement('div');
+  memDiv.className = 'sources'; // reuse styling
+  memDiv.innerHTML = `
+    <details open>
+      <summary>🧠 Memories used (${snippets.length})</summary>
+      ${snippets.map(s => `<div class="source-item"><div style="white-space:pre-wrap">${s}</div></div>`).join('')}
+    </details>
+  `;
+  msgsDiv.appendChild(memDiv);
+}
+
+
 // Initialize or continue conversation
 export async function initConversation() {
   // Get or create conversation ID
@@ -66,6 +87,20 @@ function displayConversationHistory() {
   msgsDiv.scrollTop = msgsDiv.scrollHeight;
 }
 
+function displayMemories(snippets) {
+  if (!snippets || !snippets.length) return;
+  const msgsDiv = getEl('msgs');
+  const memDiv = document.createElement('div');
+  memDiv.className = 'sources'; // reuse styling
+  memDiv.innerHTML = `
+    <details open>
+      <summary>🧠 Memories used (${snippets.length})</summary>
+      ${snippets.map(s => `<div class="source-item"><div style="white-space:pre-wrap">${s}</div></div>`).join('')}
+    </details>
+  `;
+  msgsDiv.appendChild(memDiv);
+}
+
 // Query RAG system
 async function queryRAG(question, searchCode = true, searchDocs = true) {
   try {
@@ -100,6 +135,7 @@ export async function saveConversation() {
   }
   
   try {
+    const tags = readConvTags();
     const resp = await fetch(`${getRagUrl()}/conversation/save`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -109,7 +145,8 @@ export async function saveConversation() {
         metadata: {
           profile: getActiveName(),
           timestamp: new Date().toISOString(),
-          message_count: state.messages.length
+          message_count: state.messages.length,
+          tags
         }
       })
     });
@@ -341,10 +378,41 @@ export async function send(buildOverrides) {
   // Check if RAG is enabled
   const useRAG = getEl('useRAG')?.checked || false;
   const ragOnly = getEl('ragOnly')?.checked || false;
+  const useMemories = getEl('useMemories')?.checked || false;
   state.ragEnabled = useRAG;
 
   let ragResponse = null;
   let enhancedSystem = system;
+  let memorySnippets = [];
+
+ // ----- Fetch tag-scoped memories across conversations -----
+ if (useMemories) {
+   try {
+     const tags = readConvTags();
+     const resp = await fetch(`${getRagUrl()}/conversation/search`, {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+       body: JSON.stringify({
+         query: text,
+         limit: 5,
+         profile: getActiveName(),
+         tags
+       })
+     });
+     if (resp.ok) {
+       const data = await resp.json();
+       const results = data.results || [];
+       // Keep short snippets to avoid prompt bloat
+       memorySnippets = results
+         .map(r => (r.content || '').slice(0, 400))
+         .filter(Boolean)
+         .slice(0, 3);
+     }
+   } catch (e) {
+     console.warn('Memory search failed', e);
+   }
+ }
+
 
   // Query RAG if enabled
   if (useRAG) {
@@ -364,29 +432,27 @@ export async function send(buildOverrides) {
       // If RAG-only mode, return RAG answer directly
       if (ragOnly) {
         addMsg('user', text);
+        const msgsDiv = getEl('msgs');
+
+        // Show the RAG answer
         const ragMsg = document.createElement('div');
         ragMsg.className = 'msg assistant';
-        ragMsg.innerHTML = `<span class="rag-badge">RAG</span> ${ragResponse.answer}`;
-        const msgsDiv = getEl('msgs');
+        ragMsg.innerHTML = `<span class="rag-badge">RAG</span> ${ragResponse?.answer || ''}`;
         msgsDiv.appendChild(ragMsg);
-        displaySources(ragResponse.sources);
+
+        // Panels: RAG sources + tagged memories (if enabled)
+        if (ragResponse?.sources) displaySources(ragResponse.sources);
+        if (useMemories && memorySnippets.length) displayMemories(memorySnippets);
+
+        // Persist both in the local transcript
         state.messages.push({ role:'user', content: text });
-        state.messages.push({ role:'assistant', content: ragResponse.answer });
+        const storedAnswer = (ragResponse?.answer || '') + (useMemories && memorySnippets.length ? `\n\n[memories used: ${memorySnippets.length}]` : '');
+        state.messages.push({ role:'assistant', content: storedAnswer });
+
         input.value = '';
         updateMessageCount();
-        // keep state.ragEnabled in sync with the checkbox
-        const useRagCb = document.getElementById('useRAG');
-        if (useRagCb) {
-          state.ragEnabled = !!useRagCb.checked;
-          useRagCb.addEventListener('change', () => {
-            state.ragEnabled = !!useRagCb.checked;
-          });
-        }
-        
-        // Auto-save every 10 messages
-        if (state.messages.length % 10 === 0) {
-          await saveConversation();
-        }
+
+        if (state.messages.length % 10 === 0) await saveConversation();
         return;
       }
 
@@ -404,6 +470,16 @@ Use this information to answer the user's question accurately. If the knowledge 
 
   const msgs = [];
   if (enhancedSystem) msgs.push({ role:'system', content: enhancedSystem });
+
+  // Inject memories (if any)
+ if (memorySnippets.length) {
+   msgs.push({
+     role: 'system',
+     content:
+       "Relevant info from prior tagged conversations:\n" +
+       memorySnippets.map(s => `- ${s}`).join('\n')
+   });
+ }
   
   // Add conversation context from RAG if available
   if (state.ragContext?.relevant_history?.length > 0) {
@@ -453,6 +529,9 @@ Use this information to answer the user's question accurately. If the knowledge 
         if (ragResponse && ragResponse.sources) {
           displaySources(ragResponse.sources);
         }
+        if (memorySnippets.length) {
+         displayMemories(memorySnippets);
+       }
         // Auto-save every 10 messages
         if (state.messages.length % 10 === 0) {
           saveConversation();

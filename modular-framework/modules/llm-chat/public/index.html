@@ -180,6 +180,14 @@
           <input type="checkbox" id="ragOnly" />
           <span>⚡ RAG Only (no LLM)</span>
         </label>
+
+        <!-- NEW: memory toggle + tags -->
+        <label>
+          <input type="checkbox" id="useMemories" />
+          <span>🧠 Use memories (by tags)</span>
+        </label>
+        <input id="convTags" placeholder="tags e.g. pets, project:omega" style="max-width:360px" />
+
         <button id="ingestBtn" class="ghost" title="Ingest new documents">📥 Ingest</button>
         <button id="statsBtn" class="ghost" title="View RAG statistics">📊 Stats</button>
       </div>

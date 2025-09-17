@@ -17,7 +17,6 @@ import asyncio
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Optional
 
 import uvicorn
 import PyPDF2
@@ -28,6 +27,8 @@ from loguru import logger
 from fastapi import FastAPI, UploadFile, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import List, Dict, Optional, Union  # ensure Optional imported
+
 
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
@@ -329,16 +330,19 @@ class GitHubIngester:
 
 # ---------- Conversations ----------
 class ConversationManager:
-    """Manage conversation storage and retrieval"""
 
     def __init__(self):
         self.collection_name = "conversations"
 
     async def save_conversation(self, conversation_id: str, messages: List[dict], metadata: dict = None) -> dict:
-        """Save a complete conversation thread"""
+        """
+        Save a complete conversation thread.
+
+        NOTE: if you pass metadata={"profile": "...", "tags": ["pets","project:omega"], ...}
+        those fields will be stored on each chunk payload and are later filterable.
+        """
         summary = await self._summarize_conversation(messages)
 
-        # Chunk by every 3 messages for better retrieval
         chunks = []
         current_chunk = []
 
@@ -371,25 +375,28 @@ class ConversationManager:
         for i, chunk in enumerate(chunks):
             embedding = await embedding_service.embed_text(chunk["chunk_text"])
             chunk_key = f"{conversation_id}_{i}_{datetime.now().timestamp()}"
+            # Flatten metadata into payload so we can filter by profile/tags
+            payload = {
+                "content": chunk["chunk_text"],
+                "conversation_id": conversation_id,
+                "chunk_index": i,
+                "timestamp": chunk["timestamp"],
+                "summary": chunk["summary"],
+            }
+            payload.update(chunk["metadata"] or {})
+
             points.append(
                 PointStruct(
                     id=hashlib.md5(chunk_key.encode()).hexdigest(),
                     vector=embedding,
-                    payload={
-                        "content": chunk["chunk_text"],
-                        "conversation_id": conversation_id,
-                        "chunk_index": i,
-                        "timestamp": chunk["timestamp"],
-                        "summary": chunk["summary"],
-                        **chunk["metadata"],
-                    },
+                    payload=payload,
                 )
             )
 
         if points:
             qdrant.upsert(collection_name=self.collection_name, points=points)
 
-        # Cache last 20
+        # cache last 20
         redis_client.setex(
             f"conversation:{conversation_id}",
             86400 * 7,
@@ -397,6 +404,7 @@ class ConversationManager:
         )
 
         return {"conversation_id": conversation_id, "chunks_saved": len(chunks), "summary": summary}
+
 
     async def get_conversation_context(self, conversation_id: str, current_query: str = None) -> dict:
         cached = redis_client.get(f"conversation:{conversation_id}")
@@ -423,19 +431,62 @@ class ConversationManager:
 
         return {"recent_messages": recent_messages, "relevant_history": relevant_history, "conversation_id": conversation_id}
 
-    async def search_all_conversations(self, query: str, limit: int = 5) -> List[dict]:
+
+    async def search_all_conversations(
+        self, query: str, limit: int = 5, profile: Optional[str] = None, tags: Optional[List[str]] = None
+    ) -> List[dict]:
+        """
+        Vector search across ALL conversations.
+        - If profile is provided, restrict to that profile.
+        - If tags are provided, return results that match ANY of the tags.
+          (We perform one query per tag and merge.)
+        """
         query_embedding = await embedding_service.embed_text(query)
-        resp = qdrant.query_points(collection_name=self.collection_name, query=query_embedding, limit=limit)
-        results = getattr(resp, "points", []) or []
-        return [
-            {
-                "content": r.payload.get("content", ""),
-                "conversation_id": r.payload.get("conversation_id"),
-                "timestamp": r.payload.get("timestamp"),
-                "score": r.score,
-            }
-            for r in results
-        ]
+
+        results_map: Dict[str, Dict] = {}  # id -> best point
+        def add_points(points):
+            for p in points or []:
+                pid = str(p.id)
+                if pid not in results_map or (p.score or 0) > (results_map[pid]["score"] or 0):
+                    results_map[pid] = {
+                        "content": p.payload.get("content", ""),
+                        "conversation_id": p.payload.get("conversation_id"),
+                        "timestamp": p.payload.get("timestamp"),
+                        "score": p.score,
+                    }
+
+        # Build the base MUST filter (profile if provided)
+        base_must = []
+        if profile:
+            base_must.append(FieldCondition(key="profile", match=MatchValue(value=profile)))
+
+        # If tags provided: run one filtered query per tag and merge
+        if tags:
+            for tag in [t for t in tags if t]:
+                must = list(base_must)
+                must.append(FieldCondition(key="tags", match=MatchValue(value=tag)))
+                resp = qdrant.query_points(
+                    collection_name=self.collection_name,
+                    query=query_embedding,
+                    limit=limit,
+                    query_filter=Filter(must=must),
+                )
+                add_points(getattr(resp, "points", []))
+        else:
+            # Single query with (optional) profile filter
+            qfilter = Filter(must=base_must) if base_must else None
+            resp = qdrant.query_points(
+                collection_name=self.collection_name,
+                query=query_embedding,
+                limit=limit,
+                query_filter=qfilter,
+            )
+            add_points(getattr(resp, "points", []))
+
+        # Sort merged results by score, cap to limit
+        merged = sorted(results_map.values(), key=lambda r: (r["score"] or 0.0), reverse=True)[:limit]
+        return merged
+
 
     async def _summarize_conversation(self, messages: List[dict]) -> str:
         if len(messages) < 3:
@@ -575,6 +626,24 @@ async def startup():
             "Ensure they match!"
         )
 
+@app.post("/conversation/search")
+async def search_conversations(request: dict):
+    """
+    Body:
+    {
+      "query": "...",
+      "limit": 5,
+      "profile": "Frontend Engineer",
+      "tags": ["pets","project:omega"]
+    }
+    """
+    results = await conversation_manager.search_all_conversations(
+        request["query"],
+        request.get("limit", 5),
+        request.get("profile"),
+        request.get("tags"),
+    )
+    return {"results": results}
 
 # ---------- API Models ----------
 class IngestRepoRequest(BaseModel):
