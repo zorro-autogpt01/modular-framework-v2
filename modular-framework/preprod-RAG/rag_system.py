@@ -17,6 +17,7 @@ import asyncio
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from fastapi.staticfiles import StaticFiles  # NEW
 
 import uvicorn
 import PyPDF2
@@ -57,6 +58,9 @@ app.add_middleware(
 # ---------- Env & Clients ----------
 QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+
+ADMIN_API_PREFIX = "/admin-api"
+
 
 # OpenAI (v1 async client)
 from openai import AsyncOpenAI
@@ -657,6 +661,45 @@ class QueryRequest(BaseModel):
     search_docs: bool = True
 
 
+# MOUNT STATIC ADMIN UI
+app.mount("/admin", StaticFiles(directory="public", html=True), name="admin")  # NEW
+
+
+# ---------- helpers (NEW) ----------
+def qdrant_scroll_all(collection: str, with_payload: bool = True):
+    """Yield all points (no vectors) for a collection."""
+    next_page = None
+    while True:
+        points, next_page = qdrant.scroll(
+            collection_name=collection,
+            limit=512,
+            with_payload=with_payload,
+            with_vectors=False,
+            offset=next_page,
+        )
+        for p in points or []:
+            yield p
+        if not next_page:
+            break
+
+
+def count_by_payload_field(collection: str, field: str):
+    """Return dict counter {value: count} for a given payload field."""
+    from collections import Counter
+
+    c = Counter()
+    for pt in qdrant_scroll_all(collection):
+        val = (pt.payload or {}).get(field)
+        # allow list or scalar
+        if isinstance(val, list):
+            for v in val:
+                if v:
+                    c[str(v)] += 1
+        elif val:
+            c[str(val)] += 1
+    return dict(c)
+
+
 # ---------- Endpoints ----------
 @app.post("/ingest/repo")
 async def ingest_repository(request: IngestRepoRequest, background_tasks: BackgroundTasks):
@@ -716,12 +759,6 @@ async def get_conversation(conversation_id: str, current_query: Optional[str] = 
     return await conversation_manager.get_conversation_context(conversation_id, current_query)
 
 
-@app.post("/conversation/search")
-async def search_conversations(request: dict):
-    results = await conversation_manager.search_all_conversations(request["query"], request.get("limit", 5))
-    return {"results": results}
-
-
 @app.get("/stats")
 async def get_stats():
     stats = {}
@@ -750,6 +787,147 @@ async def clear_collection(collection: str):
         )
         return {"message": f"Cleared {collection}"}
     raise HTTPException(status_code=404, detail="Collection not found")
+
+@app.get(f"{ADMIN_API_PREFIX}/info")
+async def admin_info():
+    """Basic config & runtime for the UI."""
+    return {
+        "models": {
+            "embed": RAG_EMBED_MODEL,
+            "summary": RAG_SUMMARY_MODEL,
+            "answer": RAG_ANSWER_MODEL,
+            "embed_dim": EMBED_DIM,
+        },
+        "chunking": {
+            "chunk_size": chunking_service.chunk_size,
+            "overlap": chunking_service.overlap,
+        },
+        "collections": list(COLLECTIONS.keys()),
+        "qdrant_url": QDRANT_URL,
+        "redis_host": REDIS_HOST,
+    }
+
+
+@app.get(f"{ADMIN_API_PREFIX}/repos")
+async def admin_repos():
+    """Aggregate repo counts from 'code' + 'documents' payloads."""
+    from collections import defaultdict
+
+    counts = defaultdict(lambda: {"count": 0, "collections": set()})
+    # code
+    for p in qdrant_scroll_all("code"):
+        repo = (p.payload or {}).get("repo")
+        if repo:
+            counts[repo]["count"] += 1
+            counts[repo]["collections"].add("code")
+    # documents
+    for p in qdrant_scroll_all("documents"):
+        repo = (p.payload or {}).get("repo")
+        if repo:
+            counts[repo]["count"] += 1
+            counts[repo]["collections"].add("documents")
+
+    items = [
+        {"repo": k, "count": v["count"], "collections": sorted(list(v["collections"]))}
+        for k, v in counts.items()
+    ]
+    items.sort(key=lambda x: x["count"], reverse=True)
+    return {"items": items}
+
+
+@app.get(f"{ADMIN_API_PREFIX}/docs")
+async def admin_docs():
+    """Aggregate document sources & counts from 'documents' collection."""
+    counts = count_by_payload_field("documents", "source")
+    items = [{"source": k, "count": v} for k, v in counts.items()]
+    items.sort(key=lambda x: x["count"], reverse=True)
+    return {"items": items}
+
+
+@app.get(f"{ADMIN_API_PREFIX}/tags")
+async def admin_tags():
+    """Aggregate tags from conversation payloads."""
+    # tags could be a list or string in payloads (metadata you store)
+    from collections import defaultdict
+
+    tag_counts = defaultdict(int)
+    conv_counts = defaultdict(set)  # tag -> set(conversation_id)
+
+    for p in qdrant_scroll_all("conversations"):
+        payload = p.payload or {}
+        cid = payload.get("conversation_id")
+        tags = payload.get("tags")
+        # normalize
+        if isinstance(tags, str):
+            tags = [t.strip() for t in tags.split(",") if t.strip()]
+        if isinstance(tags, list):
+            for t in tags:
+                tag_counts[t] += 1
+                if cid:
+                    conv_counts[t].add(cid)
+
+    items = [
+        {"tag": t, "count": tag_counts[t], "conversations": len(conv_counts[t])}
+        for t in tag_counts.keys()
+    ]
+    items.sort(key=lambda x: x["count"], reverse=True)
+    return {"items": items}
+
+
+@app.get(f"{ADMIN_API_PREFIX}/conversations")
+async def admin_conversations(profile: Optional[str] = None, tags: Optional[str] = None, limit: int = 100):
+    """List conversations with last timestamp, tags (union), chunk count."""
+    from collections import defaultdict
+
+    tag_list = [t.strip() for t in (tags or "").split(",") if t.strip()]
+
+    index = defaultdict(lambda: {"chunks": 0, "tags": set(), "last_timestamp": None})
+    for p in qdrant_scroll_all("conversations"):
+        pl = p.payload or {}
+        cid = pl.get("conversation_id")
+        if not cid:
+            continue
+        if profile and pl.get("profile") != profile:
+            continue
+        # normalize tags for filter + union
+        its_tags = pl.get("tags")
+        if isinstance(its_tags, str):
+            its_tags = [t.strip() for t in its_tags.split(",") if t.strip()]
+        if its_tags is None:
+            its_tags = []
+        if tag_list and not set(tag_list).issubset(set(its_tags)):
+            continue
+
+        index[cid]["chunks"] += 1
+        index[cid]["tags"].update(its_tags)
+        ts = pl.get("timestamp")
+        if ts:
+            # keep max timestamp string (ISO sorts ok) or convert to comparable
+            index[cid]["last_timestamp"] = max(index[cid]["last_timestamp"] or ts, ts)
+
+    items = [
+        {
+            "conversation_id": cid,
+            "chunks": data["chunks"],
+            "tags": sorted(list(data["tags"])),
+            "last_timestamp": data["last_timestamp"],
+        }
+        for cid, data in index.items()
+    ]
+    items.sort(key=lambda x: x["last_timestamp"] or "", reverse=True)
+    return {"items": items[: max(1, limit)]}
+
+
+@app.post(f"{ADMIN_API_PREFIX}/cache/clear")
+async def admin_cache_clear():
+    """Clear common Redis keys used by this service (best-effort)."""
+    # narrow clear: only keys we know (rag:* and conversation:*). Avoid full FLUSHALL.
+    cleared = 0
+    for pattern in ["rag:*", "conversation:*"]:
+        for key in redis_client.scan_iter(match=pattern, count=500):
+            redis_client.delete(key)
+            cleared += 1
+    return {"cleared": cleared}
 
 
 if __name__ == "__main__":

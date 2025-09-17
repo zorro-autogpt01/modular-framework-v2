@@ -55,7 +55,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const response = await fetch('http://192.168.0.9:8000/stats');
       const stats = await response.json();
-      alert(`RAG Statistics:\n\nCode chunks: ${stats.code_chunks}\nDocument chunks: ${stats.document_chunks}\nTotal: ${stats.total_chunks}`);
+      alert(`RAG Statistics:\n\nCode chunks: ${stats.code_chunks}\nDocument chunks: ${stats.documents_chunks ?? stats.document_chunks}\nTotal: ${stats.total_chunks}`);
     } catch (error) {
       alert('RAG service not available');
     }

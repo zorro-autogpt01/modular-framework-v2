@@ -1,4 +1,6 @@
 */*.env
+/qdrant_storage
+/redis_data
 *.env
 */collections
 */redis_data

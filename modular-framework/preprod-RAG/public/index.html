@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>RAG Admin</title>
+  <link rel="stylesheet" href="./css/theme.css" />
+  <style>
+    .header{display:flex;gap:8px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+    .dot{width:8px;height:8px;border-radius:50%;background:#4ec9b0}
+    .grow{flex:1}
+    .main-tabs{display:flex;gap:8px;align-items:center;padding:8px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+    .main-tabs .tab{background:#252526;border:1px solid #3e3e42;padding:8px 12px;border-radius:8px;cursor:pointer;color:var(--txt)}
+    .main-tabs .tab.active{background:#0e639c;border-color:#0e639c}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+    .stat{background:#1e1e1e;border:1px solid var(--line);border-radius:8px;padding:12px}
+    .muted{color:var(--muted);font-size:12px}
+    .list{margin-top:10px}
+    .row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;padding:8px;border:1px solid var(--line);border-radius:6px;background:#1e1e1e}
+    .pill{font-size:11px;color:#ccc;background:#111;border:1px solid #383838;border-radius:999px;padding:3px 8px}
+    .card{background:#252526;border:1px solid #3e3e42;border-radius:8px;padding:16px;max-width:1200px}
+    .pane{padding:16px;max-width:1200px;margin:0 auto}
+    .toolbar{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+    input,select,textarea{width:100%;padding:8px;border:1px solid #3e3e42;background:#1e1e1e;color:#d4d4d4;border-radius:6px;margin-bottom:12px}
+    button{background:#0e639c;color:#fff;border:none;border-radius:6px;padding:8px 12px;cursor:pointer}
+    button.ghost{background:#3e3e42}
+    #playResults .hit{border:1px solid var(--line);background:#1e1e1e;border-radius:6px;padding:10px;margin-bottom:8px}
+    #playResults .score{float:right;font-size:11px;color:#4ec9b0}
+    .small{font-size:12px}
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div><span class="dot"></span> <strong>RAG Admin</strong></div>
+    <div class="grow"></div>
+    <a href="/docs" target="_blank" class="pill" style="text-decoration:none">Open API Docs</a>
+  </div>
+
+  <div class="main-tabs">
+    <button class="tab active" data-tab="dashboard">Dashboard</button>
+    <button class="tab" data-tab="sources">Sources</button>
+    <button class="tab" data-tab="tags">Tags</button>
+    <button class="tab" data-tab="conversations">Conversations</button>
+    <button class="tab" data-tab="playground">Search & Playground</button>
+    <button class="tab" data-tab="settings">Settings</button>
+  </div>
+
+  <section id="dashboard" class="pane">
+    <div class="card">
+      <h2>📊 Overview</h2>
+      <div class="stats" id="statGrid">
+        <div class="stat"><div class="muted">Code Chunks</div><div id="s_code" style="font-size:22px">–</div></div>
+        <div class="stat"><div class="muted">Document Chunks</div><div id="s_docs" style="font-size:22px">–</div></div>
+        <div class="stat"><div class="muted">Conversation Chunks</div><div id="s_convos" style="font-size:22px">–</div></div>
+        <div class="stat"><div class="muted">Total</div><div id="s_total" style="font-size:22px">–</div></div>
+      </div>
+      <div class="grid" style="margin-top:14px">
+        <div>
+          <h3>Health</h3>
+          <pre id="healthBox" class="small" style="white-space:pre-wrap;background:#111;padding:10px;border-radius:6px;border:1px solid var(--line)"></pre>
+        </div>
+        <div>
+          <h3>Models & Config</h3>
+          <pre id="infoBox" class="small" style="white-space:pre-wrap;background:#111;padding:10px;border-radius:6px;border:1px solid var(--line)"></pre>
+        </div>
+      </div>
+      <div style="margin-top:10px">
+        <button id="btnClearCache" class="ghost">🧹 Clear Redis query cache</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="sources" class="pane" style="display:none">
+    <div class="card">
+      <h2>📦 Sources</h2>
+      <div class="grid">
+        <div>
+          <h3>Repositories (from code/doc payloads)</h3>
+          <div id="repoList" class="list"></div>
+        </div>
+        <div>
+          <h3>Documents</h3>
+          <div id="docList" class="list"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="tags" class="pane" style="display:none">
+    <div class="card">
+      <h2>🏷️ Tags (from conversations)</h2>
+      <div class="toolbar">
+        <input id="tagSearch" placeholder="Filter tags..." style="max-width:320px" />
+      </div>
+      <div id="tagList" class="list"></div>
+    </div>
+  </section>
+
+  <section id="conversations" class="pane" style="display:none">
+    <div class="card">
+      <h2>💬 Conversations</h2>
+      <div class="toolbar">
+        <input id="convFilterTags" placeholder="tag1, tag2" style="max-width:260px"/>
+        <input id="convFilterProfile" placeholder="profile (optional)" style="max-width:200px"/>
+        <button id="btnLoadConvos">Load</button>
+      </div>
+      <div id="convList" class="list"></div>
+    </div>
+  </section>
+
+  <section id="playground" class="pane" style="display:none">
+    <div class="card">
+      <h2>🧪 Search & Playground</h2>
+      <div class="toolbar">
+        <input id="q" placeholder="Query..." style="flex:1;max-width:520px"/>
+        <label class="small"><input type="checkbox" id="pCode" checked /> Code</label>
+        <label class="small"><input type="checkbox" id="pDocs" checked /> Docs</label>
+        <button id="btnRun">Run</button>
+      </div>
+      <div id="playResults"></div>
+    </div>
+  </section>
+
+  <section id="settings" class="pane" style="display:none">
+    <div class="card">
+      <h2>⚙️ Settings</h2>
+      <div class="grid">
+        <div>
+          <h3>Chunking</h3>
+          <div class="small muted">Live in-memory values</div>
+          <div class="row"><div>Chunk size</div><div id="set_chunk_size">–</div></div>
+          <div class="row"><div>Overlap</div><div id="set_overlap">–</div></div>
+        </div>
+        <div>
+          <h3>Collections</h3>
+          <div class="row"><div>code</div><div class="muted">cosine / dim</div></div>
+          <div class="row"><div>documents</div><div class="muted">cosine / dim</div></div>
+          <div class="row"><div>conversations</div><div class="muted">cosine / dim</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <script type="module" src="./js/admin.js"></script>
+</body>
+</html>
