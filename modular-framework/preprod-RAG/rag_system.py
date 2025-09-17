@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from fastapi.staticfiles import StaticFiles  # NEW
-
+from fnmatch import fnmatch  # NEW
 import uvicorn
 import PyPDF2
 import tiktoken
@@ -29,7 +29,6 @@ from fastapi import FastAPI, UploadFile, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Dict, Optional, Union  # ensure Optional imported
-
 
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
@@ -72,6 +71,14 @@ oai = AsyncOpenAI(api_key=OPENAI_API_KEY)
 RAG_EMBED_MODEL = os.getenv("RAG_EMBED_MODEL", "text-embedding-3-small")  # 1536 dims
 RAG_SUMMARY_MODEL = os.getenv("RAG_SUMMARY_MODEL", "gpt-4o-mini")
 RAG_ANSWER_MODEL = os.getenv("RAG_ANSWER_MODEL", "gpt-4o-mini")
+# --- Chunking & embed safety limits ---
+EMBED_TOKEN_LIMIT = int(os.getenv("EMBED_TOKEN_LIMIT", "8192"))  # per-input hard limit of the embed model
+CHUNK_TOKENS_TARGET = int(os.getenv("CHUNK_TOKENS_TARGET", "700"))   # aim for ~700 tokens
+CHUNK_TOKENS_HARD = int(os.getenv("CHUNK_TOKENS_HARD", "1000"))      # never exceed this per chunk
+EMBED_MICROBATCH = int(os.getenv("EMBED_MICROBATCH", "64"))          # micro-batch size for embeddings
+MAX_FILE_TOKENS = int(os.getenv("MAX_FILE_TOKENS", "50000"))         # skip absurdly large files
+MINIFIED_LINE_LEN_THRESHOLD = int(os.getenv("MINIFIED_LINE_LEN_THRESHOLD", "300"))  # heuristic
+
 
 # Qdrant & Redis
 qdrant = QdrantClient(url=QDRANT_URL)
@@ -94,26 +101,47 @@ COLLECTIONS = {
 
 # ---------- Embeddings ----------
 class EmbeddingService:
-    """Handle embeddings using OpenAI API (v1 async)"""
+    """Handle embeddings using OpenAI API (v1 async) with token truncation & micro-batching."""
+    def __init__(self):
+        self._enc = tiktoken.get_encoding("cl100k_base")
 
-    @staticmethod
-    async def embed_text(text: str) -> List[float]:
+    def _truncate(self, text: str) -> str:
+        toks = self._enc.encode(text or "")
+        if len(toks) > EMBED_TOKEN_LIMIT:
+            toks = toks[:EMBED_TOKEN_LIMIT]
+        return self._enc.decode(toks)
+
+    async def embed_text(self, text: str) -> List[float]:
         try:
-            resp = await oai.embeddings.create(model=RAG_EMBED_MODEL, input=text)
+            clean = self._truncate(text)
+            resp = await oai.embeddings.create(model=RAG_EMBED_MODEL, input=clean)
             return resp.data[0].embedding
         except Exception as e:
-            logger.error(f"Embedding failed: {e}")
+            logger.error(f"Embedding failed (single): {e}")
             return [0.0] * EMBED_DIM
 
-    @staticmethod
-    async def embed_batch(texts: List[str]) -> List[List[float]]:
-        try:
-            resp = await oai.embeddings.create(model=RAG_EMBED_MODEL, input=texts)
-            return [item.embedding for item in resp.data]
-        except Exception as e:
-            logger.error(f"Batch embedding failed: {e}")
-            return [[0.0] * EMBED_DIM for _ in texts]
+    async def embed_batch(self, texts: List[str]) -> List[List[float]]:
+        """Micro-batch + per-item fallback so one oversize/invalid input doesn't kill all."""
+        outputs: List[List[float]] = []
+        # pre-truncate
+        cleaned = [self._truncate(t) for t in texts]
 
+        for i in range(0, len(cleaned), EMBED_MICROBATCH):
+            sub = cleaned[i : i + EMBED_MICROBATCH]
+            try:
+                resp = await oai.embeddings.create(model=RAG_EMBED_MODEL, input=sub)
+                outputs.extend([d.embedding for d in resp.data])
+            except Exception as e:
+                logger.error(f"Embedding micro-batch failed: {e} — falling back per-item")
+                # try one-by-one to isolate the offender(s)
+                for t in sub:
+                    try:
+                        r = await oai.embeddings.create(model=RAG_EMBED_MODEL, input=t)
+                        outputs.append(r.data[0].embedding)
+                    except Exception as e2:
+                        logger.error(f"Embedding item failed, zeroing: {e2}")
+                        outputs.append([0.0] * EMBED_DIM)
+        return outputs
 
 embedding_service = EmbeddingService()
 
@@ -141,47 +169,70 @@ class ChunkingService:
         chunks: List[CodeChunk] = []
         lines = content.split("\n")
         language = Path(file_path).suffix.lstrip(".")
+        enc = self.tokenizer
 
-        current_chunk: List[str] = []
-        current_start = 0
+        buf: List[str] = []
+        buf_start_line = 0
 
-        for i, line in enumerate(lines):
-            current_chunk.append(line)
+        def buf_text() -> str:
+            return "\n".join(buf)
 
-            is_boundary = (
-                line.strip().startswith(("def ", "class ", "function ", "const ", "export "))
-                or (len("\n".join(current_chunk)) > self.chunk_size and not line.strip())
+        def flush(end_line: int):
+            if not buf:
+                return
+            text = buf_text()
+            # Hard enforce token cap by forced slicing if needed
+            toks = enc.encode(text)
+            if len(toks) <= CHUNK_TOKENS_HARD:
+                chunks.append(CodeChunk(
+                    content=text, file_path=file_path, repo_name=repo_name,
+                    language=language, start_line=buf_start_line, end_line=end_line,
+                    chunk_type="code_block"
+                ))
+            else:
+                # force split into hard-sized pieces; keep approximate line mapping
+                for j in range(0, len(toks), CHUNK_TOKENS_HARD):
+                    part = enc.decode(toks[j : j + CHUNK_TOKENS_HARD])
+                    part_lines = part.count("\n") + 1
+                    chunks.append(CodeChunk(
+                        content=part, file_path=file_path, repo_name=repo_name,
+                        language=language, start_line=buf_start_line, end_line=min(end_line, buf_start_line + part_lines),
+                        chunk_type="code_block"
+                    ))
+                    buf_start = buf_start_line + part_lines - 1
+                # adjust next start line roughly
+            # keep small overlap
+            keep = buf[-5:] if len(buf) > 5 else buf[:]
+            nonlocal buf_start_line, buf
+            buf = keep.copy()
+            buf_start_line = end_line - len(buf) + 1
+
+        for idx, line in enumerate(lines, start=1):
+            buf.append(line)
+            text_now = buf_text()
+            tokens_now = len(enc.encode(text_now))
+
+            boundaryish = (
+                line.lstrip().startswith(("def ", "class ", "function ", "const ", "export "))
+                or (not line.strip())  # blank
             )
 
-            if is_boundary and len("\n".join(current_chunk)) > 500:
-                chunks.append(
-                    CodeChunk(
-                        content="\n".join(current_chunk),
-                        file_path=file_path,
-                        repo_name=repo_name,
-                        language=language,
-                        start_line=current_start,
-                        end_line=i,
-                        chunk_type="code_block",
-                    )
-                )
-                current_chunk = current_chunk[-5:] if len(current_chunk) > 5 else []
-                current_start = i - len(current_chunk) + 1
+            # Prefer to flush at boundaries once we hit target
+            if tokens_now >= CHUNK_TOKENS_TARGET and boundaryish:
+                flush(idx)
+                continue
 
-        if current_chunk:
-            chunks.append(
-                CodeChunk(
-                    content="\n".join(current_chunk),
-                    file_path=file_path,
-                    repo_name=repo_name,
-                    language=language,
-                    start_line=current_start,
-                    end_line=len(lines),
-                    chunk_type="code_block",
-                )
-            )
+            # Hard cap no matter what
+            if tokens_now >= CHUNK_TOKENS_HARD:
+                flush(idx)
+                continue
+
+        # final flush
+        if buf:
+            flush(len(lines))
 
         return chunks
+
 
     def chunk_text(self, content: str, metadata: dict) -> List[dict]:
         chunks: List[dict] = []
@@ -258,6 +309,23 @@ class GitHubIngester:
                     try:
                         with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                             content = f.read()
+                            # Skip absurdly large token count
+                            try:
+                                _tok_count = chunking_service.tokenizer.encode(content or "")
+                                if len(_tok_count) > MAX_FILE_TOKENS:
+                                    logger.warning(f"Skipping very large file (>{MAX_FILE_TOKENS} toks): {relative_path}")
+                                    continue
+                            except Exception:
+                                pass
+
+                            # Heuristic: skip minified/one-liner-ish JS/CSS (very long average line)
+                            if Path(file).suffix.lower() in {".js", ".css"}:
+                                lines = content.split("\n")
+                                if lines:
+                                    avg_len = sum(len(l) for l in lines) / max(1, len(lines))
+                                    if avg_len > MINIFIED_LINE_LEN_THRESHOLD:
+                                        logger.info(f"Skipping likely minified asset: {relative_path} (avg line ~{avg_len:.0f} chars)")
+                                        continue
 
                         if not content or len(content) > 1_000_000:
                             continue
@@ -331,6 +399,25 @@ class GitHubIngester:
         if points:
             qdrant.upsert(collection_name="documents", points=points)
 
+
+# NEW: Retrieval models
+class RetrieveFilters(BaseModel):
+    repos: Optional[List[str]] = None
+    path_prefixes: Optional[List[str]] = None   # matches payload['file_path'] startswith any
+    languages: Optional[List[str]] = None       # for code
+    min_score: float = 0.0
+
+class RetrieveRequest(BaseModel):
+    query: str
+    top_k: int = 8
+    search_code: bool = True
+    search_docs: bool = True
+    filters: Optional[RetrieveFilters] = None
+    dedupe_by: str = "file"        # "file" | "source" | "none"
+    max_snippet_chars: int = 1200  # hard cap per snippet
+    build_prompt: bool = False     # if true, returns "prompt" field
+    section_title: str = "Retrieved context"
+    token_budget: Optional[int] = None          # approx target tokens for prompt (cl100k)
 
 # ---------- Conversations ----------
 class ConversationManager:
@@ -517,89 +604,253 @@ class QueryEngine:
 
     def __init__(self):
         self.cache_ttl = 3600
+        self._enc = tiktoken.get_encoding("cl100k_base")  # NEW
 
-    async def query(self, question: str, search_code: bool = True, search_docs: bool = True) -> Dict:
-        cache_key = f"rag:{hashlib.md5(question.encode()).hexdigest()}"
+    # --- NEW: retrieval-only path ---
+    async def retrieve(self, req: RetrieveRequest) -> Dict:
+        """
+        Return top-N snippets (code &/or docs) for client-side prompt assembly.
+        Does NOT call the LLM. Optionally assembles a token-budgeted prompt.
+        """
+        # cache key across query + filters
+        cache_key = "retrieve:" + hashlib.md5(
+            json.dumps(req.dict(), sort_keys=True).encode()
+        ).hexdigest()
         cached = redis_client.get(cache_key)
         if cached:
-            return json.loads(cached)
+            out = json.loads(cached)
+            out["usage"] = {**out.get("usage", {}), "cached": True}
+            return out
 
-        question_embedding = await embedding_service.embed_text(question)
+        # embed
+        query_emb = await embedding_service.embed_text(req.query)
 
-        all_results = []
+        # helper: query a collection with optional rough filter for repo
+        def _qdrant_query(collection: str, limit: int, repos: Optional[List[str]]):
+            qfilter = None
+            if repos:
+                # build simple OR by doing one query per repo and merge; keep code simple/portable
+                all_pts = []
+                for r in repos:
+                    resp = qdrant.query_points(
+                        collection_name=collection,
+                        query=query_emb,
+                        limit=limit,
+                        query_filter=Filter(must=[FieldCondition(key="repo", match=MatchValue(value=r))]),
+                    )
+                    all_pts.extend(getattr(resp, "points", []) or [])
+                return all_pts
+            # no repo filter
+            resp = qdrant.query_points(collection_name=collection, query=query_emb, limit=limit)
+            return getattr(resp, "points", []) or []
 
-        if search_code:
-            resp_code = qdrant.query_points(collection_name="code", query=question_embedding, limit=5)
-            all_results.extend(getattr(resp_code, "points", []) or [])
+        # fetch generously, we’ll filter/dedupe locally
+        mult = max(3, 2 * (req.top_k // 5 + 1))
+        code_pts = _qdrant_query("code", req.top_k * mult, (req.filters or RetrieveFilters()).repos) if req.search_code else []
+        doc_pts  = _qdrant_query("documents", req.top_k * mult, (req.filters or RetrieveFilters()).repos) if req.search_docs else []
 
-        if search_docs:
-            resp_docs = qdrant.query_points(collection_name="documents", query=question_embedding, limit=5)
-            all_results.extend(getattr(resp_docs, "points", []) or [])
+        def _post_filter(points, is_code: bool):
+            pf = req.filters or RetrieveFilters()
+            out = []
+            for p in points:
+                pl = p.payload or {}
+                if p.score is None:
+                    continue
+                # Qdrant (cosine): LOWER distance is better.
+                # Interpret min_score from API as "max_distance" (keep name for backwards-compat).
+                if pf.min_score and (p.score or 0) < pf.min_score:
+                    continue
+                if is_code and pf.languages and (pl.get("language") not in pf.languages):
+                    continue
+                if pf.path_prefixes and is_code:
+                    fp = (pl.get("file_path") or "")
+                    if not any(fp.startswith(prefix) for prefix in pf.path_prefixes):
+                        continue
+                out.append(p)
+            return out
 
-        # Sort by score descending
-        all_results.sort(key=lambda x: (x.score or 0.0), reverse=True)
-        top_results = all_results[:7]
+        code_pts = _post_filter(code_pts, is_code=True)
+        doc_pts  = _post_filter(doc_pts,  is_code=False)
 
-        context_parts: List[str] = []
-        sources: List[dict] = []
+        # merge and sort by score
+        all_pts = code_pts + doc_pts
+        all_pts.sort(key=lambda x: (x.score or -1), reverse=True)
 
-        for result in top_results:
-            payload = result.payload or {}
-            if payload.get("type") == "code":
-                context_parts.append(
-                    f"Code from {payload.get('file_path','?')}:\n```{payload.get('language','')}\n{payload.get('content','')}\n```"
-                )
-                sources.append(
-                    {
-                        "type": "code",
-                        "file": payload.get("file_path"),
-                        "repo": payload.get("repo"),
-                        "score": result.score,
-                    }
-                )
+
+        # dedupe
+        seen = set()
+        snippets = []
+        for p in all_pts:
+            pl = p.payload or {}
+            is_code = (pl.get("type") == "code")
+            key = None
+            if req.dedupe_by == "file" and is_code:
+                key = f"code:{pl.get('repo')}:{pl.get('file_path')}"
+            elif req.dedupe_by == "source" and not is_code:
+                key = f"doc:{pl.get('source')}"
+            if key and key in seen:
+                continue
+            if key:
+                seen.add(key)
+
+            text = (pl.get("content") or "")[: max(0, req.max_snippet_chars)]
+            if not text.strip():
+                continue
+
+            if is_code:
+                snippets.append({
+                    "type": "code",
+                    "repo": pl.get("repo"),
+                    "file_path": pl.get("file_path"),
+                    "language": pl.get("language"),
+                    "lines": pl.get("lines"),
+                    "score": p.score,
+                    "id": str(p.id),
+                    "text": text,
+                })
             else:
-                context_parts.append(f"Document excerpt:\n{payload.get('content','')}")
-                sources.append({"type": "document", "source": payload.get("source"), "score": result.score})
+                snippets.append({
+                    "type": "document",
+                    "repo": pl.get("repo"),
+                    "source": pl.get("source"),
+                    "score": p.score,
+                    "id": str(p.id),
+                    "text": text,
+                })
 
-        context = "\n\n---\n\n".join(context_parts) if context_parts else "No relevant context found."
+            if len(snippets) >= req.top_k:
+                break
 
-        prompt = f"""Based on the following context from our internal documents and code, answer the question.
+        # optional prompt assembly under token budget
+        prompt = None
+        truncated = False
+        approx_tokens = 0
+        if req.build_prompt:
+            parts = [f"### {req.section_title}\n"]
+            approx_tokens += self._tok(parts[0])
+            for i, s in enumerate(snippets, start=1):
+                if s["type"] == "code":
+                    head = f"[{i}] {s.get('repo','')}/{s.get('file_path','')}"
+                    if s.get("lines"):
+                        head += f":{s['lines']}"
+                    chunk = f"{head}\n```{s.get('language','')}\n{s['text']}\n```\n\n"
+                else:
+                    head = f"[{i}] {s.get('source') or s.get('repo') or 'document'}"
+                    chunk = f"{head}\n{s['text']}\n\n"
 
-Context:
-{context}
+                need = self._tok(chunk)
+                if req.token_budget and (approx_tokens + need) > req.token_budget:
+                    truncated = True
+                    break
+                parts.append(chunk)
+                approx_tokens += need
 
-Question: {question}
+            prompt = "".join(parts)
 
-Instructions:
-- Answer based primarily on the provided context
-- If the context doesn't contain enough information, say so
-- Be specific and reference the sources when possible
-- For code questions, provide examples from the context
+        out = {
+            "query": req.query,
+            "snippets": snippets,
+            "prompt": prompt,
+            "usage": {
+                "retrieved": len(snippets),
+                "from_code": sum(1 for s in snippets if s["type"] == "code"),
+                "from_docs": sum(1 for s in snippets if s["type"] == "document"),
+                "approx_tokens": approx_tokens if req.build_prompt else None,
+                "truncated": truncated if req.build_prompt else None,
+                "cached": False,
+            },
+        }
+        # cache
+        redis_client.setex(cache_key, self.cache_ttl, json.dumps(out))
+        return out
 
-Answer:"""
+        async def query(self, question: str, search_code: bool = True, search_docs: bool = True) -> Dict:
+            """
+            Old /query behavior, implemented on top of the new retrieval path.
+            - Runs retrieve() to collect best snippets.
+            - Builds a context block.
+            - Calls the LLM to produce an answer.
+            """
+            cache_key = "rag:" + hashlib.md5(
+                f"{question}|{search_code}|{search_docs}".encode()
+            ).hexdigest()
+            cached = redis_client.get(cache_key)
+            if cached:
+                return json.loads(cached)
 
+            # Pull context via retrieval; keep a generous cap, no dedupe (we want strongest chunks)
+            ret = await self.retrieve(RetrieveRequest(
+                query=question,
+                top_k=7,
+                search_code=search_code,
+                search_docs=search_docs,
+                dedupe_by="none",
+                build_prompt=True,
+                section_title="Context from internal code & docs",
+                token_budget=1800,  # cl100k budget for context
+            ))
+
+            context = ret.get("prompt") or "No relevant context found."
+            sources = []
+            for s in ret.get("snippets", []):
+                if s["type"] == "code":
+                    sources.append({
+                        "type": "code",
+                        "file": s.get("file_path"),
+                        "repo": s.get("repo"),
+                        "score": s.get("score"),
+                    })
+                else:
+                    sources.append({
+                        "type": "document",
+                        "source": s.get("source"),
+                        "repo": s.get("repo"),
+                        "score": s.get("score"),
+                    })
+
+            prompt = f"""Based on the following context from our internal documents and code, answer the question.
+
+    {context}
+    Question: {question}
+
+    Instructions:
+    - Answer based primarily on the provided context.
+    - If the context doesn't contain enough information, say so explicitly.
+    - Be specific and reference filenames or sources when useful.
+    - For code questions, prefer examples that appear in the context.
+    """
+
+            try:
+                resp = await oai.chat.completions.create(
+                    model=RAG_ANSWER_MODEL,
+                    messages=[
+                        {"role": "system", "content": "You are a helpful assistant for a small development team. Answer questions based on their internal documentation and codebase."},
+                        {"role": "user", "content": prompt},
+                    ],
+                    max_tokens=1000,
+                    temperature=0.3,
+                )
+                answer = resp.choices[0].message.content
+            except Exception as e:
+                logger.error(f"Answer generation failed: {e}")
+                answer = "I couldn't generate an answer right now. Here is the context I found:\n\n" + (context or "")
+
+            result = {
+                "answer": answer,
+                "sources": sources,
+                "context_used": len(ret.get("snippets", [])),
+            }
+            redis_client.setex(cache_key, self.cache_ttl, json.dumps(result))
+            return result
+
+
+    # helper: approximate tokens for cl100k (NEW)
+    def _tok(self, text: str) -> int:
         try:
-            resp = await oai.chat.completions.create(
-                model=RAG_ANSWER_MODEL,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are a helpful assistant for a small development team. Answer questions based on their internal documentation and codebase.",
-                    },
-                    {"role": "user", "content": prompt},
-                ],
-                max_tokens=1000,
-                temperature=0.3,
-            )
-            answer = resp.choices[0].message.content
-        except Exception as e:
-            logger.error(f"Answer generation failed: {e}")
-            # Fallback: return just the stitched context
-            answer = "I couldn't generate an answer right now. Here is the context I found:\n\n" + context
-
-        result = {"answer": answer, "sources": sources, "context_used": len(context_parts)}
-        redis_client.setex(cache_key, self.cache_ttl, json.dumps(result))
-        return result
+            return len(self._enc.encode(text or ""))
+        except Exception:
+            # safest fallback
+            return max(1, (len(text or "") // 4))
 
 
 # ---------- Services ----------
@@ -929,6 +1180,15 @@ async def admin_cache_clear():
             cleared += 1
     return {"cleared": cleared}
 
+@app.post("/retrieve")
+async def retrieve(req: RetrieveRequest):
+    """
+    Retrieval-only endpoint for chat augmentation.
+
+    - Returns snippets (code/docs) + optional assembled prompt.
+    - Does NOT call the LLM.
+    """
+    return await query_engine.retrieve(req)
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8000")))
