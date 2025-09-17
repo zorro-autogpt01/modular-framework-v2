@@ -2,7 +2,247 @@ import { getGlobal, getProfiles, getActiveName } from './storage.js';
 import { parseStream } from './sse.js';
 import { getEl, setBusy, addMsg, detectBasePath } from './ui.js';
 
-const state = { controller:null, messages:[] };
+const state = { 
+  controller: null, 
+  messages: [],
+  conversationId: null,
+  ragEnabled: false,
+  ragContext: null
+};
+
+// RAG Service configuration
+const RAG_SERVICE_URL = window.RAG_SERVICE_URL || 'http://192.168.0.9:8000';
+
+function getRagUrl() {
+  return window.RAG_SERVICE_URL
+      || localStorage.getItem('ragServiceUrl')
+      || 'http://192.168.0.9:8000';
+}
+
+// Initialize or continue conversation
+export async function initConversation() {
+  // Get or create conversation ID
+  if (!state.conversationId) {
+    state.conversationId = localStorage.getItem('currentConversationId') || 
+                          `conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    localStorage.setItem('currentConversationId', state.conversationId);
+  }
+  
+  // Update UI with conversation ID
+  const convIdEl = getEl('convId');
+  if (convIdEl) convIdEl.textContent = `ID: ${state.conversationId.substr(0, 12)}...`;
+  
+  // Try to load conversation context from RAG if enabled
+  if (state.ragEnabled) {
+    try {
+      const response = await fetch(`${getRagUrl()}/conversation/${state.conversationId}`);
+      if (response.ok) {
+        state.ragContext = await response.json();
+        
+        // Restore recent messages if any
+        if (state.ragContext.recent_messages && state.ragContext.recent_messages.length > 0) {
+          state.messages = state.ragContext.recent_messages;
+          displayConversationHistory();
+        }
+      }
+    } catch (error) {
+      console.log('No previous conversation found or RAG not available');
+    }
+  }
+}
+
+// Display conversation history
+function displayConversationHistory() {
+  const msgsDiv = getEl('msgs');
+  if (!msgsDiv) return;
+  
+  msgsDiv.innerHTML = '';
+  state.messages.forEach(msg => {
+    const el = document.createElement('div');
+    el.className = `msg ${msg.role === 'user' ? 'user' : 'assistant'}`;
+    el.textContent = msg.content;
+    msgsDiv.appendChild(el);
+  });
+  msgsDiv.scrollTop = msgsDiv.scrollHeight;
+}
+
+// Query RAG system
+async function queryRAG(question, searchCode = true, searchDocs = true) {
+  try {
+    const response = await fetch(`${getRagUrl()}/query`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        question,
+        search_code: searchCode,
+        search_docs: searchDocs
+      }),
+      timeout: 5000
+    });
+    
+    if (!response.ok) throw new Error('RAG query failed');
+    return await response.json();
+  } catch (error) {
+    console.warn('RAG query failed:', error);
+    return null;
+  }
+}
+
+// Save conversation to RAG
+export async function saveConversation() {
+  if (!state.conversationId) {
+    alert('No conversation ID yet.');
+    return;
+  }
+  if (state.messages.length === 0) {
+    alert('Nothing to save yet.');
+    return;
+  }
+  
+  try {
+    const resp = await fetch(`${getRagUrl()}/conversation/save`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        conversation_id: state.conversationId,
+        messages: state.messages,
+        metadata: {
+          profile: getActiveName(),
+          timestamp: new Date().toISOString(),
+          message_count: state.messages.length
+        }
+      })
+    });
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(`Save failed: ${resp.status} ${text}`);
+    }
+    console.log('Conversation saved to RAG');
+    
+    // Show save indicator
+    const saveIndicator = getEl('saveIndicator');
+    if (saveIndicator) {
+      saveIndicator.textContent = '✓ Saved';
+      saveIndicator.style.display = 'inline';
+      setTimeout(() => { saveIndicator.style.display = 'none'; }, 2000);
+    }
+  } 
+  catch (error) {
+    console.error('Failed to save conversation:', error);
+    alert(`Failed to save conversation: ${error.message}`);
+}
+}
+
+// Search past conversations
+export async function searchPastConversations() {
+  const searchModal = getEl('searchModal');
+  const searchInput = getEl('searchConvInput');
+  const searchResults = getEl('searchResults');
+  
+  if (!searchModal || !searchInput || !searchResults) return;
+  
+  searchModal.style.display = 'block';
+  searchInput.focus();
+  
+  searchInput.oninput = async (e) => {
+    const query = e.target.value;
+    if (query.length < 3) {
+      searchResults.innerHTML = '<div class="muted">Type at least 3 characters to search...</div>';
+      return;
+    }
+    
+    try {
+      const response = await fetch(`${getRagUrl()}/conversation/search`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, limit: 5 })
+      });
+      
+      const data = await response.json();
+      
+      if (data.results && data.results.length > 0) {
+        searchResults.innerHTML = data.results.map(r => `
+          <div class="search-result" onclick="loadConversation('${r.conversation_id}')">
+            <div class="search-result-content">${r.content.substring(0, 200)}...</div>
+            <div class="search-result-meta">
+              <span class="muted">ID: ${r.conversation_id.substr(0, 12)}...</span>
+              <span class="muted">${r.timestamp}</span>
+              <span class="score">${(r.score * 100).toFixed(0)}% relevant</span>
+            </div>
+          </div>
+        `).join('');
+      } else {
+        searchResults.innerHTML = '<div class="muted">No results found</div>';
+      }
+    } catch (error) {
+      searchResults.innerHTML = '<div class="muted">Search failed</div>';
+    }
+  };
+}
+
+// Load a specific conversation
+window.loadConversation = async function(conversationId) {
+  if (state.messages.length > 0) {
+    await saveConversation();
+  }
+  
+  state.conversationId = conversationId;
+  localStorage.setItem('currentConversationId', conversationId);
+  
+  await initConversation();
+  
+  const searchModal = getEl('searchModal');
+  if (searchModal) searchModal.style.display = 'none';
+};
+
+// Start new conversation
+export function startNewConversation() {
+  if (state.messages.length > 0) {
+    saveConversation();
+  }
+  
+  state.messages = [];
+  state.conversationId = `conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  state.ragContext = null;
+  localStorage.setItem('currentConversationId', state.conversationId);
+  
+  const msgsDiv = getEl('msgs');
+  if (msgsDiv) msgsDiv.innerHTML = '';
+  
+  const convIdEl = getEl('convId');
+  if (convIdEl) convIdEl.textContent = `ID: ${state.conversationId.substr(0, 12)}...`;
+  
+  updateMessageCount();
+}
+
+// Update message count display
+function updateMessageCount() {
+  const countEl = getEl('convMsgCount');
+  if (countEl) countEl.textContent = `${state.messages.length} messages`;
+}
+
+// Display sources from RAG
+function displaySources(sources) {
+  if (!sources || sources.length === 0) return;
+  
+  const msgsDiv = getEl('msgs');
+  const sourcesDiv = document.createElement('div');
+  sourcesDiv.className = 'sources';
+  sourcesDiv.innerHTML = `
+    <details>
+      <summary>📚 Sources (${sources.length})</summary>
+      ${sources.map(s => `
+        <div class="source-item">
+          ${s.type === 'code' 
+            ? `📝 ${s.repo || 'repo'}/${s.file || s.source}` 
+            : `📄 ${s.source}`}
+          <span class="score">${(s.score * 100).toFixed(0)}% relevant</span>
+        </div>
+      `).join('')}
+    </details>
+  `;
+  msgsDiv.appendChild(sourcesDiv);
+}
 
 export async function summarizeConversation() {
   if (!state.messages.length) return;
@@ -10,7 +250,7 @@ export async function summarizeConversation() {
   const g = getGlobal();
   const active = getProfiles().find(p => p.name === getActiveName()) || {};
   const system = `
-    You are a helpful assistant. Summarize the conversation so far for a reader who hasn’t seen it.
+    You are a helpful assistant. Summarize the conversation so far for a reader who hasn't seen it.
     Produce a concise brief with:
     - Goals or questions
     - Key decisions/trade-offs
@@ -18,7 +258,6 @@ export async function summarizeConversation() {
     Keep it under ~200 words.
   `.trim();
 
-  // Use only the last N messages if you want to cap context size
   const MAX_MSGS = 40;
   const history = state.messages.slice(-MAX_MSGS);
 
@@ -27,7 +266,6 @@ export async function summarizeConversation() {
   const basePath = detectBasePath();
   const apiUrl = `${basePath}api/chat`;
 
-  // Render a placeholder bubble labelled "Summary"
   const placeholder = document.createElement('div');
   placeholder.className = 'msg assistant';
   placeholder.textContent = '🔎 Summarizing…';
@@ -51,7 +289,7 @@ export async function summarizeConversation() {
     });
     if (!resp.ok) throw new Error(await resp.text() || 'HTTP error');
 
-    placeholder.textContent = ''; // clear "Summarizing…"
+    placeholder.textContent = '';
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
     const pump = parseStream(
@@ -71,11 +309,21 @@ export async function summarizeConversation() {
   }
 }
 
-export function clearChat(){ state.messages = []; const m = getEl('msgs'); if (m) m.innerHTML=''; }
-export function stop(){ if (state.controller) state.controller.abort(); }
+export function clearChat(){ 
+  state.messages = []; 
+  const m = getEl('msgs'); 
+  if (m) m.innerHTML=''; 
+  updateMessageCount();
+}
+
+export function stop(){ 
+  if (state.controller) state.controller.abort(); 
+}
 
 export async function send(buildOverrides) {
-  const input = getEl('input'); const text = input.value.trim(); if (!text) return;
+  const input = getEl('input'); 
+  const text = input.value.trim(); 
+  if (!text) return;
 
   const g = getGlobal();
   const profiles = getProfiles();
@@ -90,20 +338,97 @@ export async function send(buildOverrides) {
   const max_tokens  = o.max_tokens  ?? active.max_tokens  ?? g.max_tokens;
   const system      = o.system      || active.systemPrompt || '';
 
+  // Check if RAG is enabled
+  const useRAG = getEl('useRAG')?.checked || false;
+  const ragOnly = getEl('ragOnly')?.checked || false;
+  state.ragEnabled = useRAG;
+
+  let ragResponse = null;
+  let enhancedSystem = system;
+
+  // Query RAG if enabled
+  if (useRAG) {
+    const ragIndicator = getEl('ragIndicator');
+    if (ragIndicator) {
+      ragIndicator.textContent = '🔍 Searching knowledge base...';
+      ragIndicator.style.display = 'inline';
+    }
+
+    ragResponse = await queryRAG(text);
+    
+    if (ragIndicator) {
+      ragIndicator.style.display = 'none';
+    }
+
+    if (ragResponse && ragResponse.answer) {
+      // If RAG-only mode, return RAG answer directly
+      if (ragOnly) {
+        addMsg('user', text);
+        const ragMsg = document.createElement('div');
+        ragMsg.className = 'msg assistant';
+        ragMsg.innerHTML = `<span class="rag-badge">RAG</span> ${ragResponse.answer}`;
+        const msgsDiv = getEl('msgs');
+        msgsDiv.appendChild(ragMsg);
+        displaySources(ragResponse.sources);
+        state.messages.push({ role:'user', content: text });
+        state.messages.push({ role:'assistant', content: ragResponse.answer });
+        input.value = '';
+        updateMessageCount();
+        // keep state.ragEnabled in sync with the checkbox
+        const useRagCb = document.getElementById('useRAG');
+        if (useRagCb) {
+          state.ragEnabled = !!useRagCb.checked;
+          useRagCb.addEventListener('change', () => {
+            state.ragEnabled = !!useRagCb.checked;
+          });
+        }
+        
+        // Auto-save every 10 messages
+        if (state.messages.length % 10 === 0) {
+          await saveConversation();
+        }
+        return;
+      }
+
+      // Enhance system prompt with RAG context
+      enhancedSystem = `${system ? system + '\n\n' : ''}You have access to the following information from the knowledge base:
+
+${ragResponse.answer}
+
+Sources consulted:
+${ragResponse.sources ? ragResponse.sources.map(s => `- ${s.type === 'code' ? `Code: ${s.file || s.source}` : `Document: ${s.source}`}`).join('\n') : 'No sources'}
+
+Use this information to answer the user's question accurately. If the knowledge base information fully answers the question, use it. If you need to add context beyond what's in the knowledge base, clearly indicate what comes from the knowledge base versus your general knowledge.`;
+    }
+  }
+
   const msgs = [];
-  if (system) msgs.push({ role:'system', content: system });
+  if (enhancedSystem) msgs.push({ role:'system', content: enhancedSystem });
+  
+  // Add conversation context from RAG if available
+  if (state.ragContext?.relevant_history?.length > 0) {
+    const historyContext = state.ragContext.relevant_history
+      .map(h => h.content)
+      .join('\n---\n');
+    msgs.push({
+      role: 'system',
+      content: `Relevant context from earlier in this conversation:\n${historyContext}`
+    });
+  }
+  
   msgs.push(...state.messages, { role:'user', content: text });
 
   addMsg('user', text);
   const placeholder = document.createElement('div');
-  placeholder.className = 'msg assistant'; placeholder.textContent = '';
+  placeholder.className = 'msg assistant'; 
+  placeholder.textContent = '';
   const msgsDiv = getEl('msgs');
-  msgsDiv.appendChild(placeholder); msgsDiv.scrollTop = msgsDiv.scrollHeight;
+  msgsDiv.appendChild(placeholder); 
+  msgsDiv.scrollTop = msgsDiv.scrollHeight;
   state.messages.push({ role:'user', content: text });
   input.value='';
 
-  // Build prefix-aware API URL
-  const basePath = detectBasePath(); // e.g. "/" or "/modules/llm-chat/"
+  const basePath = detectBasePath();
   const apiUrl = `${basePath}api/chat`;
 
   state.controller = new AbortController();
@@ -121,7 +446,18 @@ export async function send(buildOverrides) {
     const decoder = new TextDecoder();
     const pump = parseStream(
       (d)=> { placeholder.textContent += d; },
-      ()=> { state.messages.push({ role:'assistant', content: placeholder.textContent }); },
+      ()=> { 
+        state.messages.push({ role:'assistant', content: placeholder.textContent }); 
+        updateMessageCount();
+        // Display RAG sources if used
+        if (ragResponse && ragResponse.sources) {
+          displaySources(ragResponse.sources);
+        }
+        // Auto-save every 10 messages
+        if (state.messages.length % 10 === 0) {
+          saveConversation();
+        }
+      },
       (m)=> { placeholder.textContent += `\n[error] ${m}`; }
     );
     while (true) {
@@ -134,4 +470,17 @@ export async function send(buildOverrides) {
   } finally {
     setBusy(false); state.controller=null;
   }
+}
+
+// Initialize on load
+export function initialize() {
+  initConversation();
+  updateMessageCount();
+  
+  // Set up auto-save
+  setInterval(() => {
+    if (state.messages.length > 0 && state.ragEnabled) {
+      saveConversation();
+    }
+  }, 60000); // Auto-save every minute
 }

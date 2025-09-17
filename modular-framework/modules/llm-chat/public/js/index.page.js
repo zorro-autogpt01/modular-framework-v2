@@ -1,5 +1,5 @@
 import { initToolbar, applyProfileToFields, readOverrides } from './toolbar.js';
-import { send, stop, clearChat } from './chat.js';
+import { send, stop, clearChat, summarizeConversation, initialize, startNewConversation, saveConversation, searchPastConversations } from './chat.js';
 import { showTab } from './ui.js';
 import { initEmbeddedConfigOnce, refreshEmbeddedConfig } from './config.embed.js';
 
@@ -17,32 +17,88 @@ function activateMainTab(name){
   bSettings.classList.toggle('active', !isChat);
 
   if (!isChat) {
-    // Settings tab: ensure config UI is wired and fresh
     initEmbeddedConfigOnce();
     refreshEmbeddedConfig();
-    // default to Global sub-tab on first open
     showTab('global');
   }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  // Init chat toolbar / composer
+  // Initialize chat system
+  initialize();
+
   initToolbar();
+  
+  // Existing buttons
   document.getElementById('sendBtn')?.addEventListener('click', ()=> send(readOverrides));
   document.getElementById('stopBtn')?.addEventListener('click', stop);
   document.getElementById('clearBtn')?.addEventListener('click', clearChat);
   document.getElementById('resetBtn')?.addEventListener('click', applyProfileToFields);
 
-  // Top-level tabs
+  // Tab navigation
   document.getElementById('tabBtnChat')?.addEventListener('click', ()=> activateMainTab('chat'));
   document.getElementById('tabBtnSettings')?.addEventListener('click', ()=> activateMainTab('settings'));
-
-  // “Manage Profiles” in the chat toolbar just switches to Settings tab
   document.getElementById('manageBtn')?.addEventListener('click', ()=> activateMainTab('settings'));
 
-  // Ready signal for host
+  // New conversation management buttons
+  document.getElementById('newConvBtn')?.addEventListener('click', startNewConversation);
+  document.getElementById('saveConvBtn')?.addEventListener('click', saveConversation);
+  document.getElementById('searchConvBtn')?.addEventListener('click', searchPastConversations);
+  document.getElementById('summarizeBtn')?.addEventListener('click', summarizeConversation);
+
+  // RAG controls
+  document.getElementById('ingestBtn')?.addEventListener('click', () => {
+    window.open('http://192.168.0.9:8000/docs', '_blank');
+  });
+  
+  document.getElementById('statsBtn')?.addEventListener('click', async () => {
+    try {
+      const response = await fetch('http://192.168.0.9:8000/stats');
+      const stats = await response.json();
+      alert(`RAG Statistics:\n\nCode chunks: ${stats.code_chunks}\nDocument chunks: ${stats.document_chunks}\nTotal: ${stats.total_chunks}`);
+    } catch (error) {
+      alert('RAG service not available');
+    }
+  });
+
+  // Test RAG connection
+  document.getElementById('testRagBtn')?.addEventListener('click', async () => {
+    const url = document.getElementById('ragServiceUrl')?.value || 'http://192.168.0.9:8000';
+    try {
+      const response = await fetch(`${url}/health`);
+      if (response.ok) {
+        alert('✅ RAG service is connected and healthy!');
+      } else {
+        alert('❌ RAG service responded but may have issues');
+      }
+    } catch (error) {
+      alert('❌ Cannot connect to RAG service. Make sure it\'s running.');
+    }
+  });
+
+  // Save RAG URL to localStorage when changed
+  document.getElementById('ragServiceUrl')?.addEventListener('change', (e) => {
+    window.RAG_SERVICE_URL = e.target.value;
+    localStorage.setItem('ragServiceUrl', e.target.value);
+  });
+
+  // Load saved RAG URL
+  const savedRagUrl = localStorage.getItem('ragServiceUrl');
+  if (savedRagUrl) {
+    window.RAG_SERVICE_URL = savedRagUrl;
+    const ragUrlInput = document.getElementById('ragServiceUrl');
+    if (ragUrlInput) ragUrlInput.value = savedRagUrl;
+  }
+
+  // Handle Enter key in chat input
+  document.getElementById('input')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      send(readOverrides);
+    }
+  });
+
   window.parent?.postMessage({ type:'MODULE_EVENT', eventName:'llm-chat:module-ready', payload:{} }, '*');
 
-  // Start on Chat
   activateMainTab('chat');
 });

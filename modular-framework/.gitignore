@@ -1,0 +1,6 @@
+*/*.env
+*.env
+*/collections
+*/redis_data
+*/logs
+
