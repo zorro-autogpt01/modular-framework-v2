@@ -4,8 +4,10 @@ from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from loguru import logger
+from pathlib import Path
 
 from .store import load_config, save_config
 from .github_api import GHClient
@@ -18,13 +20,33 @@ app.add_middleware(
 )
 
 # serve the tiny UI
-app.mount("/", StaticFiles(directory="public", html=True), name="ui")
+# Serve UI at /ui to avoid shadowing /api/*
+app.mount("/ui", StaticFiles(directory="public", html=True), name="ui")
+
+def _read_token() -> Optional[str]:
+    """Read token from env or Docker secret file."""
+    token_file = os.getenv("GITHUB_TOKEN_FILE")
+    if token_file and Path(token_file).exists():
+        return Path(token_file).read_text(encoding="utf-8").strip()
+    return os.getenv("GITHUB_TOKEN")
 
 def _client_from_cfg(cfg: Dict[str, Any]) -> GHClient:
-    token = cfg.get("token") or os.getenv("GITHUB_TOKEN")
+    token = _read_token()
     if not token:
-        raise HTTPException(400, "No token configured. POST /api/config first.")
-    base_url = cfg.get("base_url") or "https://api.github.com"
+        raise HTTPException(400, "GITHUB_TOKEN not set (or GITHUB_TOKEN_FILE missing).")
+    base_url = cfg.get("base_url") or os.getenv("GITHUB_API_BASE", "https://api.github.com")
+    return GHClient(token=token, base_url=base_url)
+
+
+@app.get("/")
+def root():
+    # convenience: / -> /ui/
+    return RedirectResponse(url="/ui/")
+def _client_from_cfg(cfg: Dict[str, Any]) -> GHClient:
+    token = _read_token()
+    if not token:
+        raise HTTPException(400, "GITHUB_TOKEN not set (or GITHUB_TOKEN_FILE missing).")
+    base_url = cfg.get("base_url") or os.getenv("GITHUB_API_BASE", "https://api.github.com")
     return GHClient(token=token, base_url=base_url)
 
 def _owner_repo_from_cfg(cfg: Dict[str, Any]) -> tuple[str, str]:

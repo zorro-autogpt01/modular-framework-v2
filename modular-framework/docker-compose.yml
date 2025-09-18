@@ -36,6 +36,7 @@ services:
       - PORT=3005
       # OPTIONAL: 32-byte urlsafe base64 Fernet key (keeps PAT encrypted at rest)
       # Generate once: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
       - GH_TOKEN_KEY=${GH_TOKEN_KEY}
       - DATA_DIR=/data
     volumes:

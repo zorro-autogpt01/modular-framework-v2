@@ -1,0 +1,9 @@
+{
+  "repo_url": "https://github.com/zorro-autogpt01/",
+  "default_branch": "dev-environment",
+  "base_url": "https://api.github.com",
+  "branches": [
+    "dev-environment",
+    "main"
+  ]
+}

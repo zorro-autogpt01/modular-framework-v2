@@ -6,19 +6,63 @@
   <title>GitHub Hub</title>
   <link rel="stylesheet" href="./css/theme.css"/>
   <style>
+    :root { --indent: 14px; }
+
     .wrap{display:grid;grid-template-columns:320px 1fr;gap:12px;height:100vh}
     .side{border-right:1px solid var(--line);padding:12px;overflow:auto}
     .main{padding:12px;overflow:auto}
-    .tree{font-family: ui-monospace, SFMono-Regular, Menlo, monospace;font-size:12px}
-    .tree .item{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:6px}
-    .tree .item:hover{background:#222}
-    .file-view{white-space:pre; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-               border:1px solid var(--line); border-radius:6px; padding:10px; background:#111; min-height:200px}
+    .file-view{
+      white-space:pre; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      border:1px solid var(--line); border-radius:6px; padding:10px; background:#111; min-height:200px
+    }
     .muted{color:var(--muted); font-size:12px}
+
+    /* SIDE MODE (embed=side) */
+    .embed-side .header { display:none; }
+    .embed-side .wrap { grid-template-columns: 1fr; height: 100vh; }
+    .embed-side .side { border-right: none; padding: 8px; }
+    .embed-side .main { display: none; }
+
+    /* Tree */
+    .tree { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px }
+    .tree > ul { list-style:none; margin:0; padding-left:0; }           /* flush-left root */
+    .tree ul ul { list-style:none; margin:0; padding-left: var(--indent); } /* indent only nested */
+    .tree li { margin:0; }
+    .tree .row {
+      display:grid;
+      grid-template-columns: 1em 1.1em 1.1em 1fr; /* twisty | checkbox | icon | name */
+      align-items:center;
+      gap:6px;
+      padding:3px 6px;
+      border-radius:6px;
+    }
+    .tree .row:hover { background:#222; }
+    .tree .twisty { text-align:center; cursor:pointer; user-select:none; }
+    .tree .icon { text-align:center; }
+    .tree .name { cursor:pointer; }
+
+    .tree .dir.collapsed > ul { display:none; }
+    .tree .dir.collapsed > .row .twisty::before { content: "▸"; }
+    .tree .dir.open      > .row .twisty::before { content: "▾"; }
+
+    /* Small toolbar above the tree */
+    .tree-tools { display:flex; gap:6px; margin:6px 0 8px; align-items:center; }
+    .chip { font-size:11px; color:#bbb; padding:2px 6px; border:1px solid #333; border-radius:999px; }
+    button.ghost{background:#2a2c31}
   </style>
+  <script>
+    // Apply side mode class early to avoid reflow
+    (function () {
+      const params = new URLSearchParams(location.search);
+      if ((params.get('embed')||'').toLowerCase() === 'side') {
+        document.documentElement.classList.add('embed-side');
+      }
+    })();
+  </script>
 </head>
 <body>
   <div class="header"><strong>GitHub Hub</strong><div class="grow"></div><span class="muted">API helper for the whole framework</span></div>
+
   <div class="wrap">
     <div class="side">
       <h3>Repository</h3>
@@ -37,9 +81,17 @@
         <label>PAT (repo scope)</label>
         <input id="token" placeholder="ghp_..." />
       </details>
+
       <h3 style="margin-top:10px">Structure</h3>
+      <div class="tree-tools">
+        <button class="ghost" id="expandAllBtn">Expand all</button>
+        <button class="ghost" id="collapseAllBtn">Collapse all</button>
+        <span class="chip" id="selCountChip">0 selected</span>
+      </div>
       <div id="tree" class="tree"></div>
     </div>
+
+    <!-- Hidden in embed=side -->
     <div class="main">
       <h3>Selected File</h3>
       <div id="fileMeta" class="muted"></div>
@@ -50,6 +102,16 @@
       </div>
     </div>
   </div>
-  <script type="module" src="./js/app.js"></script>
+  <script type="module">
+    import { loadConfig, loadBranches, loadTree, saveConfig, saveFile } from './js/app.js';
+    const $ = (id)=>document.getElementById(id);
+    $('saveCfgBtn')?.addEventListener('click', saveConfig);
+    $('reloadBtn')?.addEventListener('click', loadTree);
+    $('saveFileBtn')?.addEventListener('click', saveFile);
+    $('branchSelect')?.addEventListener('change', loadTree);
+    document.addEventListener('DOMContentLoaded', async ()=>{
+      await loadConfig(); await loadBranches(); await loadTree();
+    });
+</script>
 </body>
 </html>

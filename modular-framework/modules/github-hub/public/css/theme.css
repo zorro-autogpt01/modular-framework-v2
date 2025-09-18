@@ -9,3 +9,21 @@ button{background:var(--accent);color:#fff;border:none;border-radius:6px;padding
 button.ghost{background:#2a2c31}
 .row{display:flex;gap:8px;align-items:center;margin:8px 0}
 details{margin:8px 0}
+html.embed-side .wrap { grid-template-columns: 1fr; }
+html.embed-side .main { display: none; }
+/* Lighter file names in the tree */
+.tree a.name {
+  color: #dddddd;            /* light gray for dark bg */
+  text-decoration: none;
+}
+.tree a.name:visited {
+  color: #d0d0d0;            /* keep visited readable */
+}
+.tree a.name:hover,
+.tree a.name:focus {
+  color: #ffffff;            /* full white on hover/focus */
+  text-decoration: underline;
+}
+
+/* (nice-to-have) checkbox color to match theme */
+.tree input.sel { accent-color: #0e639c; }

@@ -21,7 +21,7 @@
 
         .app-container {
             display: grid;
-            grid-template-columns: 250px 250px 1fr 250px 250px;
+            grid-template-columns: 250px 500px 1fr 250px 250px;
             grid-template-rows: 40px 1fr;
             height: 100vh;
             gap: 1px;
@@ -421,22 +421,31 @@
         
         // Initialize with demo data
         const demoModules = [
-            {
-                name: 'SSH Terminal',
-                url: 'http://localhost:3001',
-                type: 'terminal',
-                description: 'SSH connection to remote systems',
-                configUrl: 'http://localhost:3001/config',
-                status: 'online'
-            },
-            {
+        {
+            name: 'SSH Terminal',
+            url: 'http://localhost:3001',
+            type: 'terminal',
+            description: 'SSH connection to remote systems',
+            configUrl: 'http://localhost:3001/config',
+            status: 'online'
+        },
+        {
             name: 'LLM Chat',
-            url: '/api/llm-chat',           // << use relative path
+            url: '/api/llm-chat',
             type: 'other',
             description: 'Chat with LLMs (OpenAI/Ollama/Compat)',
             configUrl: '/api/llm-chat/config',
             status: 'online'
-            }
+        },
+        // 👇 NEW
+        {
+            name: 'GitHub Hub',
+            url: '/api/github-hub',
+            type: 'viewer',
+            description: 'Repo browser & GitHub API for all modules',
+            configUrl: '/api/github-hub/',   // same UI also serves config
+            status: 'online'
+        }
         ];
 
         // Event Bus System
@@ -622,6 +631,25 @@
             logEvent('Module Registered', `${name} has been successfully registered`);
         }
 
+        function mountGithubHubInLeftPane() {
+            // Use the second left sidebar (the one that currently shows "Module Config")
+            const leftPaneHeader = document.querySelector('.sidebar-left-2 .pane-header');
+            const leftPaneContent = document.querySelector('.sidebar-left-2 .pane-content');
+            if (!leftPaneContent) return;
+
+            if (leftPaneHeader) leftPaneHeader.textContent = 'GitHub Hub';
+
+            const iframe = document.createElement('iframe');
+            // Only-tree side mode (no file viewer)
+            iframe.src = '/api/github-hub/ui/?embed=side';
+            iframe.style.width = '100%';
+            iframe.style.height = '100%';
+            iframe.style.border = 'none';
+
+            leftPaneContent.innerHTML = '';
+            leftPaneContent.appendChild(iframe);
+        }
+
         function refreshModules() {
             loadModules();
             messageBus.emit('modules-refreshed', { timestamp: Date.now() });
@@ -650,7 +678,8 @@
             messageBus.on('module-selected', (data) => {
                 console.log('Module selected:', data);
             });
-            
+            mountGithubHubInLeftPane();
+
             messageBus.on('module-loaded', (data) => {
                 console.log('Module loaded:', data);
             });
