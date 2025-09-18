@@ -57,6 +57,25 @@ services:
       - app-network
     restart: unless-stopped
 
+  openvscode-module:
+      build: ./modules/openvscode
+      container_name: openvscode-module
+      ports:
+        - "3006:3006"
+        - "3007:3007"
+      volumes:
+        - ./modules/openvscode/workspaces:/home/workspace
+        - /var/run/docker.sock:/var/run/docker.sock
+      environment:
+        - WORKSPACE_DIR=/home/workspace
+        - PORT=3006
+        - API_PORT=3007
+      networks:
+        - app-network
+      depends_on:
+        - github-hub-module
+        - llm-chat
+
   # Additional Module Examples (can be uncommented)
   # code-editor:
   #   build: ./modules/code-editor
