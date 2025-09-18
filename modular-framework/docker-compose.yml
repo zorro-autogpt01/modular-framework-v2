@@ -61,7 +61,7 @@ services:
       build: ./modules/openvscode
       container_name: openvscode-module
       ports:
-        - "3006:3006"
+        - "3006:3000"
         - "3007:3007"
       volumes:
         - ./modules/openvscode/workspaces:/home/workspace
@@ -75,6 +75,20 @@ services:
       depends_on:
         - github-hub-module
         - llm-chat
+
+  browser-module:
+    build: ./modules/browser
+    container_name: browser-module
+    environment:
+      - PORT=3008
+      - PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+      - PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+    expose:
+      - "3008"
+    networks:
+      - app-network
+    restart: unless-stopped
+
 
   # Additional Module Examples (can be uncommented)
   # code-editor:

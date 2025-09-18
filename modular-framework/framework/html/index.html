@@ -431,7 +431,7 @@
         },
         {
             name: 'LLM Chat',
-            url: '/api/llm-chat',
+            url: '/api/llm-chat/',
             type: 'other',
             description: 'Chat with LLMs (OpenAI/Ollama/Compat)',
             configUrl: '/api/llm-chat/config',
@@ -440,7 +440,7 @@
         // 👇 NEW
         {
             name: 'GitHub Hub',
-            url: '/api/github-hub',
+            url: '/api/github-hub/',
             type: 'viewer',
             description: 'Repo browser & GitHub API for all modules',
             configUrl: '/api/github-hub/',   // same UI also serves config
@@ -448,12 +448,20 @@
         },
         {
             name: 'VS Code IDE',
-            url: '/api/openvscode',
+            url: '/api/openvscode/',
             type: 'editor',
             description: 'Full VS Code development environment',
-            configUrl: '/api/openvscode-api/config',
+            configUrl: '/api/openvscode-api/config/',
             status: 'online'
-        }
+        },
+        {
+            name: 'Web Browser',
+            url: '/api/browser', // the module UI
+            type: 'viewer',
+            description: 'Tabbed browser with proxy mode + screenshots',
+            configUrl: '/api/browser', // or leave blank
+            status: 'online'
+            }
         ];
 
         // Event Bus System
