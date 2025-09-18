@@ -27,3 +27,19 @@ html.embed-side .main { display: none; }
 
 /* (nice-to-have) checkbox color to match theme */
 .tree input.sel { accent-color: #0e639c; }
+/* keep the toolbar items readable on narrow sidebars */
+.tree-tools, #copyTools { 
+  flex-wrap: wrap;              /* allow line wrap instead of squishing */
+}
+
+#copyTools .chip,
+.tree-tools .chip {
+  white-space: nowrap;          /* keep "12345 tokens" on one line */
+  flex: 0 0 auto;               /* do not shrink */
+  min-width: max-content;       /* fit to the text width */
+}
+
+#copyTools button,
+.tree-tools button {
+  flex: 0 0 auto;               /* keep buttons from stealing all the width */
+}

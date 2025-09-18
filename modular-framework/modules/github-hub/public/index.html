@@ -81,8 +81,10 @@
         <label>PAT (repo scope)</label>
         <input id="token" placeholder="ghp_..." />
       </details>
-
-      <h3 style="margin-top:10px">Structure</h3>
+      <div class="row" id="copyTools" style="margin-top:10px">
+        <button id="copyBtn" class="ghost" title="Concatenate selected files and copy">Copy to clipboard</button>
+        <span class="chip" id="tokenCountChip">0 tokens</span>
+      </div>
       <div class="tree-tools">
         <button class="ghost" id="expandAllBtn">Expand all</button>
         <button class="ghost" id="collapseAllBtn">Collapse all</button>
@@ -90,6 +92,7 @@
       </div>
       <div id="tree" class="tree"></div>
     </div>
+    <h3 style="margin-top:10px">Structure</h3>
 
     <!-- Hidden in embed=side -->
     <div class="main">

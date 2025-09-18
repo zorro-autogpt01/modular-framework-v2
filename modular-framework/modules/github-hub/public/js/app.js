@@ -22,6 +22,75 @@ const API = (() => {
   return '/api';
 })();
 
+// --- file-content cache (per branch:path) ---
+const fileCache = new Map();
+
+/** Robust tokenizer loader with local+CDN fallback and safe approximation */
+let _encPromise = null;
+async function getEncoder() {
+  if (!_encPromise) {
+    _encPromise = (async () => {
+      try {
+        // Try the lite ESM first
+        const { Tiktoken } = await import('https://cdn.jsdelivr.net/npm/js-tiktoken@1.0.21/lite.js');
+
+        // Prefer a local copy (add one later if you like), else fall back to CDN JSON
+        // Local (optional): place o200k_base.json under /public/js/tiktoken/
+        let ranksRes;
+        try {
+          ranksRes = await fetch('./js/tiktoken/o200k_base.json', { cache: 'force-cache' });
+          if (!ranksRes.ok) throw new Error('local ranks missing');
+        } catch {
+          // CDN fallback
+          ranksRes = await fetch('https://tiktoken.pages.dev/js/o200k_base.json', { cache: 'force-cache' });
+        }
+
+        const ranks = await ranksRes.json();
+        return new Tiktoken(ranks);
+      } catch (e) {
+        console.warn('[github-hub] Tokenizer unavailable, using approximation:', e);
+        return null; // signal fallback
+      }
+    })();
+  }
+  return _encPromise;
+}
+
+async function countTokensFor(text) {
+  const enc = await getEncoder();
+  if (enc) {
+    try { return enc.encode(text).length; }
+    catch (e) { console.warn('[github-hub] encode failed, approx fallback:', e); }
+  }
+  // Approx fallback: ~4 chars per token (rough heuristic)
+  return Math.ceil(text.length / 4);
+}
+
+/** Fetch file content (cached per branch+path) */
+async function getFileContent(path, branch) {
+  const key = `${branch}:${path}`;
+  if (fileCache.has(key)) return fileCache.get(key);
+  const data = await api(`/file?path=${encodeURIComponent(path)}&branch=${encodeURIComponent(branch)}`);
+  const content = data.decoded_content || '';
+  fileCache.set(key, content);
+  return content;
+}
+
+/** Build clipboard text with a header line BEFORE EACH file */
+async function buildClipboardText(paths, branch) {
+  const parts = [];
+  for (const p of paths) {
+    const name = p.split('/').pop() || p;
+    parts.push(`# ${p}\n`);                       // header for this file
+    const content = await getFileContent(p, branch);
+    parts.push(content.endsWith('\n') ? content : content + '\n');
+    // optional extra blank line between files (comment out if undesired)
+    parts.push('\n');
+  }
+  return parts.join('');
+}
+
+
 async function api(path, init){
   const r = await fetch(`${API}${path}`, init);
   if (!r.ok) throw new Error(await r.text());
@@ -200,6 +269,8 @@ export async function loadTree(){
     };
 
     const selCountChip = $('selCountChip');
+    const copyBtn = $('copyBtn');
+    const tokenCountChip = $('tokenCountChip');
 
     function setSubtreeChecked(li, checked) {
       li.querySelectorAll('input.sel').forEach(cb => {
@@ -211,11 +282,8 @@ export async function loadTree(){
       const parentDir = fromLi.closest('ul')?.closest('li.dir');
       if (!parentDir) return;
 
-      // ONLY consider direct child rows of this directory (not deep descendants)
-      const childCbs = Array
-        .from(parentDir.querySelectorAll(':scope > ul > li > .row input.sel'));
-
-      const allChecked = childCbs.length>0 && childCbs.every(cb => cb.checked);
+      const childCbs = Array.from(parentDir.querySelectorAll(':scope > ul > li > .row input.sel'));
+      const allChecked = childCbs.length > 0 && childCbs.every(cb => cb.checked);
       const noneChecked = childCbs.every(cb => !cb.checked && !cb.indeterminate);
       const parentCb = parentDir.querySelector(':scope > .row input.sel');
 
@@ -225,18 +293,47 @@ export async function loadTree(){
       updateAncestors(parentDir);
     }
     function collectSelectedFiles() {
-      return Array.from(treeEl.querySelectorAll('li.file input.sel:checked'))
-        .map(cb => cb.dataset.path);
+      return Array.from(treeEl.querySelectorAll('li.file input.sel:checked')).map(cb => cb.dataset.path);
     }
+
+    /** Recompute token count for the EXACT text that will be copied */
+    async function recalcTokensUI() {
+      if (!tokenCountChip || !copyBtn) return;
+      const files = collectSelectedFiles();
+      const branch = $('branchSelect').value || 'main';
+
+      if (files.length === 0) {
+        tokenCountChip.textContent = '0 tokens';
+        copyBtn.disabled = true;
+        return;
+      }
+
+      copyBtn.disabled = false;
+      tokenCountChip.textContent = '…'; // show work in progress
+      try {
+        const text = await buildClipboardText(files, branch);
+        const n = await countTokensFor(text);
+        tokenCountChip.textContent = `${n} tokens`;
+      } catch (e) {
+        console.warn('[github-hub] token recalc failed:', e);
+        tokenCountChip.textContent = '—';
+      }
+    }
+
     function updateSelectionBadgeAndEmit() {
       const files = collectSelectedFiles();
       if (selCountChip) selCountChip.textContent = `${files.length} selected`;
       if (isSide) {
-        window.parent?.postMessage({ type:'MODULE_EVENT', eventName:'gh:selection-changed', payload:{ files } }, '*');
+        window.parent?.postMessage(
+          { type:'MODULE_EVENT', eventName:'gh:selection-changed', payload:{ files } },
+          '*'
+        );
       }
+      // keep tokens in sync
+      recalcTokensUI();
     }
 
-    treeEl.onchange = (e)=>{
+    treeEl.onchange = (e) => {
       const cb = e.target;
       if (!cb.matches('input.sel')) return;
       const li = cb.closest('li');
@@ -246,6 +343,39 @@ export async function loadTree(){
       updateAncestors(li);
       updateSelectionBadgeAndEmit();
     };
+
+    // Copy to clipboard with headers
+    copyBtn.onclick = async () => {
+      const files = collectSelectedFiles();
+      if (files.length === 0) {
+        alert('Select one or more files in the tree first.');
+        return;
+      }
+      const branch = $('branchSelect').value || 'main';
+      const text = await buildClipboardText(files, branch);
+
+      try {
+        await navigator.clipboard.writeText(text);
+        const old = copyBtn.textContent;
+        copyBtn.textContent = 'Copied!';
+        setTimeout(() => (copyBtn.textContent = old), 1000);
+      } catch {
+        // Fallback for older browsers / HTTP
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+    };
+
+    // initialize chips on first render
+    updateSelectionBadgeAndEmit();
+
 
     // Expand/Collapse all (overwrite handlers each render to avoid dupes)
     $('expandAllBtn').onclick = ()=>{
