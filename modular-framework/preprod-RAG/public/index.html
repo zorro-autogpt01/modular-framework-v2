@@ -111,16 +111,89 @@
 
   <section id="playground" class="pane" style="display:none">
     <div class="card">
-      <h2>🧪 Search & Playground</h2>
-      <div class="toolbar">
-        <input id="q" placeholder="Query..." style="flex:1;max-width:520px"/>
-        <label class="small"><input type="checkbox" id="pCode" checked /> Code</label>
-        <label class="small"><input type="checkbox" id="pDocs" checked /> Docs</label>
-        <button id="btnRun">Run</button>
-      </div>
-      <div id="playResults"></div>
+    <h2>🧪 Search & Playground</h2>
+
+    <!-- Existing /query runner -->
+    <div class="toolbar">
+      <input id="q" placeholder="Query (answer via /query)..." style="flex:1;max-width:520px"/>
+      <label class="small"><input type="checkbox" id="pCode" checked /> Code</label>
+      <label class="small"><input type="checkbox" id="pDocs" checked /> Docs</label>
+      <button id="btnRun">Run</button>
     </div>
-  </section>
+    <div id="playResults"></div>
+  </div>
+
+  <!-- NEW: Retriever (no LLM) -->
+  <div class="card" style="margin-top:14px">
+    <h2>🧩 Retriever (snippets + prompt) — calls /retrieve</h2>
+    <div class="toolbar" style="display:grid;grid-template-columns:1fr auto auto auto auto;gap:8px;align-items:end">
+      <div class="row" style="grid-column:1 / span 1">
+        <label for="rq">Query</label>
+        <input id="rq" placeholder="e.g. upsert points to qdrant" />
+      </div>
+      <div class="row">
+        <label>Search in</label>
+        <div class="inline">
+          <label class="small"><input type="checkbox" id="rCode" checked /> Code</label>
+          <label class="small"><input type="checkbox" id="rDocs" checked /> Docs</label>
+        </div>
+      </div>
+      <div class="row">
+        <label for="rTopK">Top K</label>
+        <input id="rTopK" type="number" min="1" value="8" style="width:9ch" />
+      </div>
+
+      <div class="row">
+        <label for="rMinScore">Min score (cosine)</label>
+        <input id="rMinScore" type="number" step="0.01" min="0" max="1" placeholder="0.55" style="width:12ch" />
+      </div>
+
+      <div class="row">
+        <label for="rDedupe">Dedupe</label>
+        <select id="rDedupe">
+          <option value="file" selected>file</option>
+          <option value="source">source</option>
+          <option value="none">none</option>
+        </select>
+      </div>
+    </div>
+    <div class="toolbar" style="display:grid;grid-template-columns:1fr 1fr 1fr auto auto;gap:8px;align-items:end">
+      <div class="row">
+        <label for="rRepos">Repos (comma)</label>
+        <input id="rRepos" placeholder="repo-one, another-repo" />
+      </div>
+      <div class="row">
+        <label for="rLangs">Languages (code)</label>
+        <input id="rLangs" placeholder="py, js, ts" />
+      </div>
+      <div class="row">
+        <label for="rPaths">Path prefixes (code)</label>
+        <input id="rPaths" placeholder="src/, server/" />
+      </div>
+      <div class="row">
+        <label for="rBuildPrompt">Build prompt</label>
+        <label class="small"><input type="checkbox" id="rBuildPrompt" checked /> include</label>
+      </div>
+      <div class="row">
+        <label for="rBudget">Token budget</label>
+        <input id="rBudget" type="number" value="1200" style="width:10ch" />
+      </div>
+    </div>
+
+    <div class="toolbar" style="gap:8px">
+      <button id="btnRetrieve">Retrieve</button>
+      <button id="btnCopyPrompt" class="ghost">Copy prompt</button>
+      <span class="muted" id="retrieveUsage"></span>
+    </div>
+
+    <div id="retrieveResults" class="list" style="margin-top:8px"></div>
+
+    <div style="margin-top:10px">
+      <h4>Assembled Prompt</h4>
+      <pre id="retrievePrompt" class="small" style="white-space:pre-wrap;background:#111;padding:10px;border-radius:6px;border:1px solid var(--line);max-height:280px;overflow:auto"></pre>
+    </div>
+  </div>
+</section>
 
   <section id="settings" class="pane" style="display:none">
     <div class="card">

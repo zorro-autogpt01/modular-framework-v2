@@ -178,6 +178,7 @@ class ChunkingService:
             return "\n".join(buf)
 
         def flush(end_line: int):
+            nonlocal buf_start_line, buf
             if not buf:
                 return
             text = buf_text()
@@ -203,7 +204,6 @@ class ChunkingService:
                 # adjust next start line roughly
             # keep small overlap
             keep = buf[-5:] if len(buf) > 5 else buf[:]
-            nonlocal buf_start_line, buf
             buf = keep.copy()
             buf_start_line = end_line - len(buf) + 1
 
@@ -764,84 +764,84 @@ class QueryEngine:
         redis_client.setex(cache_key, self.cache_ttl, json.dumps(out))
         return out
 
-        async def query(self, question: str, search_code: bool = True, search_docs: bool = True) -> Dict:
-            """
-            Old /query behavior, implemented on top of the new retrieval path.
-            - Runs retrieve() to collect best snippets.
-            - Builds a context block.
-            - Calls the LLM to produce an answer.
-            """
-            cache_key = "rag:" + hashlib.md5(
-                f"{question}|{search_code}|{search_docs}".encode()
-            ).hexdigest()
-            cached = redis_client.get(cache_key)
-            if cached:
-                return json.loads(cached)
+    async def query(self, question: str, search_code: bool = True, search_docs: bool = True) -> Dict:
+        """
+        Old /query behavior, implemented on top of the new retrieval path.
+        - Runs retrieve() to collect best snippets.
+        - Builds a context block.
+        - Calls the LLM to produce an answer.
+        """
+        cache_key = "rag:" + hashlib.md5(
+            f"{question}|{search_code}|{search_docs}".encode()
+        ).hexdigest()
+        cached = redis_client.get(cache_key)
+        if cached:
+            return json.loads(cached)
 
-            # Pull context via retrieval; keep a generous cap, no dedupe (we want strongest chunks)
-            ret = await self.retrieve(RetrieveRequest(
-                query=question,
-                top_k=7,
-                search_code=search_code,
-                search_docs=search_docs,
-                dedupe_by="none",
-                build_prompt=True,
-                section_title="Context from internal code & docs",
-                token_budget=1800,  # cl100k budget for context
-            ))
+        # Pull context via retrieval; keep a generous cap, no dedupe (we want strongest chunks)
+        ret = await self.retrieve(RetrieveRequest(
+            query=question,
+            top_k=7,
+            search_code=search_code,
+            search_docs=search_docs,
+            dedupe_by="none",
+            build_prompt=True,
+            section_title="Context from internal code & docs",
+            token_budget=1800,  # cl100k budget for context
+        ))
 
-            context = ret.get("prompt") or "No relevant context found."
-            sources = []
-            for s in ret.get("snippets", []):
-                if s["type"] == "code":
-                    sources.append({
-                        "type": "code",
-                        "file": s.get("file_path"),
-                        "repo": s.get("repo"),
-                        "score": s.get("score"),
-                    })
-                else:
-                    sources.append({
-                        "type": "document",
-                        "source": s.get("source"),
-                        "repo": s.get("repo"),
-                        "score": s.get("score"),
-                    })
+        context = ret.get("prompt") or "No relevant context found."
+        sources = []
+        for s in ret.get("snippets", []):
+            if s["type"] == "code":
+                sources.append({
+                    "type": "code",
+                    "file": s.get("file_path"),
+                    "repo": s.get("repo"),
+                    "score": s.get("score"),
+                })
+            else:
+                sources.append({
+                    "type": "document",
+                    "source": s.get("source"),
+                    "repo": s.get("repo"),
+                    "score": s.get("score"),
+                })
 
-            prompt = f"""Based on the following context from our internal documents and code, answer the question.
+        prompt = f"""Based on the following context from our internal documents and code, answer the question.
 
-    {context}
-    Question: {question}
+{context}
+Question: {question}
 
-    Instructions:
-    - Answer based primarily on the provided context.
-    - If the context doesn't contain enough information, say so explicitly.
-    - Be specific and reference filenames or sources when useful.
-    - For code questions, prefer examples that appear in the context.
-    """
+Instructions:
+- Answer based primarily on the provided context.
+- If the context doesn't contain enough information, say so explicitly.
+- Be specific and reference filenames or sources when useful.
+- For code questions, prefer examples that appear in the context.
+"""
 
-            try:
-                resp = await oai.chat.completions.create(
-                    model=RAG_ANSWER_MODEL,
-                    messages=[
-                        {"role": "system", "content": "You are a helpful assistant for a small development team. Answer questions based on their internal documentation and codebase."},
-                        {"role": "user", "content": prompt},
-                    ],
-                    max_tokens=1000,
-                    temperature=0.3,
-                )
-                answer = resp.choices[0].message.content
-            except Exception as e:
-                logger.error(f"Answer generation failed: {e}")
-                answer = "I couldn't generate an answer right now. Here is the context I found:\n\n" + (context or "")
+        try:
+            resp = await oai.chat.completions.create(
+                model=RAG_ANSWER_MODEL,
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant for a small development team. Answer questions based on their internal documentation and codebase."},
+                    {"role": "user", "content": prompt},
+                ],
+                max_tokens=1000,
+                temperature=0.3,
+            )
+            answer = resp.choices[0].message.content
+        except Exception as e:
+            logger.error(f"Answer generation failed: {e}")
+            answer = "I couldn't generate an answer right now. Here is the context I found:\n\n" + (context or "")
 
-            result = {
-                "answer": answer,
-                "sources": sources,
-                "context_used": len(ret.get("snippets", [])),
-            }
-            redis_client.setex(cache_key, self.cache_ttl, json.dumps(result))
-            return result
+        result = {
+            "answer": answer,
+            "sources": sources,
+            "context_used": len(ret.get("snippets", [])),
+        }
+        redis_client.setex(cache_key, self.cache_ttl, json.dumps(result))
+        return result
 
 
     # helper: approximate tokens for cl100k (NEW)

@@ -175,6 +175,112 @@ $('btnClearCache')?.addEventListener('click', async ()=>{
   }
 });
 
+function parseCSV(input) {
+  return (input || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+
+function renderSnippet(s, idx) {
+  const metaLeft = (s.type === 'code')
+    ? `📝 ${s.repo || ''}/${s.file_path || ''}${s.lines ? `:${s.lines}` : ''} <span class="pill">${s.language || ''}</span>`
+    : `📄 ${s.source || (s.repo || 'document')}`;
+
+  const score = typeof s.score === 'number' ? `${(s.score * 100).toFixed(0)}%` : '–';
+  const body = (s.type === 'code')
+    ? `<pre class="small" style="white-space:pre-wrap;overflow:auto;max-height:200px"><code>${s.text}</code></pre>`
+    : `<div class="small" style="white-space:pre-wrap">${s.text}</div>`;
+
+  return `
+    <div class="item">
+      <div>
+        <div><strong>[${idx}]</strong> ${metaLeft}</div>
+        ${body}
+      </div>
+      <div class="pill">${score}</div>
+    </div>
+  `;
+}
+
+async function runRetriever(){
+  const q           = $('rq')?.value.trim();
+  const search_code = $('rCode')?.checked ?? true;
+  const search_docs = $('rDocs')?.checked ?? true;
+  const top_k       = Number($('rTopK')?.value || 8);
+  const min_score   = $('rMinScore')?.value ? Number($('rMinScore').value) : undefined;
+  const dedupe_by   = $('rDedupe')?.value || 'file';
+  const repos       = parseCSV($('rRepos')?.value);
+  const languages   = parseCSV($('rLangs')?.value);
+  const path_prefixes = parseCSV($('rPaths')?.value);
+  const build_prompt = $('rBuildPrompt')?.checked ?? false;
+  const token_budget = $('rBudget')?.value ? Number($('rBudget').value) : undefined;
+
+  if (!q) {
+    $('retrieveResults').innerHTML = '<div class="muted">Enter a query above.</div>';
+    $('retrievePrompt').textContent = '';
+    $('retrieveUsage').textContent = '';
+    return;
+  }
+
+  $('retrieveResults').innerHTML = '<div class="muted">Running /retrieve…</div>';
+  $('retrievePrompt').textContent = '';
+  $('retrieveUsage').textContent = '';
+
+  const body = {
+    query: q,
+    top_k,
+    search_code,
+    search_docs,
+    dedupe_by,
+    build_prompt,
+  };
+  const f = {};
+  if (repos.length) f.repos = repos;
+  if (languages.length) f.languages = languages;
+  if (path_prefixes.length) f.path_prefixes = path_prefixes;
+  if (typeof min_score === 'number') f.min_score = min_score;
+  if (Object.keys(f).length) body.filters = f;
+  if (build_prompt && token_budget) body.token_budget = token_budget;
+
+  try {
+    const r = await api('/retrieve', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify(body)
+    });
+
+    const snips = r.snippets || [];
+    $('retrieveResults').innerHTML =
+      snips.length
+        ? snips.map((s, i) => renderSnippet(s, i+1)).join('')
+        : '<div class="muted">No snippets returned</div>';
+
+    $('retrievePrompt').textContent = r.prompt || '';
+    if (r.usage) {
+      const u = r.usage;
+      $('retrieveUsage').textContent =
+        `retrieved: ${u.retrieved ?? 0}  ·  from code: ${u.from_code ?? 0}  ·  from docs: ${u.from_docs ?? 0}` +
+        (u.approx_tokens ? `  ·  ~${u.approx_tokens} tokens` : '') +
+        (u.truncated ? '  ·  (truncated)' : '') +
+        (u.cached ? '  ·  cache' : '');
+    }
+  } catch (e) {
+    $('retrieveResults').innerHTML = '<div class="muted">/retrieve call failed</div>';
+  }
+}
+
+$('btnRetrieve')?.addEventListener('click', runRetriever);
+
+$('btnCopyPrompt')?.addEventListener('click', ()=>{
+  const txt = $('retrievePrompt')?.textContent || '';
+  if (!txt) { alert('No prompt to copy. Enable "Build prompt" and run.'); return; }
+  navigator.clipboard.writeText(txt).then(
+    ()=> alert('Prompt copied to clipboard.'),
+    ()=> alert('Failed to copy prompt.')
+  );
+});
+
 // initial loads after DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
   loadStats();

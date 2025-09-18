@@ -87,19 +87,6 @@ function displayConversationHistory() {
   msgsDiv.scrollTop = msgsDiv.scrollHeight;
 }
 
-function displayMemories(snippets) {
-  if (!snippets || !snippets.length) return;
-  const msgsDiv = getEl('msgs');
-  const memDiv = document.createElement('div');
-  memDiv.className = 'sources'; // reuse styling
-  memDiv.innerHTML = `
-    <details open>
-      <summary>🧠 Memories used (${snippets.length})</summary>
-      ${snippets.map(s => `<div class="source-item"><div style="white-space:pre-wrap">${s}</div></div>`).join('')}
-    </details>
-  `;
-  msgsDiv.appendChild(memDiv);
-}
 
 // Query RAG system
 async function queryRAG(question, searchCode = true, searchDocs = true) {

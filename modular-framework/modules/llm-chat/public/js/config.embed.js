@@ -1,4 +1,4 @@
-import { getGlobal, setGlobal, getProfiles, setActiveName, defaultProfiles } from './storage.js';
+import { getGlobal, setGlobal, getProfiles, setProfiles, setActiveName, defaultProfiles } from './storage.js';
 import { showTab, toast } from './ui.js';
 import { renderList, wireProfileForm } from './profiles.js';
 
@@ -12,6 +12,7 @@ function loadGlobalIntoForm(){
   $('temperature').value = c.temperature ?? 0.7;
   $('max_tokens').value  = c.max_tokens ?? '';
 }
+
 function saveGlobalFromForm(){
   const $ = (id)=>document.getElementById(id);
   setGlobal({
@@ -28,16 +29,28 @@ function saveGlobalFromForm(){
 let wired = false;
 export function initEmbeddedConfigOnce(){
   if (wired) return;
+
+  // Seed defaults if missing
+  if ((getProfiles() || []).length === 0) {
+    setProfiles(defaultProfiles);
+    setActiveName(defaultProfiles[0]?.name || '');
+  }
+
   // sub-tabs
   document.getElementById('tGlobal')?.addEventListener('click', ()=>showTab('global'));
   document.getElementById('tProfiles')?.addEventListener('click', ()=>showTab('profiles'));
+
   // global form
   document.getElementById('saveGlobalBtn')?.addEventListener('click', saveGlobalFromForm);
-  // profiles actions
+
+  // render UI immediately
+  loadGlobalIntoForm();
   renderList(getProfiles());
   wireProfileForm();
+
   wired = true;
 }
+
 export function refreshEmbeddedConfig(){
   loadGlobalIntoForm();
   renderList(getProfiles());
