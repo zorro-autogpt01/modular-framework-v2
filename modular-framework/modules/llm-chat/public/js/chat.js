@@ -11,12 +11,9 @@ const state = {
 };
 
 // RAG Service configuration
-const RAG_SERVICE_URL = window.RAG_SERVICE_URL || 'http://192.168.0.9:8000';
-
+const RAG_SERVICE_URL = window.RAG_SERVICE_URL || '/rag';
 function getRagUrl() {
-  return window.RAG_SERVICE_URL
-      || localStorage.getItem('ragServiceUrl')
-      || 'http://192.168.0.9:8000';
+  return window.RAG_SERVICE_URL || localStorage.getItem('ragServiceUrl') || '/rag';
 }
 
 // Small helper to read tags from the input

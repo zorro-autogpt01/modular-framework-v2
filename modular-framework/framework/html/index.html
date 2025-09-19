@@ -423,10 +423,10 @@
         const demoModules = [
         {
             name: 'SSH Terminal',
-            url: 'http://localhost:3001',
+            url: '/api/ssh-terminal/',
             type: 'terminal',
             description: 'SSH connection to remote systems',
-            configUrl: 'http://localhost:3001/config',
+            configUrl: '/api/ssh-terminal/',
             status: 'online'
         },
         {
@@ -444,14 +444,6 @@
             type: 'viewer',
             description: 'Repo browser & GitHub API for all modules',
             configUrl: '/api/github-hub/',   // same UI also serves config
-            status: 'online'
-        },
-        {
-            name: 'VS Code IDE',
-            url: '/api/openvscode/',
-            type: 'editor',
-            description: 'Full VS Code development environment',
-            configUrl: '/api/openvscode-api/config/',
             status: 'online'
         },
         {

@@ -11,6 +11,11 @@ services:
     volumes:
       - ./framework/html:/usr/share/nginx/html
       - ./framework/nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - rag-api-module
+      - github-hub-module
+      - llm-chat
+      - browser-module
     networks:
       - app-network
     restart: unless-stopped
@@ -57,25 +62,6 @@ services:
       - app-network
     restart: unless-stopped
 
-  openvscode-module:
-      build: ./modules/openvscode
-      container_name: openvscode-module
-      ports:
-        - "3006:3000"
-        - "3007:3007"
-      volumes:
-        - ./modules/openvscode/workspaces:/home/workspace
-        - /var/run/docker.sock:/var/run/docker.sock
-      environment:
-        - WORKSPACE_DIR=/home/workspace
-        - PORT=3006
-        - API_PORT=3007
-      networks:
-        - app-network
-      depends_on:
-        - github-hub-module
-        - llm-chat
-
   browser-module:
     build: ./modules/browser
     container_name: browser-module
@@ -109,8 +95,9 @@ services:
     volumes:
       - ./modules/RAG/redis_data:/data
 
-  rag-api:
+  rag-api-module:
     build: ./modules/RAG
+    container_name: rag-api-module
     env_file: .env
     ports:
       - "8000:8000"
