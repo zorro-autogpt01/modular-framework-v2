@@ -1,7 +1,13 @@
 // public/js/admin.js
 const $ = (id)=> document.getElementById(id);
-const api = (p, init)=> fetch(p, init).then(r => r.ok ? r.json() : Promise.reject(r));
-const API = '/admin-api';
+// Base path when mounted at /rag/admin -> BASE becomes '/rag'
+const BASE = window.location.pathname.replace(/\/admin\/?.*$/, '');
+const api = (p, init)=> {
+  // p is absolute like '/stats' or '/admin-api/...'
+  const url = p.startsWith('/') ? (BASE + p) : p;
+  return fetch(url, init).then(r => r.ok ? r.json() : Promise.reject(r));
+};
+const API = `${BASE}/admin-api`;
 
 function showTab(name){
   document.querySelectorAll('.main-tabs .tab').forEach(b=>{

@@ -447,11 +447,19 @@
             status: 'online'
         },
         {
+            name: 'RAG Admin',
+            url: '/rag/admin/',
+            type: 'dashboard',
+            description: 'RAG Admin UI and API',
+            configUrl: '/rag/admin/',
+            status: 'online'
+            },
+        {
             name: 'Web Browser',
-            url: '/api/browser', // the module UI
+            url: '/api/browser/',
             type: 'viewer',
             description: 'Tabbed browser with proxy mode + screenshots',
-            configUrl: '/api/browser', // or leave blank
+            configUrl: '/api/browser/',
             status: 'online'
             }
         ];
@@ -496,7 +504,7 @@
                         type: 'FRAMEWORK_EVENT',
                         eventName,
                         payload: data
-                    }, module.url);
+                    }, '*');
                 }
             }
         }
@@ -520,30 +528,27 @@
                     <span>${module.name}</span>
                     <div class="module-status ${module.status === 'offline' ? 'offline' : ''}"></div>
                 `;
-                moduleItem.onclick = () => selectModule(module);
+                moduleItem.onclick = () => selectModule(module, moduleItem);
                 moduleList.appendChild(moduleItem);
             });
             
             updatePaneSelectors();
         }
 
-        function selectModule(module) {
-            // Load module config in left sidebar 2
+        function selectModule(module, el) {
+            // Load config
             const configFrame = document.getElementById('configFrame');
             if (module.configUrl) {
                 configFrame.src = module.configUrl;
                 configFrame.style.display = 'block';
             }
-            
-            // Highlight selected module
-            document.querySelectorAll('.module-item').forEach(item => {
-                item.classList.remove('active');
-            });
-            event.currentTarget.classList.add('active');
-            
-            // Emit module selection event
+
+            // Highlight
+            document.querySelectorAll('.module-item').forEach(item => item.classList.remove('active'));
+            if (el) el.classList.add('active');
+
             messageBus.emit('module-selected', { module: module.name });
-        }
+            }
 
         function loadModuleInPane(paneNumber, moduleName) {
             if (!moduleName) return;
