@@ -102,7 +102,7 @@ export async function loadConfig(){
     const c = await api("/config");
     $('repoUrl').value = c.repo_url || '';
     $('baseUrl').value = c.base_url || 'https://api.github.com';
-    await loadBranches();
+    //await loadBranches();
   }catch(e){ console.warn(e); }
 }
 
@@ -129,16 +129,22 @@ export async function loadBranches(){
   sel.innerHTML = '';
   try{
     const b = await api("/branches");
-    (b.branches||[]).forEach(name=>{
-      const o = document.createElement('option'); o.value=o.textContent = name; sel.appendChild(o);
+    const names = Array.from(new Set((b.branches||[])));
+    names.forEach(name=>{
+      const o = document.createElement('option');
+      o.value = o.textContent = name;
+      sel.appendChild(o);
     });
   }catch(e){
-    // fallback options so first run isn't empty
+    // fallback options
     ['main','master'].forEach(n=>{
-      const o = document.createElement('option'); o.value=o.textContent = n; sel.appendChild(o);
+      const o = document.createElement('option');
+      o.value = o.textContent = n;
+      sel.appendChild(o);
     });
   }
 }
+
 
 let currentFile = null;
 let currentSha  = null;
@@ -412,3 +418,4 @@ window.addEventListener('DOMContentLoaded', async ()=>{
   await loadBranches();   // populates branch list
   await loadTree();       // builds collapsed tree
 });
+
