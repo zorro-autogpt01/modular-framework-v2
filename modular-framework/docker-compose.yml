@@ -38,7 +38,7 @@ services:
     container_name: llm-workflows-module
     environment:
       - NODE_ENV=production
-      - PORT=3010
+      - PORT=3005
       # Tell it where your llm-chat is (service name + port on the Compose network)
       - LLM_CHAT_URL=http://llm-chat:3004/api/chat
       # Optional: serve UI under a path instead of "/"
@@ -48,7 +48,7 @@ services:
       # Optional: choose where workflows.json is stored (default is /app/data)
       # - DATA_DIR=/app/data
     expose:
-      - "3006"
+      - "3005"
     volumes:
       # persist workflows.json
       - ./modules/llm-workflows/data:/app/data

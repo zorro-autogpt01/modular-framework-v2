@@ -9,7 +9,7 @@ COPY . .
 ENV NODE_ENV=production
 ENV PORT=3006
 
-EXPOSE 3006
+EXPOSE 3005
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD wget -qO- http://localhost:$PORT/health || exit 1

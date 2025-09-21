@@ -6,7 +6,6 @@ const axios = require('axios');
 const bodyParser = require('body-parser');
 const Ajv = require('ajv');
 
-const PORT = process.env.PORT || 3006;
 const BASE_PATH = (process.env.BASE_PATH || '').replace(/\/$/, ''); // e.g. /modules/llm-workflows
 const LLM_CHAT_URL = process.env.LLM_CHAT_URL || 'http://localhost:3004/api/chat'; // llm-chat backend
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
@@ -400,10 +399,6 @@ if (BASE_PATH) app.get(`${BASE_PATH}/api/runs`, (_req, res) => {
   res.json({ runs });
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`LLM Workflows module listening on :${PORT} (chat=${LLM_CHAT_URL})`);
-});
 
 module.exports = app;
 
