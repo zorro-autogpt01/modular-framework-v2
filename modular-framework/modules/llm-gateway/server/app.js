@@ -9,6 +9,7 @@ const { router: infoRouter } = require('./routes/info');
 const { router: adminRouter } = require('./routes/admin');
 const { router: chatRouter } = require('./routes/chat');
 const { router: usageRouter } = require('./routes/usage');
+const { router: tokensRouter } = require('./routes/tokens');
 
 const app = express();
 const BASE_PATH = (process.env.BASE_PATH || '/llm-gateway').replace(/\/$/, '');
@@ -32,6 +33,8 @@ app.use('/api', chatRouter);         // /api/v1/chat, /api/compat/llm-chat
 
 // Usage log API
 app.use('/api', usageRouter);        // /api/usage
+// Tokenization API
+app.use('/api', tokensRouter);       // /api/tokens
 
 // Also serve under BASE_PATH (reverse proxy friendly)
 if (BASE_PATH) {
@@ -41,6 +44,7 @@ if (BASE_PATH) {
   app.use(`${BASE_PATH}/api`, adminRouter);
   app.use(`${BASE_PATH}/api`, chatRouter);
   app.use(`${BASE_PATH}/api`, usageRouter);
+  app.use(`${BASE_PATH}/api`, tokensRouter);
 
   app.get(`${BASE_PATH}/admin`, (_req, res) => res.sendFile(path.join(pub, 'admin.html')));
 }

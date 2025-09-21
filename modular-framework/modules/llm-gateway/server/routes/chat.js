@@ -6,6 +6,9 @@ const {
 } = require('../db');
 const { callOpenAICompat } = require('../providers/openaiCompat');
 const { callOllama } = require('../providers/ollama');
+const {
+  pickEncodingForModel, countTextTokens, countChatTokens
+} = require('../utils/tokens');
 
 // SSE helper
 function prepareSSE(res) {
@@ -17,9 +20,12 @@ function prepareSSE(res) {
 }
 
 function isGpt5ModelName(model) { return /^gpt-5/i.test(model) || /^o5/i.test(model); }
-function estimateTokensFromChars(chars) {
-  // very rough heuristic: 4 chars ≈ 1 token
-  return Math.max(1, Math.round((chars || 0) / 4));
+
+function calcCost({ inTok, outTok, inPerM, outPerM }) {
+  const inc = (Number(inTok) || 0) * (Number(inPerM) || 0) / 1_000_000;
+  const outc = (Number(outTok) || 0) * (Number(outPerM) || 0) / 1_000_000;
+  const total = inc + outc;
+  return total > 0 ? Number(total.toFixed(6)) : null;
 }
 
 async function resolveModel(body) {
@@ -54,84 +60,123 @@ async function dispatch(modelRow, reqBody, res, sse) {
     stream, useResponses: upstream.useResponses, reasoning: upstream.reasoning
   });
 
-  const onDelta = (d) => sse?.({ type: 'delta', content: d });
+  // Tokenization + cost prep
+  const encName = pickEncodingForModel(modelRow.model_name);
+  let promptChars = 0;
+  try { promptChars = JSON.stringify(messages || []).length; } catch {}
+  const inTok = countChatTokens(messages, encName);
+
+  const metaBase = {
+    ...(metadata || {}),
+    gateway: 'llm-gateway',
+    currency: modelRow.currency || 'USD'
+  };
+
+  let completionText = '';
+
+  const onDelta = (d) => {
+    if (typeof d === 'string' && d) completionText += d;
+    sse?.({ type: 'delta', content: d });
+  };
   const onDone = () => sse?.({ type: 'done' });
   const onError = (m) => sse?.({ type: 'error', message: m });
 
-  const metaBase = { ...(metadata || {}), gateway: 'llm-gateway' };
-
-  let promptChars = 0;
-  try {
-    promptChars = JSON.stringify(messages || []).length;
-  } catch {}
-
+  // OLLAMA
   if (modelRow.provider_kind === 'ollama') {
     if (stream) {
       await callOllama({ ...upstream, onDelta, onDone, onError });
-      // no usage info from stream; log rough estimate with zero cost
-      const completionChars = 0; // unknown
+      const completionChars = completionText.length;
+      const outTok = countTextTokens(completionText, encName);
+      const cost = calcCost({
+        inTok, outTok,
+        inPerM: modelRow.input_cost_per_million,
+        outPerM: modelRow.output_cost_per_million
+      });
       await logUsage({
         provider_id: modelRow.provider_id,
         model_id: modelRow.id,
         conversation_id: metaBase.conversationId || null,
-        input_tokens: estimateTokensFromChars(promptChars),
-        output_tokens: null,
+        input_tokens: inTok,
+        output_tokens: outTok,
         prompt_chars: promptChars,
         completion_chars: completionChars,
-        cost: null,
+        cost,
         meta: metaBase
       });
       return;
     } else {
       const { content } = await callOllama({ ...upstream, stream:false });
+      completionText = content || '';
+      const completionChars = completionText.length;
+      const outTok = countTextTokens(completionText, encName);
+      const cost = calcCost({
+        inTok, outTok,
+        inPerM: modelRow.input_cost_per_million,
+        outPerM: modelRow.output_cost_per_million
+      });
       await logUsage({
         provider_id: modelRow.provider_id,
         model_id: modelRow.id,
         conversation_id: metaBase.conversationId || null,
-        input_tokens: estimateTokensFromChars(promptChars),
-        output_tokens: estimateTokensFromChars((content || '').length),
+        input_tokens: inTok,
+        output_tokens: outTok,
         prompt_chars: promptChars,
-        completion_chars: (content || '').length,
-        cost: null,
+        completion_chars: completionChars,
+        cost,
         meta: metaBase
       });
-      return res.json({ content });
+      return res.json({ content: completionText });
     }
   }
 
-  // OpenAI/OpenAI-compatible
+  // OpenAI / OpenAI-compatible
   if (stream) {
     await callOpenAICompat({
       ...upstream,
       onDelta, onDone, onError
     });
+    const completionChars = completionText.length;
+    const outTok = countTextTokens(completionText, encName);
+    const cost = calcCost({
+      inTok, outTok,
+      inPerM: modelRow.input_cost_per_million,
+      outPerM: modelRow.output_cost_per_million
+    });
     await logUsage({
       provider_id: modelRow.provider_id,
       model_id: modelRow.id,
       conversation_id: metaBase.conversationId || null,
-      input_tokens: estimateTokensFromChars(promptChars),
-      output_tokens: null,
+      input_tokens: inTok,
+      output_tokens: outTok,
       prompt_chars: promptChars,
-      completion_chars: null,
-      cost: null,
+      completion_chars: completionChars,
+      cost,
       meta: metaBase
     });
   } else {
     const { content } = await callOpenAICompat({
       ...upstream, stream: false
     });
+    completionText = content || '';
+    const completionChars = completionText.length;
+    const outTok = countTextTokens(completionText, encName);
+    const cost = calcCost({
+      inTok, outTok,
+      inPerM: modelRow.input_cost_per_million,
+      outPerM: modelRow.output_cost_per_million
+    });
     await logUsage({
       provider_id: modelRow.provider_id,
       model_id: modelRow.id,
       conversation_id: metaBase.conversationId || null,
-      input_tokens: estimateTokensFromChars(promptChars),
-      output_tokens: estimateTokensFromChars((content || '').length),
+      input_tokens: inTok,
+      output_tokens: outTok,
       prompt_chars: promptChars,
-      completion_chars: (content || '').length,
-      cost: null,
+      completion_chars: completionChars,
+      cost,
       meta: metaBase
     });
-    return res.json({ content });
+    return res.json({ content: completionText });
   }
 }
 
@@ -182,4 +227,3 @@ router.post('/compat/llm-chat', async (req, res) => {
 });
 
 module.exports = { router };
-

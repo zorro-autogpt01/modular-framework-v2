@@ -135,10 +135,36 @@
 const dot = document.getElementById('dot');
 const healthText = document.getElementById('healthText');
 function setBusy(b){ if(!dot||!healthText) return; dot.classList.toggle('on', b); healthText.textContent = b ? 'Checking…' : 'Idle'; }
+const BASE = window.location.pathname.replace(/\/admin.*/, '');
+const API_BASE = `${BASE}/api`;   // "/api" when BASE == "", else "/llm-gateway/api"
+const HEALTH_PATH = `${BASE}/health`;
+
+const pName = document.getElementById('pName');
+const pKind = document.getElementById('pKind');
+const pBaseUrl = document.getElementById('pBaseUrl');
+const pApiKey = document.getElementById('pApiKey');
+const pHeaders = document.getElementById('pHeaders');
+const saveProvider = document.getElementById('saveProvider');
+const resetProvider = document.getElementById('resetProvider');
+
+const mProviderId = document.getElementById('mProviderId');
+const mModelName = document.getElementById('mModelName');
+const mKey = document.getElementById('mKey');
+const mDisplayName = document.getElementById('mDisplayName');
+const mMode = document.getElementById('mMode');
+const mResp = document.getElementById('mResp');
+const mReason = document.getElementById('mReason');
+const mCurrency = document.getElementById('mCurrency');
+const mInCost = document.getElementById('mInCost');
+const mOutCost = document.getElementById('mOutCost');
+
+const saveModel = document.getElementById('saveModel');
+const resetModel = document.getElementById('resetModel');
+
 
 /* API helper */
 async function api(path, method='GET', body) {
-  const res = await fetch(`/api${path}`, {
+  const res = await fetch(`${API_BASE}${path}`, {
     method,
     headers:{'Content-Type':'application/json'},
     body: body ? JSON.stringify(body) : undefined
@@ -147,11 +173,12 @@ async function api(path, method='GET', body) {
   return await res.json();
 }
 
+
 /* Health check */
 document.getElementById('healthBtn')?.addEventListener('click', async () => {
   try{
     setBusy(true);
-    const r = await fetch('/health');
+    const r = await fetch(HEALTH_PATH);
     if (r.ok) { healthText.textContent = '✅ Healthy'; dot.classList.add('on'); }
     else { healthText.textContent = '❌ Error'; dot.classList.remove('on'); }
   } catch {
@@ -187,19 +214,23 @@ async function refreshProviders() {
     await api(`/providers/${id}`, 'DELETE'); refreshProviders();
   });
 }
-saveProvider.onclick = async ()=>{
-  const body = {
-    name:pName.value.trim(), kind:pKind.value,
-    base_url:pBaseUrl.value.trim(),
-    api_key:pApiKey.value.trim(),
-    headers: pHeaders.value ? JSON.parse(pHeaders.value) : null
-  };
-  if (!body.name || !body.kind || !body.base_url) { alert('name, kind, base_url required'); return; }
-  if (editProviderId) await api(`/providers/${editProviderId}`, 'PUT', body);
-  else await api('/providers', 'POST', body);
-  editProviderId = null;
-  pName.value=''; pBaseUrl.value=''; pApiKey.value=''; pHeaders.value='{}';
-  await refreshProviders();
+saveProvider.onclick = async () => {
+  try {
+    const body = {
+      name:pName.value.trim(), kind:pKind.value,
+      base_url:pBaseUrl.value.trim(),
+      api_key:pApiKey.value.trim(),
+      headers: pHeaders.value.trim() ? JSON.parse(pHeaders.value) : null
+    };
+    if (!body.name || !body.kind || !body.base_url) { alert('name, kind, base_url required'); return; }
+    if (editProviderId) await api(`/providers/${editProviderId}`, 'PUT', body);
+    else await api('/providers', 'POST', body);
+    editProviderId = null;
+    pName.value=''; pBaseUrl.value=''; pApiKey.value=''; pHeaders.value='{}';
+    await refreshProviders();
+  } catch (e) {
+    alert(`Save failed: ${e.message}`);
+  }
 };
 resetProvider.onclick = ()=>{ editProviderId=null; pName.value=''; pBaseUrl.value=''; pApiKey.value=''; pHeaders.value='{}'; };
 
