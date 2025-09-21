@@ -97,16 +97,15 @@ document.addEventListener('DOMContentLoaded', () => {
     window.LLM_GATEWAY_URL = v;
   });
   document.getElementById('testGatewayBtn')?.addEventListener('click', async () => {
-    let url = (document.getElementById('llmGatewayUrl')?.value || '').trim().replace(/\/+$/, '');
-    if (!/\/api$/i.test(url)) url += '/api';
-    if (!url) return alert('Enter gateway URL first');
-    try {
-      const res = await fetch(`${url}/health`);
-      alert(res.ok ? '✅ Gateway is healthy' : '❌ Gateway responded with error');
-    } catch {
-      alert('❌ Cannot reach gateway');
-    }
-  });
+  const url = (document.getElementById('llmGatewayUrl')?.value || '').trim().replace(/\/+$/, '');
+  if (!url) return alert('Enter gateway URL first');
+  try {
+    const res = await fetch(`${url}/health`);
+    alert(res.ok ? '✅ Gateway is healthy' : '❌ Gateway responded with error');
+  } catch {
+    alert('❌ Cannot reach gateway');
+  }
+});
   // Load saved Gateway URL
   const savedGw = localStorage.getItem('llmGatewayUrl');
   if (savedGw) {

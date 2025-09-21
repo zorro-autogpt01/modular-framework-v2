@@ -14,9 +14,7 @@ const state = {
 function getGatewayUrl() {
   let val = window.LLM_GATEWAY_URL || localStorage.getItem('llmGatewayUrl') || '';
   if (!val) return '';
-  val = val.trim().replace(/\/+$/, '');
-  if (!/\/api$/i.test(val)) val += '/api';
-  return val;
+  return val.trim().replace(/\/+$/, ''); // remove the “ensure /api” logic
 }
 
 // RAG Service configuration
