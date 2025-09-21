@@ -10,6 +10,15 @@ const state = {
   ragContext: null
 };
 
+// LLM Gateway URL (from window or localStorage). Ensure it ends with /api
+function getGatewayUrl() {
+  let val = window.LLM_GATEWAY_URL || localStorage.getItem('llmGatewayUrl') || '';
+  if (!val) return '';
+  val = val.trim().replace(/\/+$/, '');
+  if (!/\/api$/i.test(val)) val += '/api';
+  return val;
+}
+
 // RAG Service configuration
 const RAG_SERVICE_URL = window.RAG_SERVICE_URL || '/rag';
 function getRagUrl() {
@@ -285,7 +294,8 @@ export async function summarizeConversation() {
   const msgs = [{ role:'system', content: system }, ...history];
 
   const basePath = detectBasePath();
-  const apiUrl = `${basePath}api/chat`;
+  const gw = getGatewayUrl();
+  const apiUrl = gw ? `${gw}/v1/chat` : `${basePath}api/chat`;
 
   const placeholder = document.createElement('div');
   placeholder.className = 'msg assistant';
@@ -305,8 +315,12 @@ export async function summarizeConversation() {
     const resp = await fetch(apiUrl, {
       method:'POST',
       headers:{ 'Content-Type':'application/json' },
-      body: JSON.stringify({ provider, baseUrl, apiKey, model, messages: msgs, temperature, max_tokens, stream:true }),
-      signal: controller.signal
+      body: JSON.stringify(
+        gw
+          ? { model, messages: msgs, temperature, max_tokens, stream:true,
+              metadata: { source:'llm-chat', conversationId: state.conversationId } }
+          : { provider, baseUrl, apiKey, model, messages: msgs, temperature, max_tokens, stream:true }
+      ),      signal: controller.signal
     });
     if (!resp.ok) throw new Error(await resp.text() || 'HTTP error');
 
@@ -489,7 +503,8 @@ Use this information to answer the user's question accurately. If the knowledge 
   input.value='';
 
   const basePath = detectBasePath();
-  const apiUrl = `${basePath}api/chat`;
+  const gw = getGatewayUrl();
+  const apiUrl = gw ? `${gw}/v1/chat` : `${basePath}api/chat`;
 
   state.controller = new AbortController();
   setBusy(true);
@@ -497,7 +512,12 @@ Use this information to answer the user's question accurately. If the knowledge 
     const resp = await fetch(apiUrl, {
       method:'POST',
       headers:{ 'Content-Type':'application/json' },
-      body: JSON.stringify({ provider, baseUrl, apiKey, model, messages: msgs, temperature, max_tokens, stream:true }),
+      body: JSON.stringify(
+        gw
+          ? { model, messages: msgs, temperature, max_tokens, stream:true,
+              metadata: { source:'llm-chat', conversationId: state.conversationId } }
+          : { provider, baseUrl, apiKey, model, messages: msgs, temperature, max_tokens, stream:true }
+      ),
       signal: state.controller.signal
     });
     if (!resp.ok) throw new Error(await resp.text() || 'HTTP error');

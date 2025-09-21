@@ -90,6 +90,31 @@ document.addEventListener('DOMContentLoaded', () => {
     if (ragUrlInput) ragUrlInput.value = savedRagUrl;
   }
 
+  // --- LLM Gateway URL persistence and health test ---
+  document.getElementById('llmGatewayUrl')?.addEventListener('change', (e) => {
+    const v = (e.target.value || '').trim();
+    localStorage.setItem('llmGatewayUrl', v);
+    window.LLM_GATEWAY_URL = v;
+  });
+  document.getElementById('testGatewayBtn')?.addEventListener('click', async () => {
+    let url = (document.getElementById('llmGatewayUrl')?.value || '').trim().replace(/\/+$/, '');
+    if (!/\/api$/i.test(url)) url += '/api';
+    if (!url) return alert('Enter gateway URL first');
+    try {
+      const res = await fetch(`${url}/health`);
+      alert(res.ok ? '✅ Gateway is healthy' : '❌ Gateway responded with error');
+    } catch {
+      alert('❌ Cannot reach gateway');
+    }
+  });
+  // Load saved Gateway URL
+  const savedGw = localStorage.getItem('llmGatewayUrl');
+  if (savedGw) {
+    window.LLM_GATEWAY_URL = savedGw;
+    const gwInput = document.getElementById('llmGatewayUrl');
+    if (gwInput) gwInput.value = savedGw;
+  }
+
   // Handle Enter key in chat input
   document.getElementById('input')?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {

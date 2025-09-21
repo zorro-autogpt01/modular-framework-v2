@@ -9,3 +9,4 @@
 /modules/RAG/qdrant_storage
 /modules/RAG/redis_data
 /modules/RAG/logs
+/modules/llm-gateway/pgdata/

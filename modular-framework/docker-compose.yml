@@ -11,6 +11,8 @@ services:
     volumes:
       - ./framework/html:/usr/share/nginx/html
       - ./framework/nginx.conf:/etc/nginx/nginx.conf
+      #- ./certs/dev.crt:/etc/nginx/certs/dev.crt:ro
+      #- ./certs/dev.key:/etc/nginx/certs/dev.key:ro
     depends_on:
       - rag-api-module
       - github-hub-module
@@ -33,7 +35,7 @@ services:
       - app-network
     restart: unless-stopped
 
-  llm-workflows:
+  llm-workflows-module:
     build: ./modules/llm-workflows
     container_name: llm-workflows-module
     environment:
@@ -137,6 +139,47 @@ services:
         - app-network
     volumes:
       - ./modules/RAG/logs:/app/logs
+
+  postgres:
+    image: postgres:14-alpine
+    container_name: postgres-llm-gateway
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=llm_gateway
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./modules/llm-gateway/pgdata:/var/lib/postgresql/data
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  llm-gateway:
+    build: ./modules/llm-gateway
+    container_name: llm-gateway
+    environment:
+      - NODE_ENV=production
+      - PORT=3010
+      - BASE_PATH=/llm-gateway
+      - PGHOST=postgres
+      - PGPORT=5432
+      - PGUSER=postgres
+      - PGPASSWORD=postgres
+      - PGDATABASE=llm_gateway
+    expose:
+      - "3010"
+    ports:
+      - "3010:3010"
+    depends_on:
+      - postgres
+    networks:
+      - app-network
+    restart: unless-stopped
+
+
+
+    
 
 
   # Additional Module Examples (can be uncommented)
