@@ -12,6 +12,55 @@ function clone(x) { return JSON.parse(JSON.stringify(x)); }
 function fmtJson(v) { try { return JSON.stringify(v, null, 2); } catch { return String(v); } }
 function parseJson(text, fallback = null) { try { return JSON.parse(text); } catch { return fallback; } }
 
+ // ---- Prompt preview helpers ----
+ function renderTemplate(tpl, vars) {
+   return String(tpl || '').replace(/\{\{\s*([\w.\-]+)\s*\}\}/g, (_m, key) => {
+     // simple dotted-path lookup
+     const parts = String(key).split('.');
+     let cur = vars || {};
+     for (const p of parts) {
+       if (cur && typeof cur === 'object' && p in cur) cur = cur[p]; else return '';
+     }
+     return (cur === undefined || cur === null) ? '' : String(cur);
+   });
+ }
+ function buildSystemGuard(schema) {
+   const schemaStr = typeof schema === 'string' ? schema : JSON.stringify(schema || {}, null, 2);
+   return [
+     'You are a controller that MUST return a single JSON object and nothing else.',
+     'Rules:',
+     '- Do NOT include explanations, markdown, or code fences.',
+     '- Output MUST be valid JSON that matches the schema exactly.',
+     '- No trailing commas. No comments.',
+     'JSON Schema:',
+     schemaStr
+   ].join('\n');
+ }
+ function computeFullPromptForStep(step, vars) {
+   if (!step) return '';
+   const sys = (step.systemGuard === false)
+     ? (step.system || '')
+     : buildSystemGuard(step.schema);
+   const user = renderTemplate(step.prompt || '', vars || {});
+   return [sys, user].filter(Boolean).join('\n\n');
+ }
+ function updateTestButtonTooltip() {
+   const step = state.current?.steps?.[state.currentStepIdx];
+   const vars = parseJson($('varsInput')?.value || '{}', {});
+   const full = computeFullPromptForStep(step, vars);
+   const btn = $('testStepBtn');
+   if (btn) btn.title = full || 'No prompt';
+ }
+
+ function updatePromptPreview() {
+  const pre = $('promptPreview');
+  if (!pre) return;
+  const step = state.current?.steps?.[state.currentStepIdx];
+  const vars = parseJson($('varsInput')?.value || '{}', {});
+  pre.textContent = computeFullPromptForStep(step, vars) || '';
+}
+ 
+
 function newWorkflow() {
   return {
     id: null,
@@ -140,6 +189,7 @@ async function testStep() {
   const step = wf.steps[state.currentStepIdx];
   if (!step) { toast('Select a step'); return; }
   const vars = parseJson($('varsInput').value || '{}', {});
+  try { updateTestButtonTooltip(); } catch {}
   const resp = await fetch('./api/testStep', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -285,6 +335,8 @@ function renderStepEditor() {
   $('sApiKey').value = s.apiKey || '';
   $('sModel').value = s.model || '';
   $('sTemp').value = s.temperature ?? '';
+  updateTestButtonTooltip();
+  updatePromptPreview();
 }
 
 function removeStep(idx) {
@@ -414,13 +466,31 @@ document.addEventListener('DOMContentLoaded', async () => {
    'sProvider','sBaseUrl','sApiKey','sModel','sTemp'
   ].forEach(id => {
     const el = $(id);
-    if (el) el.addEventListener('change', () => collectWorkflowFromForm());
-    if (el && el.tagName === 'TEXTAREA') el.addEventListener('input', () => collectWorkflowFromForm());
-  });
+    if (el) el.addEventListener('change', () => { collectWorkflowFromForm(); updateTestButtonTooltip(); updatePromptPreview(); });
+    if (el && el.tagName === 'TEXTAREA') el.addEventListener('input', () => { collectWorkflowFromForm(); updateTestButtonTooltip(); updatePromptPreview(); });
+   });
 
   activateTab('builder');
   await loadWorkflows();
   await loadRuns();
+  $('varsInput')?.addEventListener('input', () => { updateTestButtonTooltip(); updatePromptPreview(); });
+
+  // Copy / Download actions for the preview
+  $('copyPromptBtn')?.addEventListener('click', () => {
+    const text = $('promptPreview')?.textContent || '';
+    copyToClipboard(text);
+  });
+  $('downloadPromptBtn')?.addEventListener('click', () => {
+    const text = $('promptPreview')?.textContent || '';
+    const blob = new Blob([text], { type: 'text/plain' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'prompt.txt';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(a.href);
+  });
 });
 
 // Minimal utils
