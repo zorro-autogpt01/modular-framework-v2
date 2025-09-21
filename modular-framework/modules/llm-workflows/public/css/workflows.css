@@ -1,0 +1,10 @@
+.wf-wrap { display:grid; grid-template-columns: 300px 1fr 380px; gap:12px; padding:16px; }
+.wf-panel { background: var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; }
+.wf-list .item { cursor:pointer; }
+.wf-head { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+.wf-steps { margin-top:8px; }
+.wf-step { border:1px dashed var(--line); padding:8px; border-radius:6px; margin-bottom:8px; background:#1a1a1a; }
+.wf-row { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.wf-actions { display:flex; gap:6px; }
+.wf-log { white-space:pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; font-size:12px; background:#111; padding:8px; border-radius:6px; max-height: 60vh; overflow:auto; }
+.badge { font-size: 10px; padding: 2px 6px; border-radius: 999px; background: #111; border:1px solid var(--line); color:#ccc }

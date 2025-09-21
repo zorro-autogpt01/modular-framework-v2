@@ -1,0 +1,670 @@
+Absolutely—’s add a Workflows tab that lets you, save, chain and test multi-step LLM workflows that demand strict JSON outputs and optionally execute actions (bash/python) on a sandbox.
+
+Below are the new/modified files to add a complete “Workflows” builder/orchestrator into your existing llm-chat module. It includes:
+
+- A Workflows tab UI
+- Client-side workflow builder (create/edit steps)
+- JSON-guarded LLM-step runner with schema validation and-retry
+- Workflow run logs and variable passing across steps
+- Server-side persistence (CRUD)
+- Optional agent runner (bash/python) with safety switch AGENT_ENABLE=1
+
+Add/Modify these files:
+
+1) modular-framework/modules/llm-chat/public/css/workflows.css
+/* Simple layout for Workflows tab */
+.wf-wrap { display:grid; grid-template-columns: 300px 1fr 380px; gap:12px; padding:16px; }
+.wf-panel { background: var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; }
+.wf-list .item { cursor:pointer; }
+.wf-head { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+.wf-steps { margin-top:8px; }
+.wf-step { border:1px dashed var(--line); padding:8px; border-radius:6px; margin-bottom:8px; background:#1a1a1a; }
+.wf-row { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.wf-actions { display:flex; gap:6px; }
+.wf-log { white-space:pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; font-size:12px; background:#111; padding:8px; border-radius:6px; max-height: 60vh; overflow:auto; }
+.badge { font-size: 10px; padding: 2px 6px; border-radius: 999px; background: #111; border:1px solid var(--line); color:#ccc }
+
+2) modular-framework/modules/llm-chat/public/js/workflows.store.js
+// Local + server-backed storage for workflows
+const LS_KEY = 'llmWorkflows';
+export async function listWorkflows() {
+  try {
+    const r = await fetch('/api/workflows'); if (r.ok) return (await r.json())?.items || [];
+  } catch {}
+  const raw = localStorage.getItem(LS_KEY) || '[]';
+  return JSON.parse(raw);
+}
+export async function saveWorkflow(wf) {
+  // Persist server-first; fallback to localStorage
+  try {
+    const r = await fetch('/api/workflows', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ workflow: wf }) });
+    if (r.ok) return (await r.json()).workflow;
+  } catch {}
+  const arr = await listWorkflows();
+  const idx = arr.findIndex(x => x.id === wf.id);
+  if (idx >= 0) arr[idx] = wf; else arr.push(wf);
+  localStorage.setItem(LS_KEY, JSON.stringify(arr));
+  return wf;
+}
+export async function deleteWorkflow(id) {
+  try {
+    await fetch(`/api/workflows/${encodeURIComponent(id)}`, { method:'DELETE' });
+  } catch {}
+  const arr = await listWorkflows();
+  const next = arr.filter(x => x.id !== id);
+  localStorage.setItem(LS_KEY, JSON.stringify(next));
+  return true;
+}
+export async function getWorkflow(id) {
+  try {
+    const r = await fetch(`/api/workflows/${encodeURIComponent(id)}`); if (r.ok) return (await r.json()).workflow;
+  } catch {}
+  const arr = await listWorkflows();
+  return arr.find(x => x.id === id) || null;
+}
+export function newWorkflowTemplate() {
+  return {
+    id: `wf_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
+    name: 'New Workflow',
+    description: '',
+    autoExecuteActions: false,
+    steps: [
+      {
+        id: `step_${Date.now().toString(36)}`,
+        name: 'Step 1',
+        system: 'You are a helpful agent. Return strictly valid JSON for the requested schema.',
+        userTemplate: 'Analyze: {{input}}\nReturn actions to execute.',
+        schema: 'actions.v1'
+      }
+    ],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+}
+
+3) modular-framework/modules/llm-chat/public/js/workflows.run.js
+import { parseStream } from './sse.js';
+
+// Standard schemas for strict JSON answers
+export const WF_SCHEMAS = {
+  'actions.v1': {
+    name: 'Executable Actions v1',
+    description: 'LLM returns concrete actions to execute (bash/python) with optional variables.',
+    jsonSchema: `{
+  "summary": "string (short summary of what will be done)",
+  "variables": { "type": "object", "description": "Any key/value pairs to pass to next steps" },
+  "actions": [
+    {
+      "kind": "bash | python",
+      "label": "human readable title",
+      "code": "command/script text",
+      "cwd": "optional working directory",
+      "timeoutSec": "optional number (default=60)"
+    }
+  ]
+}`
+  }
+};
+
+// Build guardrails for strict JSON-only responses
+function buildJsonGuard(schemaText) {
+  return `
+You must answer with STRICT JSON ONLY. Do not include markdown, backticks, comments, or any text before/after the JSON.
+The JSON must follow this schema conceptually:
+${schemaText}
+
+Rules:
+- If unsure, leave fields empty or use empty arrays/objects.
+- Never include explanations outside JSON.
+If you cannot comply, return: {"summary":"error","variables":{},"actions":[]}
+`.trim();
+}
+
+export async function callLLM({ baseUrl, provider, apiKey, model, temperature, max_tokens, messages, stream=false }) {
+  const body = { baseUrl, provider, apiKey, model, messages, temperature, max_tokens, stream };
+  const resp = await fetch(`${detectBasePath()}api/chat`, {
+    method:'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (!resp.ok) throw new Error(await resp.text() || 'LLM HTTP error');
+  if (!stream) return await resp.json(); // { content }
+  // Stream and accumulate
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let text = '';
+  const pump = parseStream(
+    (d)=> text += d,
+    ()=>{},
+    (m)=> { text += `\n[error] ${m}`; }
+  );
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    pump(decoder.decode(value, { stream:true }));
+  }
+  return { content: text };
+}
+
+function detectBasePath() {
+  const p = window.location.pathname;
+  const base = p.replace(/\/config\/?$/, '/');
+  return base.endsWith('/') ? base : (base + '/');
+}
+
+export async function runLLMStep({ step, vars, llmConfig, logFn, maxRetries=2 }) {
+  const schema = WF_SCHEMAS[step.schema] || WF_SCHEMAS['actions.v1'];
+  const sys = `${step.system || ''}\n\n${buildJsonGuard(schema.jsonSchema)}`;
+  const user = (step.userTemplate || '').replace(/\{\{(\w+)\}\}/g, (_, k) => String(vars?.[k] ?? ''));
+  const messages = [{ role:'system', content: sys }, { role:'user', content: user }];
+
+  for (let attempt=0; attempt<=maxRetries; attempt++) {
+    logFn?.(`→ LLM request (attempt ${attempt+1})`);
+    const { content } = await callLLM({ ...llmConfig, messages, stream:true });
+    const trimmed = (content || '').trim();
+
+    // Try to extract JSON (tolerate extra text if model misbehaves)
+    const json = extractFirstJson(trimmed);
+    if (!json.ok) {
+      logFn?.(`LLM JSON parse failed: ${json.error}`);
+      // Feed back correction
+      messages.push({ role:'assistant', content: trimmed });
+      messages.push({ role:'user', content: `Your previous reply was not valid JSON. Error: ${json.error}. Respond again with STRICT JSON only.` });
+      continue;
+    }
+
+    // Validate minimal shape
+    const data = json.value;
+    if (!Array.isArray(data.actions)) data.actions = [];
+    if (!data.variables || typeof data.variables !== 'object') data.variables = {};
+    if (typeof data.summary !== 'string') data.summary = '';
+
+    logFn?.(`✓ JSON received: summary="${data.summary}" actions=${data.actions.length}`);
+    return { ok:true, data };
+  }
+
+  return { ok:false, error:'Failed to obtain valid JSON from LLM after retries' };
+}
+
+// Extract the first JSON object/array from text
+function extractFirstJson(text) {
+  try {
+    // Fast path: pure JSON
+    return { ok:true, value: JSON.parse(text) };
+  } catch {}
+  // Fallback: find first { ... } or [ ... ]
+  const start = text.indexOf('{') >= 0 ? text.indexOf('{') : text.indexOf('[');
+  if (start === -1) return { ok:false, error:'No JSON start found' };
+  for (let end = text.length; end > start; end--) {
+    const slice = text.slice(start, end);
+    try {
+      const v = JSON.parse(slice);
+      return { ok:true, value: v };
+    } catch {}
+  }
+  return { ok:false, error:'Unable to parse embedded JSON' };
+}
+
+export async function maybeExecuteActions(actions, { autoExecute, logFn }) {
+  const results = [];
+  for (const a of actions) {
+    const kind = String(a.kind || '').toLowerCase();
+    if (!['bash','python'].includes(kind)) {
+      logFn?.(`↷ Skip action kind="${a.kind}" (unsupported)`);
+      results.push({ kind:a.kind, skipped:true, reason:'unsupported kind' });
+      continue;
+    }
+    if (!autoExecute) {
+      logFn?.(`◻ Dry-run: ${a.label || kind} (will not execute)`);
+      results.push({ kind:a.kind, dryRun:true });
+      continue;
+    }
+    logFn?.(`▶ Executing ${kind}: ${a.label || ''}`);
+    const r = await fetch('/api/agent/execute', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        kind,
+        code: a.code || '',
+        cwd: a.cwd || '',
+        timeoutSec: Math.min(Number(a.timeoutSec || 60), 300)
+      })
+    });
+    const data = await r.json();
+    const ok = r.ok && data?.ok;
+    logFn?.(`${ok?'✓':'✗'} Exit ${data.exitCode}; stdout:\n${(data.stdout||'').slice(0,4000)}\n--- stderr:\n${(data.stderr||'').slice(0,4000)}`);
+    results.push({ ...data, requested: a });
+  }
+  return results;
+}
+
+export async function runWorkflow({ workflow, inputVars, llmConfig, logFn }) {
+  let vars = { ...(inputVars||{}) };
+  logFn?.(`Workflow "${workflow.name}" started. Steps=${workflow.steps.length}`);
+  for (let i=0; i<workflow.steps.length; i++) {
+    const step = workflow.steps[i];
+    logFn?.(`\n# Step ${i+1}: ${step.name}`);
+    const r = await runLLMStep({ step, vars, llmConfig, logFn });
+
+    if (!r.ok) { logFn?.(`Step failed: ${r.error}`); return { ok:false, error:r.error }; }
+
+    // merge variables for next step
+    vars = { ...vars, ...(r.data.variables || {}) };
+
+    // execute actions (maybe)
+    const exec = await maybeExecuteActions(r.data.actions || [], { autoExecute: !!workflow.autoExecuteActions, logFn });
+    // Collect per step? Keep it simple and log only
+  }
+  logFn?.(`\nWorkflow finished.`);
+  return { ok:true, variables: vars };
+}
+
+4) modular-framework/modules/llm-chat/public/js/workflows.page.js
+import { getGlobal, getProfiles, getActiveName } from './storage.js';
+import { listWorkflows, saveWorkflow, deleteWorkflow, getWorkflow, newWorkflowTemplate } from './workflows.store.js';
+import { WF_SCHEMAS, runWorkflow } from './workflows.run.js';
+
+let current = null;
+
+function el(id){ return document.getElementById(id); }
+function profileToLlmConfig() {
+  const g = getGlobal();
+  const p = getProfiles().find(x => x.name === getActiveName()) || {};
+  return {
+    provider: p.provider ?? g.provider,
+    baseUrl:  p.baseUrl  ?? g.baseUrl,
+    apiKey:   p.apiKey   ?? g.apiKey,
+    model:    p.model    ?? g.model,
+    temperature: p.temperature ?? g.temperature,
+    max_tokens: p.max_tokens ?? g.max_tokens
+  };
+}
+
+function renderSchemaOptions(select, value) {
+  select.innerHTML = '';
+  Object.keys(WF_SCHEMAS).forEach(k => {
+    const o = document.createElement('option'); o.value = k; o.textContent = `${k} – ${WF_SCHEMAS[k].name}`;
+    if (k === value) o.selected = true;
+    select.appendChild(o);
+  });
+}
+
+function stepItem(step, idx) {
+  const wrap = document.createElement('div'); wrap.className = 'wf-step';
+  wrap.innerHTML = `
+    <div class="wf-row">
+      <div>
+        <label>Step Name</label>
+        <input class="s-name" value="${step.name || ''}" />
+      </div>
+      <div>
+        <label>Schema</label>
+        <select class="s-schema"></select>
+      </div>
+    </div>
+    <label>System Prompt</label>
+    <textarea class="s-system" rows="3">${step.system || ''}</textarea>
+    <label>User Template (use {{var}})</label>
+    <textarea class="s-user" rows="3">${step.userTemplate || ''}</textarea>
+    <div class="wf-actions">
+      <button class="ghost s-up">↑</button>
+      <button class="ghost s-down">↓</button>
+      <button class="danger s-del">Delete</button>
+      <span class="badge">id: ${step.id}</span>
+    </div>
+  `;
+  const schemaSel = wrap.querySelector('.s-schema');
+  renderSchemaOptions(schemaSel, step.schema || 'actions.v1');
+
+  wrap.querySelector('.s-name').addEventListener('input', (e)=> step.name = e.target.value);
+  wrap.querySelector('.s-system').addEventListener('input', (e)=> step.system = e.target.value);
+  wrap.querySelector('.s-user').addEventListener('input', (e)=> step.userTemplate = e.target.value);
+  schemaSel.addEventListener('change', (e)=> step.schema = e.target.value);
+
+  wrap.querySelector('.s-del').onclick = ()=> {
+    current.steps.splice(idx,1); renderSteps();
+  };
+  wrap.querySelector('.s-up').onclick = ()=> {
+    if (idx<=0) return;
+    const t = current.steps[idx-1]; current.steps[idx-1]=current.steps[idx]; current.steps[idx]=t; renderSteps();
+  };
+  wrap.querySelector('.s-down').onclick = ()=> {
+    if (idx>=current.steps.length-1) return;
+    const t = current.steps[idx+1]; current.steps[idx+1]=current.steps[idx]; current.steps[idx]=t; renderSteps();
+  };
+  return wrap;
+}
+
+function renderSteps(){
+  const container = el('wfSteps');
+  container.innerHTML = '';
+  current.steps.forEach((s, i)=> container.appendChild(stepItem(s, i)));
+}
+
+async function renderList(){
+  const items = await listWorkflows();
+  const list = el('wfList'); list.innerHTML='';
+  items.forEach(wf=>{
+    const div = document.createElement('div');
+    div.className='item';
+    div.innerHTML = `
+      <div>
+        <strong>${wf.name}</strong>
+        <span class="pill">${wf.steps?.length||0} steps</span>
+        <div class="muted">${wf.description || ''}</div>
+      </div>
+      <button class="ghost">Edit</button>
+      <button class="danger">Delete</button>
+    `;
+    const [_, editBtn, delBtn] = div.children;
+    editBtn.onclick = async ()=> { current = await getWorkflow(wf.id); renderEditor(); };
+    delBtn.onclick = async ()=> { if(confirm('Delete workflow?')) { await deleteWorkflow(wf.id); if (current?.id===wf.id) current=null; renderList(); renderEditor(); } };
+    list.appendChild(div);
+  });
+}
+
+function renderEditor(){
+  const name = el('wfName'), desc = el('wfDesc'), auto = el('wfAuto');
+  if (!current) {
+    name.value=''; desc.value=''; auto.checked=false;
+    el('wfSteps').innerHTML = '<div class="muted">No workflow selected.</div>';
+    return;
+  }
+  name.value = current.name || '';
+  desc.value = current.description || '';
+  auto.checked = !!current.autoExecuteActions;
+  renderSteps();
+}
+
+function appendLog(msg){
+  const log = el('wfLog');
+  log.textContent += (msg.endsWith('\n') ? msg : (msg+'\n'));
+  log.scrollTop = log.scrollHeight;
+}
+
+async function onRun(){
+  if (!current) return alert('Select or create a workflow first.');
+  const input = el('wfInput').value.trim();
+  const vars = input ? { input } : {};
+  const llmConfig = profileToLlmConfig();
+  el('wfLog').textContent = '';
+  appendLog(`Using profile: ${getActiveName()} (${llmConfig.model})`);
+  const res = await runWorkflow({
+    workflow: current,
+    inputVars: vars,
+    llmConfig,
+    logFn: appendLog
+  });
+  if (!res.ok) appendLog(`\n[FAILED] ${res.error}`);
+  else appendLog(`\n[OK] Final variables: ${JSON.stringify(res.variables, null, 2)}`);
+}
+
+export async function initWorkflowsUI(){
+  el('wfNew').onclick = async () => { current = newWorkflowTemplate(); await saveWorkflow(current); renderList(); renderEditor(); };
+  el('wfAddStep').onclick = ()=> {
+    if (!current) return alert('Create/select a workflow first.');
+    current.steps.push({
+      id: `step_${Date.now().toString(36)}`,
+      name: `Step ${current.steps.length+1}`,
+      system: 'Return strict JSON only.',
+      userTemplate: 'Task: {{input}}',
+      schema: 'actions.v1'
+    });
+    renderSteps();
+  };
+  el('wfSave').onclick = async ()=>{
+    if (!current) return;
+    current.name = el('wfName').value.trim() || current.name;
+    current.description = el('wfDesc').value.trim();
+    current.autoExecuteActions = el('wfAuto').checked;
+    current.updatedAt = new Date().toISOString();
+    await saveWorkflow(current);
+    renderList();
+    alert('Saved');
+  };
+  el('wfRun').onclick = onRun;
+  await renderList();
+  renderEditor();
+}
+
+5) Modify modular-framework/modules/llm-chat/public/index.html
+- Add the stylesheet link and a new main tab “Workflows” with its UI skeleton.
+
+Insert in <head> after theme.css:
+<link rel="stylesheet" href="./css/workflows.css" />
+
+Modify the top-level tabs block:
+<div class="main-tabs">
+  <button class="tab active" id="tabBtnChat" type="button">Chat</button>
+  <button class="tab" id="tabBtnWorkflows" type="button">Workflows</button>
+  <button class="tab" id="tabBtnSettings" type="button">Settings</button>
+</div>
+
+Add this new section below the Chat tab section and above Settings:
+<section id="tab-workflows" style="display:none">
+  <div class="wf-wrap">
+    <!-- Left: List -->
+    <div class="wf-panel">
+      <div class="wf-head">
+        <button id="wfNew">New Workflow</button>
+      </div>
+      <div id="wfList" class="wf-list"></div>
+    </div>
+
+    <!-- Middle: Editor -->
+    <div class="wf-panel">
+      <div class="wf-row">
+        <div>
+          <label>Name</label>
+          <input id="wfName" />
+        </div>
+        <div style="align-self:end;">
+          <label>&nbsp;</label>
+          <label style="display:flex;align-items:center;gap:8px">
+            <input type="checkbox" id="wfAuto" />
+            Auto-execute actions
+          </label>
+        </div>
+      </div>
+      <label>Description</label>
+      <textarea id="wfDesc" rows="2"></textarea>
+
+      <div class="wf-actions" style="margin:8px 0">
+        <button id="wfAddStep">Add Step</button>
+        <button id="wfSave">Save</button>
+      </div>
+
+      <div>
+        <label>Input variable (bound as {{input}})</label>
+        <input id="wfInput" placeholder="e.g. build a simple hello-world service" />
+      </div>
+
+      <h4>Steps</h4>
+      <div id="wfSteps" class="wf-steps"></div>
+
+      <div class="wf-actions">
+        <button id="wfRun">Run Workflow</button>
+      </div>
+    </div>
+
+    <!-- Right: Run Log -->
+    <div class="wf-panel">
+      <h4>Run Log</h4>
+      <div id="wfLog" class="wf-log"></div>
+    </div>
+  </div>
+</section>
+
+6) Modify modular-framework/modules/llm-chat/public/js/index.page.js
+- Import the workflows UI module and wire the tab.
+At top:
+import { initWorkflowsUI } from './workflows.page.js';
+
+Replace activateMainTab to handle 3 tabs:
+function activateMainTab(name){
+  const chat = document.getElementById('tab-chat');
+  const workflows = document.getElementById('tab-workflows');
+  const settings = document.getElementById('tab-settings');
+
+  const bChat = document.getElementById('tabBtnChat');
+  const bWorkflows = document.getElementById('tabBtnWorkflows');
+  const bSettings = document.getElementById('tabBtnSettings');
+
+  const isChat = (name === 'chat');
+  const isWF = (name === 'workflows');
+
+  chat.style.display = isChat ? '' : 'none';
+  workflows.style.display = isWF ? '' : 'none';
+  settings.style.display = (!isChat && !isWF) ? '' : 'none';
+
+  bChat.classList.toggle('active', isChat);
+  bWorkflows.classList.toggle('active', isWF);
+  bSettings.classList.toggle('active', !isChat && !isWF);
+
+  if (!isChat && !isWF) {
+    initEmbeddedConfigOnce();
+    refreshEmbeddedConfig();
+    showTab('global');
+  }
+}
+
+Inside DOMContentLoaded:
+document.getElementById('tabBtnChat')?.addEventListener('click', ()=> activateMainTab('chat'));
+document.getElementById('tabBtnWorkflows')?.addEventListener('click', ()=> {
+  activateMainTab('workflows');
+  // lazy-init
+  initWorkflowsUI();
+});
+document.getElementById('tabBtnSettings')?.addEventListener('click', ()=> activateMainTab('settings'));
+
+7) modular-framework/modules/llm-chat/server/routes/workflows.js
+const express = require('express');
+const fs = require('fs');
+const path = require('path');
+const router = express.Router();
+
+const DATA_DIR = path.join(__dirname, '..', '..', 'data');
+const FILE = path.join(DATA_DIR, 'workflows.json');
+
+function ensureFile() {
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+  if (!fs.existsSync(FILE)) fs.writeFileSync(FILE, JSON.stringify({ items: [] }, null, 2));
+}
+function readAll() { ensureFile(); try { return JSON.parse(fs.readFileSync(FILE, 'utf8')); } catch { return { items: [] }; } }
+function writeAll(data) { ensureFile(); fs.writeFileSync(FILE, JSON.stringify(data, null, 2)); }
+
+router.get('/workflows', (_req, res) => {
+  const data = readAll();
+  res.json({ items: data.items || [] });
+});
+router.get('/workflows/:id', (req, res) => {
+  const data = readAll();
+  const wf = (data.items || []).find(x => x.id === req.params.id);
+  if (!wf) return res.status(404).json({ error: 'not found' });
+  res.json({ workflow: wf });
+});
+router.post('/workflows', (req, res) => {
+  const wf = req.body?.workflow;
+  if (!wf || !wf.id) return res.status(400).json({ error:'workflow with id required' });
+  const data = readAll();
+  const idx = (data.items || []).findIndex(x => x.id === wf.id);
+  if (idx >= 0) data.items[idx] = wf; else data.items.push(wf);
+  writeAll(data);
+  res.json({ ok:true, workflow: wf });
+});
+router.delete('/workflows/:id', (req, res) => {
+  const data = readAll();
+  const next = (data.items || []).filter(x => x.id !== req.params.id);
+  writeAll({ items: next });
+  res.json({ ok:true });
+});
+
+module.exports = { router };
+
+8) modular-framework/modules/llm-chat/server/routes/agent.js
+const express = require('express');
+const { spawn } = require('child_process');
+const path = require('path');
+const router = express.Router();
+
+const ENABLED = process.env.AGENT_ENABLE === '1';
+
+function runBash(code, cwd, timeoutSec) {
+  return new Promise((resolve) => {
+    const proc = spawn('/bin/bash', ['-lc', code], { cwd: cwd || process.cwd(), env: process.env });
+    let out = '', err = '';
+    const to = setTimeout(()=> { try { proc.kill('SIGKILL'); } catch {} }, (timeoutSec||60)*1000);
+    proc.stdout.on('data', d => out += d.toString());
+    proc.stderr.on('data', d => err += d.toString());
+    proc.on('close', (code) => { clearTimeout(to); resolve({ exitCode: code ?? -1, stdout: out, stderr: err }); });
+  });
+}
+function runPython(code, cwd, timeoutSec) {
+  return new Promise((resolve) => {
+    const proc = spawn('python', ['-'], { cwd: cwd || process.cwd(), env: process.env, stdio: ['pipe','pipe','pipe'] });
+    let out = '', err = '';
+    const to = setTimeout(()=> { try { proc.kill('SIGKILL'); } catch {} }, (timeoutSec||60)*1000);
+    proc.stdout.on('data', d => out += d.toString());
+    proc.stderr.on('data', d => err += d.toString());
+    proc.on('close', (code) => { clearTimeout(to); resolve({ exitCode: code ?? -1, stdout: out, stderr: err }); });
+    proc.stdin.write(code || '');
+    proc.stdin.end();
+  });
+}
+
+router.post('/agent/execute', async (req, res) => {
+  if (!ENABLED) return res.status(403).json({ ok:false, error:'Agent execution disabled. Set AGENT_ENABLE=1 to enable.' });
+  const { kind, code, cwd, timeoutSec } = req.body || {};
+  if (!kind || !code) return res.status(400).json({ ok:false, error:'kind and code required' });
+
+  try {
+    let result;
+    if (kind === 'bash') result = await runBash(String(code), cwd, Number(timeoutSec||60));
+    else if (kind === 'python') result = await runPython(String(code), cwd, Number(timeoutSec||60));
+    else return res.status(400).json({ ok:false, error:'Unsupported kind' });
+
+    res.json({ ok:true, ...result });
+  } catch (e) {
+    res.status(500).json({ ok:false, error: e?.message || 'execution error' });
+  }
+});
+
+module.exports = { router };
+
+9) Modify modular-framework/modules/llm-chat/server/app.js
+- Mount the new routes.
+Add near other route imports:
+const { router: workflowsRouter } = require('./routes/workflows');
+const { router: agentRouter } = require('./routes/agent');
+
+Mount them:
+app.use('/api', workflowsRouter);
+app.use('/api', agentRouter);
+if (BASE_PATH) {
+  app.use(`${BASE_PATH}/api`, workflowsRouter);
+  app.use(`${BASE_PATH}/api`, agentRouter);
+}
+
+How it works in practice
+
+- Build a workflow in the Workflows tab:
+  - Add steps. Each step defines a system prompt, a user template with placeholders like {{input}}, and selects the “actions.v1” schema.
+  - The runner forces the model to output strict JSON (no markdown), validates it, and if invalid it auto-reprompts up to 3 attempts.
+  - The response can include:
+    - summary: short step summary
+    - variables: a map merged into the workflow’s context and available to later steps
+    - actions: array of executable actions, currently supporting kind=bash or python
+- Toggle “Auto-execute actions” to actually run them on the server. By default, these are dry-run only.
+  - To enable real execution, set AGENT_ENABLE=1 in env for the llm-chat server.
+  - The agent route runs the code in the server process environment. Ideally, point cwd to a safe sandbox path or run this behind a containerized runner in your environment.
+
+Notes and future enhancements
+
+- Add Docker-based isolation for agent execution (optional DOCKER_IMAGE env to run commands inside a container).
+- Add advanced variable mapping (from arbitrary JSONPaths).
+- Add step-level conditions, branching, and parallelization.
+- Add per-workflow ACLs and audit logs.
+- Add schema registry (user-editable schemas beyond actions.v1).
+- Add “Simulate run” which logs planned actions without any LLM calls (use cached answers).
+- Integrate RAG context per-step automatically.
+
+This should give you a solid second tab for saving, editing, chaining, and testing JSON-driven LLM workflows that can emit bash/python actions and run them on your test system.

@@ -33,6 +33,31 @@ services:
       - app-network
     restart: unless-stopped
 
+  llm-workflows:
+    build: ./modules/llm-workflows
+    container_name: llm-workflows-module
+    environment:
+      - NODE_ENV=production
+      - PORT=3010
+      # Tell it where your llm-chat is (service name + port on the Compose network)
+      - LLM_CHAT_URL=http://llm-chat:3004/api/chat
+      # Optional: serve UI under a path instead of "/"
+      - BASE_PATH=/llm-workflows
+      # Optional & DANGEROUS: only set to true if you want to allow host execution
+      # - ALLOW_DANGEROUS=true
+      # Optional: choose where workflows.json is stored (default is /app/data)
+      # - DATA_DIR=/app/data
+    expose:
+      - "3006"
+    volumes:
+      # persist workflows.json
+      - ./modules/llm-workflows/data:/app/data
+    depends_on:
+      - llm-chat
+    networks:
+      - app-network
+    restart: unless-stopped
+
   github-hub-module:
     build:
       context: ./modules/github-hub

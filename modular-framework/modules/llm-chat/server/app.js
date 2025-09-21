@@ -7,6 +7,8 @@ const { router: logsRouter } = require('./routes/logs');
 const { router: infoRouter } = require('./routes/info');
 const { router: healthRouter } = require('./routes/health');
 const { router: chatRouter } = require('./routes/chat');
+const { router: workflowsRouter } = require('./routes/workflows');
+const { router: agentRouter } = require('./routes/agent');
 
 const app = express();
 
@@ -33,6 +35,12 @@ if (BASE_PATH) app.get(`${BASE_PATH}/config`, (_req, res) => res.sendFile(path.j
 app.use('/', healthRouter);            // /health (root for Docker healthcheck)
 app.use('/api', infoRouter);           // /api/info
 app.use('/api', logsRouter);           // /api/logs, /api/logs/clear
+app.use('/api', workflowsRouter);
+app.use('/api', agentRouter);
+if (BASE_PATH) {
+  app.use(`${BASE_PATH}/api`, workflowsRouter);
+  app.use(`${BASE_PATH}/api`, agentRouter);
+}
 if (BASE_PATH) {
   app.use(`${BASE_PATH}/api`, infoRouter);  // /modules/llm-chat/api/info
   app.use(`${BASE_PATH}/api`, logsRouter);  // /modules/llm-chat/api/logs
