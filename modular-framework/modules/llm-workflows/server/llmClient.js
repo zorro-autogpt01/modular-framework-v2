@@ -2,8 +2,8 @@ const axios = require('axios');
 const { logDebug, logWarn } = require('./logger');
 
 // Streams via SSE and forwards deltas to callbacks. Uses llm-chat /api/chat.
-async function chatStream({ llmChatUrl, overrides, messages, onDelta, onError, onDone }) {
-  const url = (llmChatUrl || process.env.LLM_CHAT_URL || 'http://localhost:3004/api/chat').replace(/\/$/, '');
+async function chatStream({ llmGatewayUrl, overrides, messages, onDelta, onError, onDone }) {
+  const url = (llmGatewayUrl || process.env.LLM_GATEWAY_URL || 'http://localhost:3010/compat/llm-chat').replace(/\/$/, '');
   const {
     provider='openai', baseUrl, apiKey, model,
     temperature, max_tokens, system
@@ -15,7 +15,7 @@ async function chatStream({ llmChatUrl, overrides, messages, onDelta, onError, o
     temperature, max_tokens, stream: true
   };
 
-  logDebug('Calling llm-chat', { url, provider, model, baseUrl });
+  logDebug('Calling llm-gateway', { url, provider, model, baseUrl });
 
   const resp = await axios.post(url, payload, { responseType: 'stream' });
   resp.data.on('data', (chunk) => {
@@ -47,7 +47,7 @@ async function chatStream({ llmChatUrl, overrides, messages, onDelta, onError, o
     }
   });
   resp.data.on('end', () => onDone?.());
-  resp.data.on('error', (e) => { logWarn('llm-chat stream error', { msg:e.message }); onError?.(e.message); });
+  resp.data.on('error', (e) => { logWarn('llm-gateway stream error', { msg:e.message }); onError?.(e.message); });
 }
 
 module.exports = { chatStream };

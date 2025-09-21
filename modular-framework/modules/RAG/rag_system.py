@@ -1,9 +1,8 @@
-# rag_system.py
 """
 Simple Production RAG for Small Organizations
 - Ingests: GitHub repos, PDFs, text files
-- Uses OpenAI v1 async client (AsyncOpenAI)
-- Embeddings: text-embedding-3-small (1536 dims by default)
+- Uses LLM Gateway for chat completions (non-stream)
+- Embeddings: OpenAI embeddings (text-embedding-3-*)
 - Vector store: Qdrant
 - Cache: Redis
 """
@@ -17,8 +16,7 @@ import asyncio
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from fastapi.staticfiles import StaticFiles  # NEW
-from fnmatch import fnmatch  # NEW
+from fastapi.staticfiles import StaticFiles
 import uvicorn
 import PyPDF2
 import tiktoken
@@ -28,7 +26,9 @@ from loguru import logger
 from fastapi import FastAPI, UploadFile, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Dict, Optional, Union  # ensure Optional imported
+from typing import List, Dict, Optional
+
+import httpx
 
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
@@ -44,7 +44,7 @@ from qdrant_client.models import (
 logger.add("rag_system.log", rotation="500 MB", retention="30 days", level="INFO")
 
 # ---------- FastAPI ----------
-app = FastAPI(title="Simple RAG System", version="1.1.0")
+app = FastAPI(title="Simple RAG System", version="1.2.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -60,8 +60,11 @@ REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 
 ADMIN_API_PREFIX = "/admin-api"
 
+# LLM Gateway configuration
+LLM_GATEWAY_URL = os.getenv("LLM_GATEWAY_URL", "http://llm-gateway:3010/api").rstrip("/")
+RAG_USE_GATEWAY = os.getenv("RAG_USE_GATEWAY", "1") not in ("0", "false", "False", "")
 
-# OpenAI (v1 async client)
+# OpenAI (v1 async client) for embeddings and fallback chat if gateway unavailable
 from openai import AsyncOpenAI
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -71,14 +74,14 @@ oai = AsyncOpenAI(api_key=OPENAI_API_KEY)
 RAG_EMBED_MODEL = os.getenv("RAG_EMBED_MODEL", "text-embedding-3-small")  # 1536 dims
 RAG_SUMMARY_MODEL = os.getenv("RAG_SUMMARY_MODEL", "gpt-4o-mini")
 RAG_ANSWER_MODEL = os.getenv("RAG_ANSWER_MODEL", "gpt-4o-mini")
-# --- Chunking & embed safety limits ---
-EMBED_TOKEN_LIMIT = int(os.getenv("EMBED_TOKEN_LIMIT", "8192"))  # per-input hard limit of the embed model
-CHUNK_TOKENS_TARGET = int(os.getenv("CHUNK_TOKENS_TARGET", "700"))   # aim for ~700 tokens
-CHUNK_TOKENS_HARD = int(os.getenv("CHUNK_TOKENS_HARD", "1000"))      # never exceed this per chunk
-EMBED_MICROBATCH = int(os.getenv("EMBED_MICROBATCH", "64"))          # micro-batch size for embeddings
-MAX_FILE_TOKENS = int(os.getenv("MAX_FILE_TOKENS", "50000"))         # skip absurdly large files
-MINIFIED_LINE_LEN_THRESHOLD = int(os.getenv("MINIFIED_LINE_LEN_THRESHOLD", "300"))  # heuristic
 
+# --- Chunking & embed safety limits ---
+EMBED_TOKEN_LIMIT = int(os.getenv("EMBED_TOKEN_LIMIT", "8192"))   # embed model limit
+CHUNK_TOKENS_TARGET = int(os.getenv("CHUNK_TOKENS_TARGET", "700"))
+CHUNK_TOKENS_HARD = int(os.getenv("CHUNK_TOKENS_HARD", "1000"))
+EMBED_MICROBATCH = int(os.getenv("EMBED_MICROBATCH", "64"))
+MAX_FILE_TOKENS = int(os.getenv("MAX_FILE_TOKENS", "50000"))
+MINIFIED_LINE_LEN_THRESHOLD = int(os.getenv("MINIFIED_LINE_LEN_THRESHOLD", "300"))
 
 # Qdrant & Redis
 qdrant = QdrantClient(url=QDRANT_URL)
@@ -98,6 +101,82 @@ COLLECTIONS = {
     "documents": {"size": EMBED_DIM, "distance": Distance.COSINE},
     "conversations": {"size": EMBED_DIM, "distance": Distance.COSINE},
 }
+
+# ---------- LLM Gateway Client ----------
+class GatewayLLMClient:
+    """
+    Thin async client for llm-gateway chat endpoint.
+    Uses /api/v1/chat (non-stream) and expects a JSON { content } response.
+    """
+
+    def __init__(self, base_url: str, timeout: float = 60.0):
+        self.base_url = base_url.rstrip("/")
+        self._client = httpx.AsyncClient(timeout=timeout)
+
+    async def aclose(self):
+        try:
+            await self._client.aclose()
+        except Exception:
+            pass
+
+    async def chat(
+        self,
+        *,
+        model: str,
+        messages: List[dict],
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        use_responses: Optional[bool] = None,
+        reasoning: Optional[bool] = None,
+        metadata: Optional[dict] = None,
+        model_key: Optional[str] = None,
+        model_id: Optional[int] = None
+    ) -> str:
+        """
+        Call the gateway to get a completion.
+
+        The gateway expects the model to be configured in its DB. You can pass:
+        - model (name) OR model_key OR model_id.
+        """
+        url = f"{self.base_url}/v1/chat"
+        body: Dict = {
+            "messages": messages,
+            "stream": False,
+        }
+        if model_id is not None:
+            body["modelId"] = model_id
+        elif model_key:
+            body["modelKey"] = model_key
+        else:
+            body["model"] = model
+
+        if temperature is not None:
+            body["temperature"] = float(temperature)
+        if max_tokens is not None:
+            body["max_tokens"] = int(max_tokens)
+        if use_responses is not None:
+            body["useResponses"] = bool(use_responses)
+        if reasoning is not None:
+            body["reasoning"] = bool(reasoning)
+        if metadata:
+            body["metadata"] = metadata
+
+        try:
+            resp = await self._client.post(url, json=body)
+            if resp.status_code != 200:
+                try:
+                    data = resp.json()
+                    err = data.get("error") or data
+                except Exception:
+                    err = resp.text
+                raise RuntimeError(f"Gateway error {resp.status_code}: {err}")
+            data = resp.json()
+            return data.get("content") or ""
+        except Exception as e:
+            raise
+
+# Global LLM gateway client
+llm_gateway = GatewayLLMClient(LLM_GATEWAY_URL, timeout=120.0)
 
 # ---------- Embeddings ----------
 class EmbeddingService:
@@ -123,7 +202,6 @@ class EmbeddingService:
     async def embed_batch(self, texts: List[str]) -> List[List[float]]:
         """Micro-batch + per-item fallback so one oversize/invalid input doesn't kill all."""
         outputs: List[List[float]] = []
-        # pre-truncate
         cleaned = [self._truncate(t) for t in texts]
 
         for i in range(0, len(cleaned), EMBED_MICROBATCH):
@@ -133,7 +211,6 @@ class EmbeddingService:
                 outputs.extend([d.embedding for d in resp.data])
             except Exception as e:
                 logger.error(f"Embedding micro-batch failed: {e} — falling back per-item")
-                # try one-by-one to isolate the offender(s)
                 for t in sub:
                     try:
                         r = await oai.embeddings.create(model=RAG_EMBED_MODEL, input=t)
@@ -155,7 +232,6 @@ class CodeChunk:
     start_line: int
     end_line: int
     chunk_type: str
-
 
 class ChunkingService:
     """Smart chunking for different file types"""
@@ -182,7 +258,6 @@ class ChunkingService:
             if not buf:
                 return
             text = buf_text()
-            # Hard enforce token cap by forced slicing if needed
             toks = enc.encode(text)
             if len(toks) <= CHUNK_TOKENS_HARD:
                 chunks.append(CodeChunk(
@@ -191,7 +266,6 @@ class ChunkingService:
                     chunk_type="code_block"
                 ))
             else:
-                # force split into hard-sized pieces; keep approximate line mapping
                 for j in range(0, len(toks), CHUNK_TOKENS_HARD):
                     part = enc.decode(toks[j : j + CHUNK_TOKENS_HARD])
                     part_lines = part.count("\n") + 1
@@ -200,9 +274,6 @@ class ChunkingService:
                         language=language, start_line=buf_start_line, end_line=min(end_line, buf_start_line + part_lines),
                         chunk_type="code_block"
                     ))
-                    buf_start = buf_start_line + part_lines - 1
-                # adjust next start line roughly
-            # keep small overlap
             keep = buf[-5:] if len(buf) > 5 else buf[:]
             buf = keep.copy()
             buf_start_line = end_line - len(buf) + 1
@@ -214,25 +285,21 @@ class ChunkingService:
 
             boundaryish = (
                 line.lstrip().startswith(("def ", "class ", "function ", "const ", "export "))
-                or (not line.strip())  # blank
+                or (not line.strip())
             )
 
-            # Prefer to flush at boundaries once we hit target
             if tokens_now >= CHUNK_TOKENS_TARGET and boundaryish:
                 flush(idx)
                 continue
 
-            # Hard cap no matter what
             if tokens_now >= CHUNK_TOKENS_HARD:
                 flush(idx)
                 continue
 
-        # final flush
         if buf:
             flush(len(lines))
 
         return chunks
-
 
     def chunk_text(self, content: str, metadata: dict) -> List[dict]:
         chunks: List[dict] = []
@@ -248,7 +315,6 @@ class ChunkingService:
 
         return chunks
 
-
 # ---------- Ingestion ----------
 class GitHubIngester:
     """Handle GitHub repository ingestion"""
@@ -256,33 +322,12 @@ class GitHubIngester:
     def __init__(self, chunking_service: ChunkingService):
         self.chunking_service = chunking_service
         self.ignored_extensions = {
-            ".png",
-            ".jpg",
-            ".jpeg",
-            ".gif",
-            ".ico",
-            ".svg",
-            ".exe",
-            ".dll",
-            ".so",
-            ".lock",
-            ".pdf",
+            ".png", ".jpg", ".jpeg", ".gif", ".ico", ".svg",
+            ".exe", ".dll", ".so", ".lock", ".pdf",
         }
         self.code_extensions = {
-            ".py",
-            ".js",
-            ".ts",
-            ".jsx",
-            ".tsx",
-            ".java",
-            ".cpp",
-            ".c",
-            ".go",
-            ".rs",
-            ".php",
-            ".rb",
-            ".swift",
-            ".cs",
+            ".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".cpp", ".c",
+            ".go", ".rs", ".php", ".rb", ".swift", ".cs",
         }
 
     async def ingest_repo(self, repo_url: str, branch: str = "main") -> Dict:
@@ -309,7 +354,6 @@ class GitHubIngester:
                     try:
                         with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                             content = f.read()
-                            # Skip absurdly large token count
                             try:
                                 _tok_count = chunking_service.tokenizer.encode(content or "")
                                 if len(_tok_count) > MAX_FILE_TOKENS:
@@ -318,7 +362,6 @@ class GitHubIngester:
                             except Exception:
                                 pass
 
-                            # Heuristic: skip minified/one-liner-ish JS/CSS (very long average line)
                             if Path(file).suffix.lower() in {".js", ".css"}:
                                 lines = content.split("\n")
                                 if lines:
@@ -348,7 +391,6 @@ class GitHubIngester:
                         continue
 
             import shutil
-
             shutil.rmtree(repo_path, ignore_errors=True)
 
             logger.info(f"Ingested {repo_name}: {processed_files} files, {total_chunks} chunks")
@@ -389,7 +431,6 @@ class GitHubIngester:
         embeddings = await embedding_service.embed_batch(texts)
 
         for chunk, embedding in zip(chunks, embeddings):
-            # Stable id by using sorted metadata + chunk index
             meta_str = json.dumps(chunk["metadata"], sort_keys=True)
             chunk_id = hashlib.md5(f"{meta_str}:{chunk['chunk_index']}".encode()).hexdigest()
 
@@ -399,12 +440,11 @@ class GitHubIngester:
         if points:
             qdrant.upsert(collection_name="documents", points=points)
 
-
-# NEW: Retrieval models
+# ---------- Retrieval models ----------
 class RetrieveFilters(BaseModel):
     repos: Optional[List[str]] = None
-    path_prefixes: Optional[List[str]] = None   # matches payload['file_path'] startswith any
-    languages: Optional[List[str]] = None       # for code
+    path_prefixes: Optional[List[str]] = None
+    languages: Optional[List[str]] = None
     min_score: float = 0.0
 
 class RetrieveRequest(BaseModel):
@@ -414,24 +454,17 @@ class RetrieveRequest(BaseModel):
     search_docs: bool = True
     filters: Optional[RetrieveFilters] = None
     dedupe_by: str = "file"        # "file" | "source" | "none"
-    max_snippet_chars: int = 1200  # hard cap per snippet
-    build_prompt: bool = False     # if true, returns "prompt" field
+    max_snippet_chars: int = 1200
+    build_prompt: bool = False
     section_title: str = "Retrieved context"
-    token_budget: Optional[int] = None          # approx target tokens for prompt (cl100k)
+    token_budget: Optional[int] = None
 
 # ---------- Conversations ----------
 class ConversationManager:
-
     def __init__(self):
         self.collection_name = "conversations"
 
     async def save_conversation(self, conversation_id: str, messages: List[dict], metadata: dict = None) -> dict:
-        """
-        Save a complete conversation thread.
-
-        NOTE: if you pass metadata={"profile": "...", "tags": ["pets","project:omega"], ...}
-        those fields will be stored on each chunk payload and are later filterable.
-        """
         summary = await self._summarize_conversation(messages)
 
         chunks = []
@@ -466,7 +499,6 @@ class ConversationManager:
         for i, chunk in enumerate(chunks):
             embedding = await embedding_service.embed_text(chunk["chunk_text"])
             chunk_key = f"{conversation_id}_{i}_{datetime.now().timestamp()}"
-            # Flatten metadata into payload so we can filter by profile/tags
             payload = {
                 "content": chunk["chunk_text"],
                 "conversation_id": conversation_id,
@@ -487,7 +519,6 @@ class ConversationManager:
         if points:
             qdrant.upsert(collection_name=self.collection_name, points=points)
 
-        # cache last 20
         redis_client.setex(
             f"conversation:{conversation_id}",
             86400 * 7,
@@ -495,7 +526,6 @@ class ConversationManager:
         )
 
         return {"conversation_id": conversation_id, "chunks_saved": len(chunks), "summary": summary}
-
 
     async def get_conversation_context(self, conversation_id: str, current_query: str = None) -> dict:
         cached = redis_client.get(f"conversation:{conversation_id}")
@@ -515,26 +545,18 @@ class ConversationManager:
                     must=[FieldCondition(key="conversation_id", match=MatchValue(value=conversation_id))]
                 ),
             )
-            # Keep only high-scoring chunks
             for r in getattr(resp, "points", []):
                 if r.score is not None and r.score > 0.7:
                     relevant_history.append(r.payload)
 
         return {"recent_messages": recent_messages, "relevant_history": relevant_history, "conversation_id": conversation_id}
 
-
     async def search_all_conversations(
         self, query: str, limit: int = 5, profile: Optional[str] = None, tags: Optional[List[str]] = None
     ) -> List[dict]:
-        """
-        Vector search across ALL conversations.
-        - If profile is provided, restrict to that profile.
-        - If tags are provided, return results that match ANY of the tags.
-          (We perform one query per tag and merge.)
-        """
         query_embedding = await embedding_service.embed_text(query)
 
-        results_map: Dict[str, Dict] = {}  # id -> best point
+        results_map: Dict[str, Dict] = {}
         def add_points(points):
             for p in points or []:
                 pid = str(p.id)
@@ -546,12 +568,10 @@ class ConversationManager:
                         "score": p.score,
                     }
 
-        # Build the base MUST filter (profile if provided)
         base_must = []
         if profile:
             base_must.append(FieldCondition(key="profile", match=MatchValue(value=profile)))
 
-        # If tags provided: run one filtered query per tag and merge
         if tags:
             for tag in [t for t in tags if t]:
                 must = list(base_must)
@@ -564,7 +584,6 @@ class ConversationManager:
                 )
                 add_points(getattr(resp, "points", []))
         else:
-            # Single query with (optional) profile filter
             qfilter = Filter(must=base_must) if base_must else None
             resp = qdrant.query_points(
                 collection_name=self.collection_name,
@@ -574,15 +593,32 @@ class ConversationManager:
             )
             add_points(getattr(resp, "points", []))
 
-        # Sort merged results by score, cap to limit
         merged = sorted(results_map.values(), key=lambda r: (r["score"] or 0.0), reverse=True)[:limit]
         return merged
-
 
     async def _summarize_conversation(self, messages: List[dict]) -> str:
         if len(messages) < 3:
             return "Brief conversation"
         conversation_text = "\n".join([f"{m['role']}: {m['content'][:200]}" for m in messages[-10:]])
+
+        # Try via Gateway first
+        if RAG_USE_GATEWAY:
+            try:
+                content = await llm_gateway.chat(
+                    model=RAG_SUMMARY_MODEL,
+                    messages=[
+                        {"role": "system", "content": "Summarize this conversation in 2-3 sentences."},
+                        {"role": "user", "content": conversation_text},
+                    ],
+                    max_tokens=100,
+                    temperature=0.2,
+                )
+                if content:
+                    return content
+            except Exception as e:
+                logger.warning(f"Gateway summary failed, will fallback to OpenAI: {e}")
+
+        # Fallback to OpenAI directly
         try:
             resp = await oai.chat.completions.create(
                 model=RAG_SUMMARY_MODEL,
@@ -594,9 +630,8 @@ class ConversationManager:
             )
             return resp.choices[0].message.content
         except Exception as e:
-            logger.warning(f"Summary failed, falling back: {e}")
+            logger.warning(f"Summary failed, falling back to raw text: {e}")
             return conversation_text[:400]
-
 
 # ---------- Query Engine ----------
 class QueryEngine:
@@ -604,32 +639,20 @@ class QueryEngine:
 
     def __init__(self):
         self.cache_ttl = 3600
-        self._enc = tiktoken.get_encoding("cl100k_base")  # NEW
+        self._enc = tiktoken.get_encoding("cl100k_base")
 
-    # --- NEW: retrieval-only path ---
-    async def retrieve(self, req: RetrieveRequest) -> Dict:
-        """
-        Return top-N snippets (code &/or docs) for client-side prompt assembly.
-        Does NOT call the LLM. Optionally assembles a token-budgeted prompt.
-        """
-        # cache key across query + filters
-        cache_key = "retrieve:" + hashlib.md5(
-            json.dumps(req.dict(), sort_keys=True).encode()
-        ).hexdigest()
+    async def retrieve(self, req: "RetrieveRequest") -> Dict:
+        cache_key = "retrieve:" + hashlib.md5(json.dumps(req.dict(), sort_keys=True).encode()).hexdigest()
         cached = redis_client.get(cache_key)
         if cached:
             out = json.loads(cached)
             out["usage"] = {**out.get("usage", {}), "cached": True}
             return out
 
-        # embed
         query_emb = await embedding_service.embed_text(req.query)
 
-        # helper: query a collection with optional rough filter for repo
         def _qdrant_query(collection: str, limit: int, repos: Optional[List[str]]):
-            qfilter = None
             if repos:
-                # build simple OR by doing one query per repo and merge; keep code simple/portable
                 all_pts = []
                 for r in repos:
                     resp = qdrant.query_points(
@@ -640,11 +663,9 @@ class QueryEngine:
                     )
                     all_pts.extend(getattr(resp, "points", []) or [])
                 return all_pts
-            # no repo filter
             resp = qdrant.query_points(collection_name=collection, query=query_emb, limit=limit)
             return getattr(resp, "points", []) or []
 
-        # fetch generously, we’ll filter/dedupe locally
         mult = max(3, 2 * (req.top_k // 5 + 1))
         code_pts = _qdrant_query("code", req.top_k * mult, (req.filters or RetrieveFilters()).repos) if req.search_code else []
         doc_pts  = _qdrant_query("documents", req.top_k * mult, (req.filters or RetrieveFilters()).repos) if req.search_docs else []
@@ -656,8 +677,7 @@ class QueryEngine:
                 pl = p.payload or {}
                 if p.score is None:
                     continue
-                # Qdrant (cosine): LOWER distance is better.
-                # Interpret min_score from API as "max_distance" (keep name for backwards-compat).
+                # Higher score is better for cosine in Qdrant
                 if pf.min_score and (p.score or 0) < pf.min_score:
                     continue
                 if is_code and pf.languages and (pl.get("language") not in pf.languages):
@@ -672,12 +692,9 @@ class QueryEngine:
         code_pts = _post_filter(code_pts, is_code=True)
         doc_pts  = _post_filter(doc_pts,  is_code=False)
 
-        # merge and sort by score
         all_pts = code_pts + doc_pts
         all_pts.sort(key=lambda x: (x.score or -1), reverse=True)
 
-
-        # dedupe
         seen = set()
         snippets = []
         for p in all_pts:
@@ -721,7 +738,6 @@ class QueryEngine:
             if len(snippets) >= req.top_k:
                 break
 
-        # optional prompt assembly under token budget
         prompt = None
         truncated = False
         approx_tokens = 0
@@ -760,25 +776,15 @@ class QueryEngine:
                 "cached": False,
             },
         }
-        # cache
         redis_client.setex(cache_key, self.cache_ttl, json.dumps(out))
         return out
 
     async def query(self, question: str, search_code: bool = True, search_docs: bool = True) -> Dict:
-        """
-        Old /query behavior, implemented on top of the new retrieval path.
-        - Runs retrieve() to collect best snippets.
-        - Builds a context block.
-        - Calls the LLM to produce an answer.
-        """
-        cache_key = "rag:" + hashlib.md5(
-            f"{question}|{search_code}|{search_docs}".encode()
-        ).hexdigest()
+        cache_key = "rag:" + hashlib.md5(f"{question}|{search_code}|{search_docs}".encode()).hexdigest()
         cached = redis_client.get(cache_key)
         if cached:
             return json.loads(cached)
 
-        # Pull context via retrieval; keep a generous cap, no dedupe (we want strongest chunks)
         ret = await self.retrieve(RetrieveRequest(
             query=question,
             top_k=7,
@@ -787,7 +793,7 @@ class QueryEngine:
             dedupe_by="none",
             build_prompt=True,
             section_title="Context from internal code & docs",
-            token_budget=1800,  # cl100k budget for context
+            token_budget=1800,
         ))
 
         context = ret.get("prompt") or "No relevant context found."
@@ -820,20 +826,38 @@ Instructions:
 - For code questions, prefer examples that appear in the context.
 """
 
-        try:
-            resp = await oai.chat.completions.create(
-                model=RAG_ANSWER_MODEL,
-                messages=[
-                    {"role": "system", "content": "You are a helpful assistant for a small development team. Answer questions based on their internal documentation and codebase."},
-                    {"role": "user", "content": prompt},
-                ],
-                max_tokens=1000,
-                temperature=0.3,
-            )
-            answer = resp.choices[0].message.content
-        except Exception as e:
-            logger.error(f"Answer generation failed: {e}")
-            answer = "I couldn't generate an answer right now. Here is the context I found:\n\n" + (context or "")
+        answer = None
+        # Prefer Gateway
+        if RAG_USE_GATEWAY:
+            try:
+                answer = await llm_gateway.chat(
+                    model=RAG_ANSWER_MODEL,
+                    messages=[
+                        {"role": "system", "content": "You are a helpful assistant for a small development team. Answer questions based on their internal documentation and codebase."},
+                        {"role": "user", "content": prompt},
+                    ],
+                    max_tokens=1000,
+                    temperature=0.3,
+                )
+            except Exception as e:
+                logger.error(f"Gateway answer generation failed: {e}")
+
+        # Fallback to OpenAI if gateway disabled or failed
+        if not answer:
+            try:
+                resp = await oai.chat.completions.create(
+                    model=RAG_ANSWER_MODEL,
+                    messages=[
+                        {"role": "system", "content": "You are a helpful assistant for a small development team. Answer questions based on their internal documentation and codebase."},
+                        {"role": "user", "content": prompt},
+                    ],
+                    max_tokens=1000,
+                    temperature=0.3,
+                )
+                answer = resp.choices[0].message.content
+            except Exception as e:
+                logger.error(f"OpenAI fallback failed: {e}")
+                answer = "I couldn't generate an answer right now. Here is the context I found:\n\n" + (context or "")
 
         result = {
             "answer": answer,
@@ -843,15 +867,11 @@ Instructions:
         redis_client.setex(cache_key, self.cache_ttl, json.dumps(result))
         return result
 
-
-    # helper: approximate tokens for cl100k (NEW)
     def _tok(self, text: str) -> int:
         try:
             return len(self._enc.encode(text or ""))
         except Exception:
-            # safest fallback
             return max(1, (len(text or "") // 4))
-
 
 # ---------- Services ----------
 chunking_service = ChunkingService()
@@ -859,8 +879,7 @@ github_ingester = GitHubIngester(chunking_service)
 query_engine = QueryEngine()
 conversation_manager = ConversationManager()
 
-
-# ---------- Startup ----------
+# ---------- Startup / Shutdown ----------
 @app.on_event("startup")
 async def startup():
     # Check embedding dimension vs collection size
@@ -880,6 +899,10 @@ async def startup():
             f"collections are configured for {COLLECTIONS['code']['size']}. "
             "Ensure they match!"
         )
+
+@app.on_event("shutdown")
+async def shutdown():
+    await llm_gateway.aclose()
 
 @app.post("/conversation/search")
 async def search_conversations(request: dict):
@@ -905,18 +928,15 @@ class IngestRepoRequest(BaseModel):
     repo_url: str
     branch: str = "main"
 
-
 class QueryRequest(BaseModel):
     question: str
     search_code: bool = True
     search_docs: bool = True
 
-
 # MOUNT STATIC ADMIN UI
-app.mount("/admin", StaticFiles(directory="public", html=True), name="admin")  # NEW
+app.mount("/admin", StaticFiles(directory="public", html=True), name="admin")
 
-
-# ---------- helpers (NEW) ----------
+# ---------- helpers ----------
 def qdrant_scroll_all(collection: str, with_payload: bool = True):
     """Yield all points (no vectors) for a collection."""
     next_page = None
@@ -933,7 +953,6 @@ def qdrant_scroll_all(collection: str, with_payload: bool = True):
         if not next_page:
             break
 
-
 def count_by_payload_field(collection: str, field: str):
     """Return dict counter {value: count} for a given payload field."""
     from collections import Counter
@@ -941,7 +960,6 @@ def count_by_payload_field(collection: str, field: str):
     c = Counter()
     for pt in qdrant_scroll_all(collection):
         val = (pt.payload or {}).get(field)
-        # allow list or scalar
         if isinstance(val, list):
             for v in val:
                 if v:
@@ -950,13 +968,11 @@ def count_by_payload_field(collection: str, field: str):
             c[str(val)] += 1
     return dict(c)
 
-
 # ---------- Endpoints ----------
 @app.post("/ingest/repo")
 async def ingest_repository(request: IngestRepoRequest, background_tasks: BackgroundTasks):
     background_tasks.add_task(github_ingester.ingest_repo, request.repo_url, request.branch)
     return {"message": "Repository ingestion started", "repo": request.repo_url}
-
 
 @app.post("/ingest/pdf")
 async def ingest_pdf(file: UploadFile):
@@ -989,11 +1005,9 @@ async def ingest_pdf(file: UploadFile):
 
     return {"message": f"Ingested {file.filename}", "chunks": len(chunks)}
 
-
 @app.post("/query")
 async def query(request: QueryRequest):
     return await query_engine.query(request.question, request.search_code, request.search_docs)
-
 
 @app.post("/conversation/save")
 async def save_conversation(request: dict):
@@ -1004,11 +1018,9 @@ async def save_conversation(request: dict):
     )
     return result
 
-
 @app.get("/conversation/{conversation_id}")
 async def get_conversation(conversation_id: str, current_query: Optional[str] = None):
     return await conversation_manager.get_conversation_context(conversation_id, current_query)
-
 
 @app.get("/stats")
 async def get_stats():
@@ -1022,11 +1034,9 @@ async def get_stats():
     stats["total_chunks"] = sum(v for v in stats.values())
     return stats
 
-
 @app.get("/health")
 async def health():
     return {"status": "healthy"}
-
 
 @app.delete("/clear/{collection}")
 async def clear_collection(collection: str):
@@ -1041,7 +1051,6 @@ async def clear_collection(collection: str):
 
 @app.get(f"{ADMIN_API_PREFIX}/info")
 async def admin_info():
-    """Basic config & runtime for the UI."""
     return {
         "models": {
             "embed": RAG_EMBED_MODEL,
@@ -1056,22 +1065,20 @@ async def admin_info():
         "collections": list(COLLECTIONS.keys()),
         "qdrant_url": QDRANT_URL,
         "redis_host": REDIS_HOST,
+        "llm_gateway_url": LLM_GATEWAY_URL,
+        "use_gateway": RAG_USE_GATEWAY,
     }
-
 
 @app.get(f"{ADMIN_API_PREFIX}/repos")
 async def admin_repos():
-    """Aggregate repo counts from 'code' + 'documents' payloads."""
     from collections import defaultdict
 
     counts = defaultdict(lambda: {"count": 0, "collections": set()})
-    # code
     for p in qdrant_scroll_all("code"):
         repo = (p.payload or {}).get("repo")
         if repo:
             counts[repo]["count"] += 1
             counts[repo]["collections"].add("code")
-    # documents
     for p in qdrant_scroll_all("documents"):
         repo = (p.payload or {}).get("repo")
         if repo:
@@ -1085,30 +1092,24 @@ async def admin_repos():
     items.sort(key=lambda x: x["count"], reverse=True)
     return {"items": items}
 
-
 @app.get(f"{ADMIN_API_PREFIX}/docs")
 async def admin_docs():
-    """Aggregate document sources & counts from 'documents' collection."""
     counts = count_by_payload_field("documents", "source")
     items = [{"source": k, "count": v} for k, v in counts.items()]
     items.sort(key=lambda x: x["count"], reverse=True)
     return {"items": items}
 
-
 @app.get(f"{ADMIN_API_PREFIX}/tags")
 async def admin_tags():
-    """Aggregate tags from conversation payloads."""
-    # tags could be a list or string in payloads (metadata you store)
     from collections import defaultdict
 
     tag_counts = defaultdict(int)
-    conv_counts = defaultdict(set)  # tag -> set(conversation_id)
+    conv_counts = defaultdict(set)
 
     for p in qdrant_scroll_all("conversations"):
         payload = p.payload or {}
         cid = payload.get("conversation_id")
         tags = payload.get("tags")
-        # normalize
         if isinstance(tags, str):
             tags = [t.strip() for t in tags.split(",") if t.strip()]
         if isinstance(tags, list):
@@ -1124,10 +1125,8 @@ async def admin_tags():
     items.sort(key=lambda x: x["count"], reverse=True)
     return {"items": items}
 
-
 @app.get(f"{ADMIN_API_PREFIX}/conversations")
 async def admin_conversations(profile: Optional[str] = None, tags: Optional[str] = None, limit: int = 100):
-    """List conversations with last timestamp, tags (union), chunk count."""
     from collections import defaultdict
 
     tag_list = [t.strip() for t in (tags or "").split(",") if t.strip()]
@@ -1140,7 +1139,6 @@ async def admin_conversations(profile: Optional[str] = None, tags: Optional[str]
             continue
         if profile and pl.get("profile") != profile:
             continue
-        # normalize tags for filter + union
         its_tags = pl.get("tags")
         if isinstance(its_tags, str):
             its_tags = [t.strip() for t in its_tags.split(",") if t.strip()]
@@ -1153,7 +1151,6 @@ async def admin_conversations(profile: Optional[str] = None, tags: Optional[str]
         index[cid]["tags"].update(its_tags)
         ts = pl.get("timestamp")
         if ts:
-            # keep max timestamp string (ISO sorts ok) or convert to comparable
             index[cid]["last_timestamp"] = max(index[cid]["last_timestamp"] or ts, ts)
 
     items = [
@@ -1168,11 +1165,8 @@ async def admin_conversations(profile: Optional[str] = None, tags: Optional[str]
     items.sort(key=lambda x: x["last_timestamp"] or "", reverse=True)
     return {"items": items[: max(1, limit)]}
 
-
 @app.post(f"{ADMIN_API_PREFIX}/cache/clear")
 async def admin_cache_clear():
-    """Clear common Redis keys used by this service (best-effort)."""
-    # narrow clear: only keys we know (rag:* and conversation:*). Avoid full FLUSHALL.
     cleared = 0
     for pattern in ["rag:*", "conversation:*"]:
         for key in redis_client.scan_iter(match=pattern, count=500):
@@ -1182,12 +1176,6 @@ async def admin_cache_clear():
 
 @app.post("/retrieve")
 async def retrieve(req: RetrieveRequest):
-    """
-    Retrieval-only endpoint for chat augmentation.
-
-    - Returns snippets (code/docs) + optional assembled prompt.
-    - Does NOT call the LLM.
-    """
     return await query_engine.retrieve(req)
 
 if __name__ == "__main__":

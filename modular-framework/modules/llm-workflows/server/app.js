@@ -8,7 +8,7 @@ const Ajv = require('ajv');
 const { execBash, execPython, sanitizeCwd } = require('./executor');
 
 const BASE_PATH = (process.env.BASE_PATH || '').replace(/\/$/, ''); // e.g. /modules/llm-workflows
-const LLM_CHAT_URL = process.env.LLM_CHAT_URL || 'http://localhost:3004/api/chat'; // llm-chat backend
+const LLM_GATEWAY_URL = process.env.LLM_GATEWAY_URL || 'http://localhost:3010/compat/llm-chat'; // llm-gateway backend
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 const WF_FILE = path.join(DATA_DIR, 'workflows.json');
 
@@ -28,8 +28,8 @@ app.get('/', (_req, res) => res.sendFile(path.join(pub, 'index.html')));
 if (BASE_PATH) app.get(`${BASE_PATH}/`, (_req, res) => res.sendFile(path.join(pub, 'index.html')));
 
 // Health
-app.get('/health', (_req, res) => res.json({ status: 'healthy', chatUrl: LLM_CHAT_URL }));
-if (BASE_PATH) app.get(`${BASE_PATH}/health`, (_req, res) => res.json({ status: 'healthy', chatUrl: LLM_CHAT_URL }));
+app.get('/health', (_req, res) => res.json({ status: 'healthy', gatewayurl: LLM_GATEWAY_URL }));
+if (BASE_PATH) app.get(`${BASE_PATH}/health`, (_req, res) => res.json({ status: 'healthy', gatewaygatewayurl: LLM_GATEWAY_URL }));
 
 // Storage helpers
 function ensureDir(p) { if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true }); }
@@ -140,10 +140,10 @@ function validateAgainstSchema(json, schema) {
   }
 }
 
-// Call llm-chat backend
-async function callChat({ provider, baseUrl, apiKey, model, temperature, max_tokens, messages }) {
-  // We rely on llm-chat server to route to the correct provider. We send stream:false for simplicity.
-  const resp = await axios.post(LLM_CHAT_URL, {
+// Call llm-gateway backend
+async function callgateway({ provider, baseUrl, apiKey, model, temperature, max_tokens, messages }) {
+  // We rely on llm-gateway server to route to the correct provider. We send stream:false for simplicity.
+  const resp = await axios.post(LLM_GATEWAY_URL, {
     provider, baseUrl, apiKey, model, messages, temperature, max_tokens, stream: false
   }, { timeout: 60_000 });
   const content = resp?.data?.content || '';
@@ -191,7 +191,7 @@ async function runStep({ chatConfig, step, vars }) {
 
   let raw = '';
   try {
-    raw = await callChat({ ...mergedChat, messages });
+    raw = await callgateway({ ...mergedChat, messages });
     log('info', 'LLM returned', { length: raw.length, head: raw.slice(0, 200) });
     if (!raw.length) log('warn', 'LLM response was empty');  
   } catch (e) {
