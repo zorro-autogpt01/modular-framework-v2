@@ -69,7 +69,7 @@ async function handleOpenAICompat({
     if (!isGpt5 && typeof temperature === 'number' && !Number.isNaN(temperature)) {
       rBodyBase.temperature = temperature;
     }
-    if (max_tokens) rBodyBase.max_output_tokens = max_tokens;
+    if (!isGpt5 && max_tokens) rBodyBase.max_output_tokens = max_tokens;
 
     logDebug('RESPONSES request', { rid, url, body: rBodyBase });
 
@@ -81,7 +81,35 @@ async function handleOpenAICompat({
         response.data.on('error', (e) => { logWarn('RESPONSES stream error', { rid, err: e.message }); sendSSE({ type:'error', message: e.message }); res.end(); });
       } else {
         const { data } = await axios.post(url, rBodyBase, { headers });
-        const content = data?.output_text?.join?.('') || data?.message?.content || data?.content || '';
+    
+        // robust text extraction for varied /v1/responses shapes
+        function extractText(x) {
+          if (!x) return '';
+          if (typeof x === 'string') return x;
+          const direct =
+            x.output_text?.join?.('') ||
+            x.message?.content ||
+            x.content;
+          if (direct) return String(direct);
+          // deep walk to find any { text: "..." } or { content: "..." } strings
+          const acc = [];
+          const walk = (v) => {
+            if (!v) return;
+            if (typeof v === 'string') { acc.push(v); return; }
+            if (Array.isArray(v)) { v.forEach(walk); return; }
+            if (typeof v === 'object') {
+              if (typeof v.text === 'string') acc.push(v.text);
+              if (typeof v.content === 'string') acc.push(v.content);
+              for (const k of Object.keys(v)) walk(v[k]);
+            }
+          };
+          walk(x);
+          return acc.join('');
+        }
+    
+        const content = extractText(data);
+        logDebug('RESPONSES non-stream result', { rid, empty: !content, topLevelKeys: Object.keys(data || {}) });
+        if (!content) logWarn('No text extracted from /v1/responses', { rid });
         res.json({ content });
       }
     } catch (err) {
@@ -109,8 +137,8 @@ async function handleOpenAICompat({
   const url = `${base}/v1/chat/completions`;
   const body = { model, messages, stream: sseMode };
   if (typeof temperature === 'number' && !Number.isNaN(temperature)) body.temperature = temperature;
-  if (max_tokens) {
-    if (isGpt5 || reasoning === true) body.max_completion_tokens = max_tokens;
+  if (max_tokens && !isGpt5) {
+    if (reasoning === true) body.max_completion_tokens = max_tokens;
     else body.max_tokens = max_tokens;
   }
 

@@ -193,7 +193,7 @@ async function testStep() {
   const resp = await fetch('./api/testStep', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat: wf.chat, step, vars })
+    body: JSON.stringify({ chat: wf.chat, step, vars, execute: $('execInTest')?.checked === true })
   });
   const data = await resp.json();
   renderStepTestResult(data);
@@ -432,7 +432,23 @@ function renderStepTestResult(data) {
       <h4>Raw</h4>
       <pre class="log">${escapeHtml((data.raw || '').slice(0, 4000))}</pre>
       <h4>Artifacts (${data.artifacts?.length || 0})</h4>
-      ${renderArtifacts(data.artifacts || [])}
+      ${(data.actionResults && data.actionResults.length) ? `
+        <h4>Action Results (${data.actionResults.length})</h4>
+        ${data.actionResults.map(r => `
+          <div class="artifact">
+            <div><span class="pill">${escapeHtml(r.kind || '')}</span> <span class="muted">index: ${r.index}</span></div>
+            ${r.skipped ? `<div class="muted">skipped: ${escapeHtml(r.reason||'')}</div>` : `
+              ${r.error ? `<div class="error">error: ${escapeHtml(r.error)}</div>` : `
+                <div class="muted">exit: ${String(r.exitCode)} ${r.killed?'(killed)':''}</div>
+                <div class="muted">stdout:</div>
+                <pre class="log">${escapeHtml((r.stdout || '').slice(0, 4000))}</pre>
+                <div class="muted">stderr:</div>
+                <pre class="log">${escapeHtml((r.stderr || '').slice(0, 4000))}</pre>
+              `}
+            `}
+          </div>
+        `).join('')}
+      ` : ''}
       <h4>Step Logs</h4>
       <pre class="log">${(data.logs || []).map(l => `[${l.ts}] ${l.level.toUpperCase()} ${l.msg}${l.meta ? ' ' + JSON.stringify(l.meta) : ''}`).join('\n')}</pre>
     </div>

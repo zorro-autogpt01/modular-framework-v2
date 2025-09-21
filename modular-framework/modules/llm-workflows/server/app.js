@@ -5,6 +5,7 @@ const fs = require('fs');
 const axios = require('axios');
 const bodyParser = require('body-parser');
 const Ajv = require('ajv');
+const { execBash, execPython, sanitizeCwd } = require('./executor');
 
 const BASE_PATH = (process.env.BASE_PATH || '').replace(/\/$/, ''); // e.g. /modules/llm-workflows
 const LLM_CHAT_URL = process.env.LLM_CHAT_URL || 'http://localhost:3004/api/chat'; // llm-chat backend
@@ -61,20 +62,25 @@ function addRun(r) {
 
 // JSON helpers
 function tryParseJson(text) {
-  // Try direct parse
+  // 1) fast path
   try { return JSON.parse(text); } catch {}
-  // Try code fence ```json ... ```
-  const fenceMatch = text.match(/```json\s*([\s\S]*?)```/i);
-  if (fenceMatch) {
-    try { return JSON.parse(fenceMatch[1]); } catch {}
+
+  // 2) fenced ```json
+  const m = text.match(/```json\s*([\s\S]*?)```/i);
+  if (m) { try { return JSON.parse(m[1]); } catch {} }
+
+  // 3) balanced brace blocks (first valid wins)
+  const blocks = [];
+  let depth = 0, start = -1, inStr = false, esc = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inStr) { if (esc) esc = false; else if (c === '\\') esc = true; else if (c === '"') inStr = false; continue; }
+    if (c === '"') { inStr = true; continue; }
+    if (c === '{') { if (depth === 0) start = i; depth++; continue; }
+    if (c === '}') { depth--; if (depth === 0 && start >= 0) { blocks.push(text.slice(start, i + 1)); start = -1; } }
   }
-  // Try to find first {...} block (naive)
-  const firstBrace = text.indexOf('{');
-  const lastBrace = text.lastIndexOf('}');
-  if (firstBrace >= 0 && lastBrace > firstBrace) {
-    const maybe = text.slice(firstBrace, lastBrace + 1);
-    try { return JSON.parse(maybe); } catch {}
-  }
+  for (const b of blocks) { try { return JSON.parse(b); } catch {} }
+
   return null;
 }
 
@@ -95,9 +101,21 @@ function lookup(obj, pathStr) {
   return cur;
 }
 
+const BUILTIN_SCHEMAS = { 'actions.v1': defaultActionSchema() };
+function resolveSchema(schemaLike) {
+  if (!schemaLike) return defaultActionSchema();
+  if (typeof schemaLike === 'string') {
+    try { return JSON.parse(schemaLike); } catch { /* not JSON text */ }
+    return BUILTIN_SCHEMAS[schemaLike] || defaultActionSchema();
+  }
+  return schemaLike;
+}
+
+
 // System prompt for JSON schema compliance
 function buildSystemGuard(schema) {
-  const schemaStr = typeof schema === 'string' ? schema : JSON.stringify(schema, null, 2);
+  const schemaObj = resolveSchema(schema);
+  const schemaStr = JSON.stringify(schemaObj, null, 2);
   return [
     'You are a controller that MUST return a single JSON object and nothing else.',
     'Rules:',
@@ -113,7 +131,7 @@ function buildSystemGuard(schema) {
 const ajv = new Ajv({ allErrors: true, strict: false });
 function validateAgainstSchema(json, schema) {
   try {
-    const objSchema = typeof schema === 'string' ? JSON.parse(schema) : schema;
+    const objSchema = resolveSchema(schema);
     const validate = ajv.compile(objSchema);
     const valid = validate(json);
     return { valid, errors: validate.errors || [] };
@@ -138,10 +156,14 @@ async function runStep({ chatConfig, step, vars }) {
   function log(level, msg, meta) { logs.push({ ts: new Date().toISOString(), level, msg, meta }); }
 
   // Build system + user content
-  const sys = step.systemGuard === false ? (step.system || '') : buildSystemGuard(step.schema || defaultActionSchema());
-  const user = renderTemplate(step.prompt || '', vars || {});
-  log('info', 'Prepared prompt', { user });
+  const effectiveSchema = resolveSchema(step.schema || defaultActionSchema());
+  const sys = step.systemGuard === false ? (step.system || '') : buildSystemGuard(effectiveSchema);
 
+  const user = renderTemplate(step.prompt || '', vars || {});
+  log('info', 'Prepared prompt', {
+    systemPreview: sys.slice(0, 800),
+    userPreview: user.slice(0, 800)
+  });
   // Call LLM
   const messages = [];
   if (sys) messages.push({ role: 'system', content: sys });
@@ -155,6 +177,13 @@ async function runStep({ chatConfig, step, vars }) {
     temperature: typeof step.temperature === 'number' ? step.temperature : chatConfig.temperature,
     max_tokens: step.max_tokens || chatConfig.max_tokens
   };
+  if (/^(gpt-5|o5)/i.test(mergedChat.model || '')) {
+  delete mergedChat.max_tokens;
+  delete mergedChat.temperature; // let the backend decide
+}
+  const redacted = { ...mergedChat, apiKey: mergedChat.apiKey ? '***REDACTED***' : undefined };
+  log('debug', 'Merged chat config', redacted);
+  log('debug', 'Messages summary', { count: messages.length });
   if (!mergedChat.baseUrl || !mergedChat.model || (!mergedChat.apiKey && (mergedChat.provider === 'openai' || mergedChat.provider === 'openai-compatible'))) {
     log('error', 'Chat config incomplete', { mergedChat });
     return { ok: false, logs, raw: '', json: null, validation: { valid: false, errors: [{ message: 'Chat configuration missing baseUrl/model/apiKey' }] } };
@@ -163,7 +192,8 @@ async function runStep({ chatConfig, step, vars }) {
   let raw = '';
   try {
     raw = await callChat({ ...mergedChat, messages });
-    log('info', 'LLM returned', { length: raw.length });
+    log('info', 'LLM returned', { length: raw.length, head: raw.slice(0, 200) });
+    if (!raw.length) log('warn', 'LLM response was empty');  
   } catch (e) {
     log('error', 'LLM call failed', { message: e.message });
     return { ok: false, logs, raw, json: null, validation: { valid: false, errors: [{ message: 'LLM call failed: ' + e.message }] } };
@@ -177,7 +207,7 @@ async function runStep({ chatConfig, step, vars }) {
   }
 
   // Validate
-  const validation = validateAgainstSchema(parsed, step.schema || defaultActionSchema());
+  const validation = validateAgainstSchema(parsed, effectiveSchema);
   if (!validation.valid) {
     log('warn', 'Schema validation failed', { errors: validation.errors });
     return { ok: false, logs, raw, json: parsed, validation };
@@ -308,11 +338,40 @@ if (BASE_PATH) app.post(`${BASE_PATH}/api/validate`, (req, res) => {
 
 // API: test single step
 app.post('/api/testStep', async (req, res) => {
-  const { chat, step, vars } = req.body || {};
+  const { chat, step, vars, execute=false } = req.body || {};
   try {
     const result = await runStep({ chatConfig: chat || {}, step: step || {}, vars: vars || {} });
-    res.json(result);
-  } catch (e) {
+    if (execute && result.ok && Array.isArray(result.json?.actions)) {
+      const actionResults = [];
+      for (const [i, a] of result.json.actions.entries()) {
+        if (!a || typeof a !== 'object') continue;
+        const kind = String(a.type || a.kind || '').toLowerCase();
+        const code = a.content || a.code || '';
+        const cwd = sanitizeCwd(a.cwd || '');
+        const timeoutMs = Math.min(Number(a.timeoutSec || 20000), 300000);
+        if (!['bash','python'].includes(kind)) {
+          actionResults.push({ index:i, kind, skipped:true, reason:'unsupported kind' });
+          continue;
+        }
+        try {
+          if (kind === 'bash') {
+            let out='', err='';
+            const r = await execBash({ cmd: code, cwd, env: a.env, timeoutMs },
+              (s)=> out+=s, (s)=> err+=s );
+            actionResults.push({ index:i, kind, exitCode:r.code, killed:r.killed, stdout:out, stderr:err });
+          } else if (kind === 'python') {
+            let out='', err='';
+            const r = await execPython({ script: code, cwd, env: a.env, timeoutMs },
+              (s)=> out+=s, (s)=> err+=s );
+            actionResults.push({ index:i, kind, exitCode:r.code, killed:r.killed, stdout:out, stderr:err });
+          }
+        } catch (e) {
+          actionResults.push({ index:i, kind, error: String(e.message || e) });
+        }
+      }
+      result.actionResults = actionResults;
+    }
+    res.json(result);  } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }
 });
