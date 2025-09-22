@@ -82,7 +82,12 @@
             </div>
             <div>
               <label>Model</label>
+              <div class="flex">
+                <select id="modelSelect" title="Models from llm-gateway" style="flex:1"></select>
+                <button class="ghost" id="refreshModelsBtn" title="Refresh models from llm-gateway">↻</button>
+              </div>
               <input id="model" placeholder="gpt-4o-mini or llama3" />
+              <div class="muted" id="modelInfo"></div>
             </div>
             <div>
               <label>Provider</label>
@@ -194,7 +199,12 @@
             <div class="row3">
               <div>
                 <label>Model</label>
+                <div class="flex">
+                  <select id="sModelSelect" title="Models from llm-gateway" style="flex:1"></select>
+                  <button class="ghost" id="refreshModelsBtn2" title="Refresh models from llm-gateway">↻</button>
+                </div>
                 <input id="sModel" placeholder="(inherit)" />
+                <div class="muted" id="sModelInfo"></div>
               </div>
               <div>
                 <label>Temperature</label>

@@ -2,7 +2,8 @@ const state = {
   workflows: [],
   current: null,
   currentStepIdx: -1,
-  runs: []
+  runs: [],
+  models: [] // from llm-gateway
 };
 
 // Helpers
@@ -15,7 +16,6 @@ function parseJson(text, fallback = null) { try { return JSON.parse(text); } cat
  // ---- Prompt preview helpers ----
  function renderTemplate(tpl, vars) {
    return String(tpl || '').replace(/\{\{\s*([\w.\-]+)\s*\}\}/g, (_m, key) => {
-     // simple dotted-path lookup
      const parts = String(key).split('.');
      let cur = vars || {};
      for (const p of parts) {
@@ -59,8 +59,87 @@ function parseJson(text, fallback = null) { try { return JSON.parse(text); } cat
   const vars = parseJson($('varsInput')?.value || '{}', {});
   pre.textContent = computeFullPromptForStep(step, vars) || '';
 }
- 
 
+// Gateway models
+async function fetchGatewayModels() {
+  try {
+    const r = await fetch('/llm-gateway/api/models', { credentials: 'include' });
+    if (!r.ok) throw new Error(await r.text());
+    const data = await r.json();
+    state.models = data.items || [];
+  } catch (e) {
+    console.warn('Failed to load gateway models:', e.message || e);
+    state.models = [];
+  }
+  populateModelSelects();
+}
+function modelOptionLabel(m) {
+  const name = m.display_name || m.model_name;
+  const prov = m.provider_name || m.provider_kind || '';
+  const mode = m.mode && m.mode !== 'auto' ? ` · ${m.mode}` : '';
+  const inC = Number(m.input_cost_per_million || 0);
+  const outC = Number(m.output_cost_per_million || 0);
+  const cost = (inC || outC) ? ` · $${inC}/$${outC}` : '';
+  return `${name} · ${prov}${mode}${cost}`;
+}
+function populateModelSelect(selectEl, infoEl, currentValue) {
+  if (!selectEl) return;
+  selectEl.innerHTML = '';
+  const def = document.createElement('option');
+  def.value = ''; def.textContent = '-- Select from llm-gateway --';
+  selectEl.appendChild(def);
+  for (const m of state.models) {
+    const opt = document.createElement('option');
+    opt.value = m.model_name;
+    opt.textContent = modelOptionLabel(m);
+    opt.dataset.provider = m.provider_kind || '';
+    opt.dataset.baseUrl = m.provider_base_url || '';
+    opt.dataset.displayName = m.display_name || '';
+    opt.dataset.currency = m.currency || 'USD';
+    selectEl.appendChild(opt);
+  }
+  // select current if found
+  const val = String(currentValue || '');
+  const found = Array.from(selectEl.options).find(o => o.value === val);
+  selectEl.value = found ? val : '';
+  if (infoEl) {
+    if (found) {
+      const m = state.models.find(x => x.model_name === val);
+      infoEl.textContent = m ? `Provider: ${m.provider_kind} · Base: ${m.provider_base_url}` : '';
+    } else {
+      infoEl.textContent = '';
+    }
+  }
+}
+function populateModelSelects() {
+  populateModelSelect($('modelSelect'), $('modelInfo'), $('model')?.value);
+  populateModelSelect($('sModelSelect'), $('sModelInfo'), $('sModel')?.value);
+}
+function onModelSelectChanged(isStep=false) {
+  const select = isStep ? $('sModelSelect') : $('modelSelect');
+  const input = isStep ? $('sModel') : $('model');
+  const provEl = isStep ? $('sProvider') : $('provider');
+  const baseEl = isStep ? $('sBaseUrl') : $('baseUrl');
+  const infoEl = isStep ? $('sModelInfo') : $('modelInfo');
+
+  const val = select.value;
+  input.value = val || '';
+  const opt = select.selectedOptions?.[0];
+  const prov = opt?.dataset?.provider || '';
+  const base = opt?.dataset?.baseUrl || '';
+
+  if (!isStep) {
+    if (prov) provEl.value = prov;
+    if (base && (!baseEl.value || baseEl.value === '')) baseEl.value = base;
+  } else {
+    // For step override, only set if fields are blank
+    if (prov && (!provEl.value || provEl.value === '')) provEl.value = prov;
+    if (base && (!baseEl.value || baseEl.value === '')) baseEl.value = base;
+  }
+  if (infoEl) infoEl.textContent = val ? `Provider: ${prov} · Base: ${base}` : '';
+}
+
+// Default workflow/step creators
 function newWorkflow() {
   return {
     id: null,
@@ -81,9 +160,8 @@ function newStep() {
     schema: defaultActionSchema(),
     systemGuard: true,
     stopOnFailure: true,
-    exportPath: '', // optional path in JSON to export as variable
-    exportAs: '',   // optional name for exported var
-    // optional overrides:
+    exportPath: '',
+    exportAs: '',
     provider: '',
     baseUrl: '',
     apiKey: '',
@@ -141,7 +219,6 @@ async function saveCurrent() {
     return;
   }
   state.current = data.workflow;
-  // Update collection
   const idx = state.workflows.findIndex(w => w.id === state.current.id);
   if (idx >= 0) state.workflows[idx] = state.current; else state.workflows.push(state.current);
   renderWorkflowList();
@@ -273,6 +350,7 @@ function renderWorkflowEditor() {
     $('temperature').value = '';
     $('max_tokens').value = '';
     $('defaults').value = '{}';
+    populateModelSelects();
     renderSteps();
     renderStepEditor();
     return;
@@ -286,6 +364,7 @@ function renderWorkflowEditor() {
   $('temperature').value = state.current.chat?.temperature ?? '';
   $('max_tokens').value = state.current.chat?.max_tokens ?? '';
   $('defaults').value = fmtJson(state.current.defaults || {});
+  populateModelSelects();
   renderSteps();
   renderStepEditor();
 }
@@ -335,6 +414,9 @@ function renderStepEditor() {
   $('sApiKey').value = s.apiKey || '';
   $('sModel').value = s.model || '';
   $('sTemp').value = s.temperature ?? '';
+  // Update selects to match
+  populateModelSelects();
+
   updateTestButtonTooltip();
   updatePromptPreview();
 }
@@ -486,12 +568,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (el && el.tagName === 'TEXTAREA') el.addEventListener('input', () => { collectWorkflowFromForm(); updateTestButtonTooltip(); updatePromptPreview(); });
    });
 
+  // Model selects
+  $('modelSelect')?.addEventListener('change', () => onModelSelectChanged(false));
+  $('sModelSelect')?.addEventListener('change', () => onModelSelectChanged(true));
+  $('refreshModelsBtn')?.addEventListener('click', fetchGatewayModels);
+  $('refreshModelsBtn2')?.addEventListener('click', fetchGatewayModels);
+
   activateTab('builder');
+  await fetchGatewayModels(); // load models early
   await loadWorkflows();
   await loadRuns();
   $('varsInput')?.addEventListener('input', () => { updateTestButtonTooltip(); updatePromptPreview(); });
 
-  // Copy / Download actions for the preview
+  // Copy / Download actions for the preview (no-op if not present)
   $('copyPromptBtn')?.addEventListener('click', () => {
     const text = $('promptPreview')?.textContent || '';
     copyToClipboard(text);
@@ -513,4 +602,3 @@ document.addEventListener('DOMContentLoaded', async () => {
 function copyToClipboard(text) {
   navigator.clipboard?.writeText(text).then(() => toast('Copied'));
 }
-

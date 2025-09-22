@@ -7,7 +7,8 @@ RUN npm install --production
 COPY . .
 
 ENV NODE_ENV=production
-ENV PORT=3006
+# Align PORT with server/index.js default and nginx proxy
+ENV PORT=3005
 
 EXPOSE 3005
 

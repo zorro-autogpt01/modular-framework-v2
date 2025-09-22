@@ -8,7 +8,8 @@ const Ajv = require('ajv');
 const { execBash, execPython, sanitizeCwd } = require('./executor');
 
 const BASE_PATH = (process.env.BASE_PATH || '').replace(/\/$/, ''); // e.g. /modules/llm-workflows
-const LLM_GATEWAY_URL = process.env.LLM_GATEWAY_URL || 'http://localhost:3010/compat/llm-chat'; // llm-gateway backend
+// Default to internal docker name; can override with env. Clients (browser) use nginx path /llm-gateway/…
+const LLM_GATEWAY_URL = process.env.LLM_GATEWAY_URL || 'http://llm-gateway:3010/compat/llm-chat';
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 const WF_FILE = path.join(DATA_DIR, 'workflows.json');
 
@@ -29,7 +30,7 @@ if (BASE_PATH) app.get(`${BASE_PATH}/`, (_req, res) => res.sendFile(path.join(pu
 
 // Health
 app.get('/health', (_req, res) => res.json({ status: 'healthy', gatewayurl: LLM_GATEWAY_URL }));
-if (BASE_PATH) app.get(`${BASE_PATH}/health`, (_req, res) => res.json({ status: 'healthy', gatewaygatewayurl: LLM_GATEWAY_URL }));
+if (BASE_PATH) app.get(`${BASE_PATH}/health`, (_req, res) => res.json({ status: 'healthy', gatewayurl: LLM_GATEWAY_URL }));
 
 // Storage helpers
 function ensureDir(p) { if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true }); }
@@ -62,14 +63,9 @@ function addRun(r) {
 
 // JSON helpers
 function tryParseJson(text) {
-  // 1) fast path
   try { return JSON.parse(text); } catch {}
-
-  // 2) fenced ```json
   const m = text.match(/```json\s*([\s\S]*?)```/i);
   if (m) { try { return JSON.parse(m[1]); } catch {} }
-
-  // 3) balanced brace blocks (first valid wins)
   const blocks = [];
   let depth = 0, start = -1, inStr = false, esc = false;
   for (let i = 0; i < text.length; i++) {
@@ -80,7 +76,6 @@ function tryParseJson(text) {
     if (c === '}') { depth--; if (depth === 0 && start >= 0) { blocks.push(text.slice(start, i + 1)); start = -1; } }
   }
   for (const b of blocks) { try { return JSON.parse(b); } catch {} }
-
   return null;
 }
 
@@ -95,7 +90,7 @@ function lookup(obj, pathStr) {
   const parts = String(pathStr).split('.');
   let cur = obj;
   for (const p of parts) {
-    if (cur && typeof cur === 'object' && p in cur) cur = cur[p];
+    if (cur && typeof cur === 'object' && p in cur) cur = p in cur ? cur[p] : undefined;
     else return undefined;
   }
   return cur;
@@ -111,8 +106,6 @@ function resolveSchema(schemaLike) {
   return schemaLike;
 }
 
-
-// System prompt for JSON schema compliance
 function buildSystemGuard(schema) {
   const schemaObj = resolveSchema(schema);
   const schemaStr = JSON.stringify(schemaObj, null, 2);
@@ -128,7 +121,8 @@ function buildSystemGuard(schema) {
 }
 
 // Validate JSON result against schema
-const ajv = new Ajv({ allErrors: true, strict: false });
+const AjvLib = Ajv;
+const ajv = new AjvLib({ allErrors: true, strict: false });
 function validateAgainstSchema(json, schema) {
   try {
     const objSchema = resolveSchema(schema);
@@ -142,7 +136,7 @@ function validateAgainstSchema(json, schema) {
 
 // Call llm-gateway backend
 async function callgateway({ provider, baseUrl, apiKey, model, temperature, max_tokens, messages }) {
-  // We rely on llm-gateway server to route to the correct provider. We send stream:false for simplicity.
+  // Route through llm-gateway; it will resolve provider/baseUrl/apiKey from DB based on model.
   const resp = await axios.post(LLM_GATEWAY_URL, {
     provider, baseUrl, apiKey, model, messages, temperature, max_tokens, stream: false
   }, { timeout: 60_000 });
@@ -155,16 +149,14 @@ async function runStep({ chatConfig, step, vars }) {
   const logs = [];
   function log(level, msg, meta) { logs.push({ ts: new Date().toISOString(), level, msg, meta }); }
 
-  // Build system + user content
   const effectiveSchema = resolveSchema(step.schema || defaultActionSchema());
   const sys = step.systemGuard === false ? (step.system || '') : buildSystemGuard(effectiveSchema);
-
   const user = renderTemplate(step.prompt || '', vars || {});
   log('info', 'Prepared prompt', {
     systemPreview: sys.slice(0, 800),
     userPreview: user.slice(0, 800)
   });
-  // Call LLM
+
   const messages = [];
   if (sys) messages.push({ role: 'system', content: sys });
   messages.push({ role: 'user', content: user });
@@ -178,15 +170,17 @@ async function runStep({ chatConfig, step, vars }) {
     max_tokens: step.max_tokens || chatConfig.max_tokens
   };
   if (/^(gpt-5|o5)/i.test(mergedChat.model || '')) {
-  delete mergedChat.max_tokens;
-  delete mergedChat.temperature; // let the backend decide
-}
+    delete mergedChat.max_tokens;
+    delete mergedChat.temperature; // let the backend decide
+  }
   const redacted = { ...mergedChat, apiKey: mergedChat.apiKey ? '***REDACTED***' : undefined };
   log('debug', 'Merged chat config', redacted);
   log('debug', 'Messages summary', { count: messages.length });
-  if (!mergedChat.baseUrl || !mergedChat.model || (!mergedChat.apiKey && (mergedChat.provider === 'openai' || mergedChat.provider === 'openai-compatible'))) {
-    log('error', 'Chat config incomplete', { mergedChat });
-    return { ok: false, logs, raw: '', json: null, validation: { valid: false, errors: [{ message: 'Chat configuration missing baseUrl/model/apiKey' }] } };
+
+  // Relaxed validation: allow using gateway-configured model without requiring baseUrl/apiKey locally
+  if (!mergedChat.model) {
+    log('error', 'Chat config incomplete: missing model');
+    return { ok: false, logs, raw: '', json: null, validation: { valid: false, errors: [{ message: 'Chat configuration missing model' }] } };
   }
 
   let raw = '';
@@ -199,14 +193,12 @@ async function runStep({ chatConfig, step, vars }) {
     return { ok: false, logs, raw, json: null, validation: { valid: false, errors: [{ message: 'LLM call failed: ' + e.message }] } };
   }
 
-  // Parse JSON
   const parsed = tryParseJson(raw);
   if (!parsed) {
     log('error', 'Failed to parse JSON', { raw: raw.slice(0, 500) });
     return { ok: false, logs, raw, json: null, validation: { valid: false, errors: [{ message: 'JSON parse failed' }] } };
   }
 
-  // Validate
   const validation = validateAgainstSchema(parsed, effectiveSchema);
   if (!validation.valid) {
     log('warn', 'Schema validation failed', { errors: validation.errors });
@@ -417,7 +409,6 @@ app.post('/api/workflows/:id/run', async (req, res) => {
           run.artifacts.push({ step: step.name || step.id, ...a });
         }
       }
-      // Update variables with any declared outputs (optional: map a field)
       if (step.exportPath && r.json) {
         try {
           const value = lookup(r.json, step.exportPath);
@@ -460,4 +451,3 @@ if (BASE_PATH) app.get(`${BASE_PATH}/api/runs`, (_req, res) => {
 
 
 module.exports = app;
-
