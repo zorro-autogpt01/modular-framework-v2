@@ -7,7 +7,6 @@ RUN npm install --production
 COPY . .
 
 ENV NODE_ENV=production
-# Align PORT with server/index.js default and nginx proxy
 ENV PORT=3005
 
 EXPOSE 3005
@@ -16,4 +15,3 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD wget -qO- http://localhost:$PORT/health || exit 1
 
 CMD ["node", "server/index.js"]
-

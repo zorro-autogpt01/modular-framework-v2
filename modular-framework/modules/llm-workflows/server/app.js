@@ -8,8 +8,19 @@ const Ajv = require('ajv');
 const { execBash, execPython, sanitizeCwd } = require('./executor');
 
 const BASE_PATH = (process.env.BASE_PATH || '').replace(/\/$/, ''); // e.g. /modules/llm-workflows
-// Default to internal docker name; can override with env. Clients (browser) use nginx path /llm-gateway/…
-const LLM_GATEWAY_URL = process.env.LLM_GATEWAY_URL || 'http://llm-gateway:3010/compat/llm-chat';
+
+// Gateway endpoints:
+// - CHAT compat endpoint (used by test/run): /api/compat/llm-chat
+// - Admin/API base (for models list): /api
+const LLM_GATEWAY_CHAT_URL =
+  process.env.LLM_GATEWAY_URL ||
+  process.env.LLM_GATEWAY_CHAT_URL ||
+  'http://llm-gateway:3010/api/compat/llm-chat';
+
+const LLM_GATEWAY_API_BASE =
+  process.env.LLM_GATEWAY_API_BASE ||
+  (LLM_GATEWAY_CHAT_URL.replace(/\/compat\/llm-chat(?:\/)?$/, '') || 'http://llm-gateway:3010/api');
+
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 const WF_FILE = path.join(DATA_DIR, 'workflows.json');
 
@@ -29,8 +40,8 @@ app.get('/', (_req, res) => res.sendFile(path.join(pub, 'index.html')));
 if (BASE_PATH) app.get(`${BASE_PATH}/`, (_req, res) => res.sendFile(path.join(pub, 'index.html')));
 
 // Health
-app.get('/health', (_req, res) => res.json({ status: 'healthy', gatewayurl: LLM_GATEWAY_URL }));
-if (BASE_PATH) app.get(`${BASE_PATH}/health`, (_req, res) => res.json({ status: 'healthy', gatewayurl: LLM_GATEWAY_URL }));
+app.get('/health', (_req, res) => res.json({ status: 'healthy', gatewayChatUrl: LLM_GATEWAY_CHAT_URL, gatewayApiBase: LLM_GATEWAY_API_BASE }));
+if (BASE_PATH) app.get(`${BASE_PATH}/health`, (_req, res) => res.json({ status: 'healthy', gatewayChatUrl: LLM_GATEWAY_CHAT_URL, gatewayApiBase: LLM_GATEWAY_API_BASE }));
 
 // Storage helpers
 function ensureDir(p) { if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true }); }
@@ -63,9 +74,14 @@ function addRun(r) {
 
 // JSON helpers
 function tryParseJson(text) {
+  // 1) fast path
   try { return JSON.parse(text); } catch {}
+
+  // 2) fenced ```json
   const m = text.match(/```json\s*([\s\S]*?)```/i);
   if (m) { try { return JSON.parse(m[1]); } catch {} }
+
+  // 3) balanced brace blocks (first valid wins)
   const blocks = [];
   let depth = 0, start = -1, inStr = false, esc = false;
   for (let i = 0; i < text.length; i++) {
@@ -76,6 +92,7 @@ function tryParseJson(text) {
     if (c === '}') { depth--; if (depth === 0 && start >= 0) { blocks.push(text.slice(start, i + 1)); start = -1; } }
   }
   for (const b of blocks) { try { return JSON.parse(b); } catch {} }
+
   return null;
 }
 
@@ -90,7 +107,7 @@ function lookup(obj, pathStr) {
   const parts = String(pathStr).split('.');
   let cur = obj;
   for (const p of parts) {
-    if (cur && typeof cur === 'object' && p in cur) cur = p in cur ? cur[p] : undefined;
+    if (cur && typeof cur === 'object' && p in cur) cur = cur[p];
     else return undefined;
   }
   return cur;
@@ -106,6 +123,7 @@ function resolveSchema(schemaLike) {
   return schemaLike;
 }
 
+// System prompt for JSON schema compliance
 function buildSystemGuard(schema) {
   const schemaObj = resolveSchema(schema);
   const schemaStr = JSON.stringify(schemaObj, null, 2);
@@ -121,8 +139,7 @@ function buildSystemGuard(schema) {
 }
 
 // Validate JSON result against schema
-const AjvLib = Ajv;
-const ajv = new AjvLib({ allErrors: true, strict: false });
+const ajv = new Ajv({ allErrors: true, strict: false });
 function validateAgainstSchema(json, schema) {
   try {
     const objSchema = resolveSchema(schema);
@@ -134,12 +151,14 @@ function validateAgainstSchema(json, schema) {
   }
 }
 
-// Call llm-gateway backend
-async function callgateway({ provider, baseUrl, apiKey, model, temperature, max_tokens, messages }) {
-  // Route through llm-gateway; it will resolve provider/baseUrl/apiKey from DB based on model.
-  const resp = await axios.post(LLM_GATEWAY_URL, {
-    provider, baseUrl, apiKey, model, messages, temperature, max_tokens, stream: false
-  }, { timeout: 60_000 });
+// Call llm-gateway backend (compat endpoint). We now rely on model lookup in gateway DB.
+async function callgateway({ model, temperature, max_tokens, messages }) {
+  // Minimal required fields for gateway compat: model + messages
+  const body = { model, messages, stream: false };
+  if (typeof temperature === 'number') body.temperature = temperature;
+  if (typeof max_tokens === 'number') body.max_tokens = max_tokens;
+
+  const resp = await axios.post(LLM_GATEWAY_CHAT_URL, body, { timeout: 60_000 });
   const content = resp?.data?.content || '';
   return content;
 }
@@ -149,18 +168,22 @@ async function runStep({ chatConfig, step, vars }) {
   const logs = [];
   function log(level, msg, meta) { logs.push({ ts: new Date().toISOString(), level, msg, meta }); }
 
+  // Build system + user content
   const effectiveSchema = resolveSchema(step.schema || defaultActionSchema());
   const sys = step.systemGuard === false ? (step.system || '') : buildSystemGuard(effectiveSchema);
+
   const user = renderTemplate(step.prompt || '', vars || {});
   log('info', 'Prepared prompt', {
     systemPreview: sys.slice(0, 800),
     userPreview: user.slice(0, 800)
   });
 
+  // Build messages
   const messages = [];
   if (sys) messages.push({ role: 'system', content: sys });
   messages.push({ role: 'user', content: user });
 
+  // Determine effective chat settings (but for gateway compat we only need model, tokens/temperature optional)
   const mergedChat = {
     provider: step.provider || chatConfig.provider,
     baseUrl: step.baseUrl || chatConfig.baseUrl,
@@ -169,36 +192,42 @@ async function runStep({ chatConfig, step, vars }) {
     temperature: typeof step.temperature === 'number' ? step.temperature : chatConfig.temperature,
     max_tokens: step.max_tokens || chatConfig.max_tokens
   };
+
+  // For GPT-5/O family, let backend handle token/temperature semantics
   if (/^(gpt-5|o5)/i.test(mergedChat.model || '')) {
     delete mergedChat.max_tokens;
-    delete mergedChat.temperature; // let the backend decide
+    delete mergedChat.temperature;
   }
+
+  // Log config (redact key)
   const redacted = { ...mergedChat, apiKey: mergedChat.apiKey ? '***REDACTED***' : undefined };
   log('debug', 'Merged chat config', redacted);
   log('debug', 'Messages summary', { count: messages.length });
 
-  // Relaxed validation: allow using gateway-configured model without requiring baseUrl/apiKey locally
+  // Require at least a model name (gateway DB will provide provider/baseUrl/apiKey)
   if (!mergedChat.model) {
     log('error', 'Chat config incomplete: missing model');
-    return { ok: false, logs, raw: '', json: null, validation: { valid: false, errors: [{ message: 'Chat configuration missing model' }] } };
+    return { ok: false, logs, raw: '', json: null, validation: { valid: false, errors: [{ message: 'Model is required' }] } };
   }
 
   let raw = '';
   try {
-    raw = await callgateway({ ...mergedChat, messages });
+    raw = await callgateway({ model: mergedChat.model, temperature: mergedChat.temperature, max_tokens: mergedChat.max_tokens, messages });
     log('info', 'LLM returned', { length: raw.length, head: raw.slice(0, 200) });
-    if (!raw.length) log('warn', 'LLM response was empty');  
+    if (!raw.length) log('warn', 'LLM response was empty');
   } catch (e) {
     log('error', 'LLM call failed', { message: e.message });
     return { ok: false, logs, raw, json: null, validation: { valid: false, errors: [{ message: 'LLM call failed: ' + e.message }] } };
   }
 
+  // Parse JSON
   const parsed = tryParseJson(raw);
   if (!parsed) {
     log('error', 'Failed to parse JSON', { raw: raw.slice(0, 500) });
     return { ok: false, logs, raw, json: null, validation: { valid: false, errors: [{ message: 'JSON parse failed' }] } };
   }
 
+  // Validate
   const validation = validateAgainstSchema(parsed, effectiveSchema);
   if (!validation.valid) {
     log('warn', 'Schema validation failed', { errors: validation.errors });
@@ -328,6 +357,20 @@ if (BASE_PATH) app.post(`${BASE_PATH}/api/validate`, (req, res) => {
   app._router.handle(req, res);
 });
 
+// NEW: API proxy to fetch models from llm-gateway
+app.get('/api/llm-models', async (_req, res) => {
+  try {
+    const r = await axios.get(`${LLM_GATEWAY_API_BASE}/models`, { timeout: 10_000 });
+    res.json(r.data);
+  } catch (e) {
+    res.status(502).json({ error: 'Failed to fetch models from gateway', detail: e.message });
+  }
+});
+if (BASE_PATH) app.get(`${BASE_PATH}/api/llm-models`, (req, res) => {
+  req.url = '/api/llm-models';
+  app._router.handle(req, res);
+});
+
 // API: test single step
 app.post('/api/testStep', async (req, res) => {
   const { chat, step, vars, execute=false } = req.body || {};
@@ -363,7 +406,8 @@ app.post('/api/testStep', async (req, res) => {
       }
       result.actionResults = actionResults;
     }
-    res.json(result);  } catch (e) {
+    res.json(result);
+  } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }
 });
@@ -448,6 +492,5 @@ app.get('/api/runs', (_req, res) => {
 if (BASE_PATH) app.get(`${BASE_PATH}/api/runs`, (_req, res) => {
   res.json({ runs });
 });
-
 
 module.exports = app;

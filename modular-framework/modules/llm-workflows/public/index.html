@@ -81,13 +81,11 @@
               <input id="wfName" placeholder="Workflow name" />
             </div>
             <div>
-              <label>Model</label>
+              <label>Model (from llm-gateway)</label>
               <div class="flex">
-                <select id="modelSelect" title="Models from llm-gateway" style="flex:1"></select>
-                <button class="ghost" id="refreshModelsBtn" title="Refresh models from llm-gateway">↻</button>
+                <select id="modelSelect"></select>
+                <button class="ghost" id="refreshModelsBtn" title="Refresh models">↻</button>
               </div>
-              <input id="model" placeholder="gpt-4o-mini or llama3" />
-              <div class="muted" id="modelInfo"></div>
             </div>
             <div>
               <label>Provider</label>
@@ -104,11 +102,11 @@
           <div class="row3">
             <div>
               <label>Base URL</label>
-              <input id="baseUrl" placeholder="https://api.openai.com or http://ollama:11434" />
+              <input id="baseUrl" placeholder="(auto from model selection if available)" />
             </div>
             <div>
               <label>API Key</label>
-              <input id="apiKey" placeholder="sk-..." />
+              <input id="apiKey" placeholder="(optional; gateway DB can provide)" />
             </div>
             <div>
               <label>Temperature · Max tokens</label>
@@ -199,12 +197,8 @@
             <div class="row3">
               <div>
                 <label>Model</label>
-                <div class="flex">
-                  <select id="sModelSelect" title="Models from llm-gateway" style="flex:1"></select>
-                  <button class="ghost" id="refreshModelsBtn2" title="Refresh models from llm-gateway">↻</button>
-                </div>
-                <input id="sModel" placeholder="(inherit)" />
-                <div class="muted" id="sModelInfo"></div>
+                <input id="sModel" placeholder="(inherit)" list="modelsDatalist" />
+                <datalist id="modelsDatalist"></datalist>
               </div>
               <div>
                 <label>Temperature</label>

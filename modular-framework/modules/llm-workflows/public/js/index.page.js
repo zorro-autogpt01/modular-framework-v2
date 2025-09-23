@@ -3,7 +3,7 @@ const state = {
   current: null,
   currentStepIdx: -1,
   runs: [],
-  models: [] // from llm-gateway
+  llmModels: []
 };
 
 // Helpers
@@ -13,133 +13,117 @@ function clone(x) { return JSON.parse(JSON.stringify(x)); }
 function fmtJson(v) { try { return JSON.stringify(v, null, 2); } catch { return String(v); } }
 function parseJson(text, fallback = null) { try { return JSON.parse(text); } catch { return fallback; } }
 
- // ---- Prompt preview helpers ----
- function renderTemplate(tpl, vars) {
-   return String(tpl || '').replace(/\{\{\s*([\w.\-]+)\s*\}\}/g, (_m, key) => {
-     const parts = String(key).split('.');
-     let cur = vars || {};
-     for (const p of parts) {
-       if (cur && typeof cur === 'object' && p in cur) cur = cur[p]; else return '';
-     }
-     return (cur === undefined || cur === null) ? '' : String(cur);
-   });
- }
- function buildSystemGuard(schema) {
-   const schemaStr = typeof schema === 'string' ? schema : JSON.stringify(schema || {}, null, 2);
-   return [
-     'You are a controller that MUST return a single JSON object and nothing else.',
-     'Rules:',
-     '- Do NOT include explanations, markdown, or code fences.',
-     '- Output MUST be valid JSON that matches the schema exactly.',
-     '- No trailing commas. No comments.',
-     'JSON Schema:',
-     schemaStr
-   ].join('\n');
- }
- function computeFullPromptForStep(step, vars) {
-   if (!step) return '';
-   const sys = (step.systemGuard === false)
-     ? (step.system || '')
-     : buildSystemGuard(step.schema);
-   const user = renderTemplate(step.prompt || '', vars || {});
-   return [sys, user].filter(Boolean).join('\n\n');
- }
- function updateTestButtonTooltip() {
-   const step = state.current?.steps?.[state.currentStepIdx];
-   const vars = parseJson($('varsInput')?.value || '{}', {});
-   const full = computeFullPromptForStep(step, vars);
-   const btn = $('testStepBtn');
-   if (btn) btn.title = full || 'No prompt';
- }
-
- function updatePromptPreview() {
-  const pre = $('promptPreview');
-  if (!pre) return;
+// ---- Prompt preview helpers ----
+function renderTemplate(tpl, vars) {
+  return String(tpl || '').replace(/\{\{\s*([\w.\-]+)\s*\}\}/g, (_m, key) => {
+    const parts = String(key).split('.');
+    let cur = vars || {};
+    for (const p of parts) {
+      if (cur && typeof cur === 'object' && p in cur) cur = cur[p]; else return '';
+    }
+    return (cur === undefined || cur === null) ? '' : String(cur);
+  });
+}
+function buildSystemGuard(schema) {
+  const schemaStr = typeof schema === 'string' ? schema : JSON.stringify(schema || {}, null, 2);
+  return [
+    'You are a controller that MUST return a single JSON object and nothing else.',
+    'Rules:',
+    '- Do NOT include explanations, markdown, or code fences.',
+    '- Output MUST be valid JSON that matches the schema exactly.',
+    '- No trailing commas. No comments.',
+    'JSON Schema:',
+    schemaStr
+  ].join('\n');
+}
+function computeFullPromptForStep(step, vars) {
+  if (!step) return '';
+  const sys = (step.systemGuard === false)
+    ? (step.system || '')
+    : buildSystemGuard(step.schema);
+  const user = renderTemplate(step.prompt || '', vars || {});
+  return [sys, user].filter(Boolean).join('\n\n');
+}
+function updateTestButtonTooltip() {
   const step = state.current?.steps?.[state.currentStepIdx];
   const vars = parseJson($('varsInput')?.value || '{}', {});
-  pre.textContent = computeFullPromptForStep(step, vars) || '';
+  const full = computeFullPromptForStep(step, vars);
+  const btn = $('testStepBtn');
+  if (btn) btn.title = full || 'No prompt';
+}
+function updatePromptPreview() {
+  // preview block not present on this page; noop kept for parity
 }
 
-// Gateway models
-async function fetchGatewayModels() {
+// ---- LLM models fetching and UI ----
+async function loadLlmModels() {
   try {
-    const r = await fetch('/llm-gateway/api/models', { credentials: 'include' });
-    if (!r.ok) throw new Error(await r.text());
+    const r = await fetch('./api/llm-models');
     const data = await r.json();
-    state.models = data.items || [];
+    state.llmModels = data.items || data.models || [];
+    populateModelSelect();
+    populateModelsDatalist();
+    // After loading, try to select current model if any
+    const curModel = state.current?.chat?.model || '';
+    if (curModel) selectModelByName(curModel);
   } catch (e) {
-    console.warn('Failed to load gateway models:', e.message || e);
-    state.models = [];
+    console.warn('Failed to load llm models:', e);
   }
-  populateModelSelects();
 }
-function modelOptionLabel(m) {
-  const name = m.display_name || m.model_name;
-  const prov = m.provider_name || m.provider_kind || '';
-  const mode = m.mode && m.mode !== 'auto' ? ` · ${m.mode}` : '';
-  const inC = Number(m.input_cost_per_million || 0);
-  const outC = Number(m.output_cost_per_million || 0);
-  const cost = (inC || outC) ? ` · $${inC}/$${outC}` : '';
-  return `${name} · ${prov}${mode}${cost}`;
-}
-function populateModelSelect(selectEl, infoEl, currentValue) {
-  if (!selectEl) return;
-  selectEl.innerHTML = '';
-  const def = document.createElement('option');
-  def.value = ''; def.textContent = '-- Select from llm-gateway --';
-  selectEl.appendChild(def);
-  for (const m of state.models) {
+function populateModelSelect() {
+  const sel = $('modelSelect');
+  if (!sel) return;
+  sel.innerHTML = '';
+  const opt0 = document.createElement('option');
+  opt0.value = '';
+  opt0.textContent = '(select a model)';
+  sel.appendChild(opt0);
+
+  state.llmModels.forEach(m => {
     const opt = document.createElement('option');
     opt.value = m.model_name;
-    opt.textContent = modelOptionLabel(m);
-    opt.dataset.provider = m.provider_kind || '';
-    opt.dataset.baseUrl = m.provider_base_url || '';
-    opt.dataset.displayName = m.display_name || '';
-    opt.dataset.currency = m.currency || 'USD';
-    selectEl.appendChild(opt);
-  }
-  // select current if found
-  const val = String(currentValue || '');
-  const found = Array.from(selectEl.options).find(o => o.value === val);
-  selectEl.value = found ? val : '';
-  if (infoEl) {
-    if (found) {
-      const m = state.models.find(x => x.model_name === val);
-      infoEl.textContent = m ? `Provider: ${m.provider_kind} · Base: ${m.provider_base_url}` : '';
-    } else {
-      infoEl.textContent = '';
+    const label = `${m.display_name || m.model_name} · ${m.provider_name || ''} (${m.provider_kind || ''})`;
+    opt.textContent = label;
+    opt.dataset.kind = m.provider_kind || '';
+    opt.dataset.baseurl = m.provider_base_url || '';
+    sel.appendChild(opt);
+  });
+
+  sel.onchange = () => {
+    const modelName = sel.value;
+    if (!state.current) state.current = newWorkflow();
+    state.current.chat = state.current.chat || {};
+    state.current.chat.model = modelName;
+
+    const selected = sel.selectedOptions[0];
+    if (selected) {
+      const kind = selected.dataset.kind || '';
+      const base = selected.dataset.baseurl || '';
+      if (kind) $('provider').value = kind;
+      if (base) $('baseUrl').value = base;
     }
-  }
+  };
 }
-function populateModelSelects() {
-  populateModelSelect($('modelSelect'), $('modelInfo'), $('model')?.value);
-  populateModelSelect($('sModelSelect'), $('sModelInfo'), $('sModel')?.value);
+function populateModelsDatalist() {
+  const dl = $('modelsDatalist'); if (!dl) return;
+  dl.innerHTML = '';
+  state.llmModels.forEach(m => {
+    const opt = document.createElement('option');
+    opt.value = m.model_name;
+    opt.label = `${m.display_name || m.model_name} · ${m.provider_name || ''}`;
+    dl.appendChild(opt);
+  });
 }
-function onModelSelectChanged(isStep=false) {
-  const select = isStep ? $('sModelSelect') : $('modelSelect');
-  const input = isStep ? $('sModel') : $('model');
-  const provEl = isStep ? $('sProvider') : $('provider');
-  const baseEl = isStep ? $('sBaseUrl') : $('baseUrl');
-  const infoEl = isStep ? $('sModelInfo') : $('modelInfo');
-
-  const val = select.value;
-  input.value = val || '';
-  const opt = select.selectedOptions?.[0];
-  const prov = opt?.dataset?.provider || '';
-  const base = opt?.dataset?.baseUrl || '';
-
-  if (!isStep) {
-    if (prov) provEl.value = prov;
-    if (base && (!baseEl.value || baseEl.value === '')) baseEl.value = base;
-  } else {
-    // For step override, only set if fields are blank
-    if (prov && (!provEl.value || provEl.value === '')) provEl.value = prov;
-    if (base && (!baseEl.value || baseEl.value === '')) baseEl.value = base;
-  }
-  if (infoEl) infoEl.textContent = val ? `Provider: ${prov} · Base: ${base}` : '';
+function selectModelByName(name) {
+  const sel = $('modelSelect');
+  if (!sel) return;
+  const idx = Array.from(sel.options).findIndex(o => o.value === name);
+  sel.selectedIndex = idx >= 0 ? idx : 0;
+  // trigger change handler logic to sync provider/baseUrl if we found match
+  if (idx >= 0 && sel.onchange) sel.onchange();
 }
 
-// Default workflow/step creators
+// Workflow constructors
 function newWorkflow() {
   return {
     id: null,
@@ -219,6 +203,7 @@ async function saveCurrent() {
     return;
   }
   state.current = data.workflow;
+  // Update collection
   const idx = state.workflows.findIndex(w => w.id === state.current.id);
   if (idx >= 0) state.workflows[idx] = state.current; else state.workflows.push(state.current);
   renderWorkflowList();
@@ -286,7 +271,7 @@ function collectWorkflowFromForm() {
     provider: $('provider').value,
     baseUrl: $('baseUrl').value.trim(),
     apiKey: $('apiKey').value.trim(),
-    model: $('model').value.trim(),
+    model: $('modelSelect').value.trim(),
     temperature: $('temperature').value !== '' ? Number($('temperature').value) : undefined,
     max_tokens: $('max_tokens').value !== '' ? Number($('max_tokens').value) : undefined
   };
@@ -346,11 +331,10 @@ function renderWorkflowEditor() {
     $('provider').value = 'openai';
     $('baseUrl').value = '';
     $('apiKey').value = '';
-    $('model').value = '';
+    $('modelSelect').value = '';
     $('temperature').value = '';
     $('max_tokens').value = '';
     $('defaults').value = '{}';
-    populateModelSelects();
     renderSteps();
     renderStepEditor();
     return;
@@ -360,11 +344,15 @@ function renderWorkflowEditor() {
   $('provider').value = state.current.chat?.provider || 'openai';
   $('baseUrl').value = state.current.chat?.baseUrl || '';
   $('apiKey').value = state.current.chat?.apiKey || '';
-  $('model').value = state.current.chat?.model || '';
   $('temperature').value = state.current.chat?.temperature ?? '';
   $('max_tokens').value = state.current.chat?.max_tokens ?? '';
   $('defaults').value = fmtJson(state.current.defaults || {});
-  populateModelSelects();
+
+  // Select the model in dropdown if available
+  const modelName = state.current.chat?.model || '';
+  if (modelName) selectModelByName(modelName);
+  else $('modelSelect').selectedIndex = 0;
+
   renderSteps();
   renderStepEditor();
 }
@@ -414,11 +402,7 @@ function renderStepEditor() {
   $('sApiKey').value = s.apiKey || '';
   $('sModel').value = s.model || '';
   $('sTemp').value = s.temperature ?? '';
-  // Update selects to match
-  populateModelSelects();
-
   updateTestButtonTooltip();
-  updatePromptPreview();
 }
 
 function removeStep(idx) {
@@ -477,7 +461,6 @@ function renderRuns() {
     list.appendChild(item);
   });
 }
-
 function renderRunResult(run) {
   $('tabBtnRuns').click();
   $('runDetail').innerHTML = `
@@ -491,7 +474,6 @@ function renderRunResult(run) {
     </div>
   `;
 }
-
 function renderArtifacts(artifacts) {
   if (!artifacts.length) return '<div class="muted">No artifacts</div>';
   return artifacts.map((a, idx) => `
@@ -557,44 +539,30 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('addStepBtn').addEventListener('click', addStep);
   $('testStepBtn').addEventListener('click', testStep);
   $('runWfBtn').addEventListener('click', runCurrent);
+  $('refreshModelsBtn').addEventListener('click', loadLlmModels);
 
   // Keep form changes in state for current step
-  ['wfName','wfDesc','provider','baseUrl','apiKey','model','temperature','max_tokens','defaults',
+  ['wfName','wfDesc','provider','baseUrl','apiKey','temperature','max_tokens','defaults',
    'stepName','stepPrompt','stepSchema','stepNoGuard','stepDontStop','stepExportPath','stepExportAs',
    'sProvider','sBaseUrl','sApiKey','sModel','sTemp'
   ].forEach(id => {
     const el = $(id);
     if (el) el.addEventListener('change', () => { collectWorkflowFromForm(); updateTestButtonTooltip(); updatePromptPreview(); });
     if (el && el.tagName === 'TEXTAREA') el.addEventListener('input', () => { collectWorkflowFromForm(); updateTestButtonTooltip(); updatePromptPreview(); });
-   });
-
-  // Model selects
-  $('modelSelect')?.addEventListener('change', () => onModelSelectChanged(false));
-  $('sModelSelect')?.addEventListener('change', () => onModelSelectChanged(true));
-  $('refreshModelsBtn')?.addEventListener('click', fetchGatewayModels);
-  $('refreshModelsBtn2')?.addEventListener('click', fetchGatewayModels);
+  });
 
   activateTab('builder');
-  await fetchGatewayModels(); // load models early
   await loadWorkflows();
   await loadRuns();
-  $('varsInput')?.addEventListener('input', () => { updateTestButtonTooltip(); updatePromptPreview(); });
+  await loadLlmModels();
 
-  // Copy / Download actions for the preview (no-op if not present)
-  $('copyPromptBtn')?.addEventListener('click', () => {
-    const text = $('promptPreview')?.textContent || '';
-    copyToClipboard(text);
-  });
-  $('downloadPromptBtn')?.addEventListener('click', () => {
-    const text = $('promptPreview')?.textContent || '';
-    const blob = new Blob([text], { type: 'text/plain' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'prompt.txt';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(a.href);
+  $('varsInput')?.addEventListener('input', () => { updateTestButtonTooltip(); });
+
+  document.addEventListener('keydown', (e)=>{
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's'){
+      e.preventDefault();
+      saveCurrent();
+    }
   });
 });
 
