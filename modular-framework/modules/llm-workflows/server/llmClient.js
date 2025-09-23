@@ -1,9 +1,9 @@
 const axios = require('axios');
 const { logDebug, logWarn } = require('./logger');
 
-// Streams via SSE and forwards deltas to callbacks. Uses llm-gateway /api/compat/llm-chat.
+// Streams via SSE and forwards deltas to callbacks. Uses llm-gateway workflows compat endpoint by default.
 async function chatStream({ llmGatewayUrl, overrides, messages, onDelta, onError, onDone }) {
-  const url = (llmGatewayUrl || process.env.LLM_GATEWAY_URL || 'http://localhost:3010/api/compat/llm-chat').replace(/\/$/, '');
+  const url = (llmGatewayUrl || process.env.LLM_GATEWAY_URL || 'http://llm-gateway:3010/api/compat/llm-workflows').replace(/\/$/, '');
   const {
     provider='openai', baseUrl, apiKey, model,
     temperature, max_tokens, system
@@ -27,8 +27,10 @@ async function chatStream({ llmGatewayUrl, overrides, messages, onDelta, onError
       if (payload === '[DONE]') { onDone?.(); continue; }
       try {
         const evt = JSON.parse(payload);
-        if (evt.type === 'delta' && evt.content) {
-          onDelta?.(String(evt.content));
+        if ((evt.type === 'llm.delta' && typeof evt.data === 'string')) {
+          onDelta?.(evt.data);
+        } else if (evt.type === 'delta' && typeof evt.content === 'string') {
+          onDelta?.(evt.content);
         } else if (evt.type === 'error') {
           onError?.(evt.message || 'LLM error');
         } else if (evt.type === 'done') {

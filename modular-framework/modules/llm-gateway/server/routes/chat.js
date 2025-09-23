@@ -200,7 +200,7 @@ router.post('/v1/chat', async (req, res) => {
   }
 });
 
-// Compatibility endpoint (accepts llm-chat body and maps to DB)
+// Compatibility endpoint (accepts llm-chat-like body and maps to DB)
 router.post('/compat/llm-chat', async (req, res) => {
   const stream = !!(req.body?.stream ?? true);
   const sse = stream ? prepareSSE(res) : null;
@@ -221,6 +221,46 @@ router.post('/compat/llm-chat', async (req, res) => {
     else await dispatch(modelRow, req.body, res, null);
   } catch (err) {
     logError('GW /compat/llm-chat error', { err: err?.message || String(err) });
+    if (stream) { sse({ type:'error', message: err?.message || 'error' }); res.end(); }
+    else res.status(500).json({ error: err?.message || 'error' });
+  }
+});
+
+// NEW: workflows-friendly compat endpoint (SSE deltas as "llm.delta")
+router.post('/compat/llm-workflows', async (req, res) => {
+  const stream = !!(req.body?.stream ?? true);
+  const write = stream ? prepareSSE(res) : null;
+
+  // map standard payloads to workflows SSE schema
+  const sse = stream ? (payload) => {
+    if (!payload) return;
+    if (payload.type === 'delta') {
+      write({ type: 'llm.delta', data: payload.content });
+    } else if (payload.type === 'done') {
+      write({ type: 'done' });
+    } else if (payload.type === 'error') {
+      write({ type: 'error', message: payload.message });
+    } else {
+      write(payload);
+    }
+  } : null;
+
+  try {
+    const modelRow =
+      (req.body?.modelId && await getModel(Number(req.body.modelId))) ||
+      (req.body?.modelKey && await getModelByKey(String(req.body.modelKey))) ||
+      (req.body?.model && await getModelByName(String(req.body.model))) ||
+      null;
+
+    if (!modelRow) {
+      if (stream) { sse({ type:'error', message:'Model not found' }); return res.end(); }
+      return res.status(400).json({ error: 'Model not found' });
+    }
+
+    if (stream) await dispatch(modelRow, req.body, res, sse);
+    else await dispatch(modelRow, req.body, res, null);
+  } catch (err) {
+    logError('GW /compat/llm-workflows error', { err: err?.message || String(err) });
     if (stream) { sse({ type:'error', message: err?.message || 'error' }); res.end(); }
     else res.status(500).json({ error: err?.message || 'error' });
   }
