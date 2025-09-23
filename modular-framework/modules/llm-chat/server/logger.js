@@ -2,7 +2,13 @@ const LOG_LEVEL = (process.env.LOG_LEVEL || 'info').toLowerCase();
 const LOG_MAX = Number(process.env.LOG_MAX || 1000);
 
 let SPLUNK_LOGGER = null;
-try { SPLUNK_LOGGER = require('../../../splunk-logger'); } catch { SPLUNK_LOGGER = null; }
+try { 
+  SPLUNK_LOGGER = require('../../../splunk-logger'); 
+  console.log('Splunk logger loaded successfully');
+} catch (e) { 
+  console.log('Splunk logger failed to load:', e.message);
+  SPLUNK_LOGGER = null; 
+}
 
 
 const logs = [];

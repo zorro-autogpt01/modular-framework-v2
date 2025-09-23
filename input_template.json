@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/code-change-plan.schema.json",
+  "title": "CodeChangePlan",
+  "type": "object",
+  "required": ["version", "changes"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "type": "string", "const": "1.0" },
+    "project_root": { "type": "string", "description": "Base dir to apply paths against (optional; can be overridden by CLI)" },
+    "dry_run": { "type": "boolean", "default": false },
+    "backup": { "type": "boolean", "default": true, "description": "Create .bak files before modifications" },
+    "changes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/change" }
+    }
+  },
+  "$defs": {
+    "path": {
+      "type": "string",
+      "description": "Path relative to project_root, using POSIX separators"
+    },
+    "change": {
+      "type": "object",
+      "required": ["op"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "description": "Arbitrary identifier" },
+        "description": { "type": "string" },
+        "continue_on_error": { "type": "boolean", "default": false },
+        "op": {
+          "type": "string",
+          "enum": [
+            "write_file",       /* create or overwrite or append/prepend */
+            "delete_path",      /* delete file or empty dir */
+            "rename_path",      /* rename/move */
+            "patch_text",       /* in-place textual edits */
+            "ensure_block"      /* insert a block if missing or update it */
+          ]
+        },
+
+        /* write_file */
+        "path": { "$ref": "#/$defs/path" },
+        "content": { "type": "string", "description": "UTF-8 text content" },
+        "mode": {
+          "type": "string",
+          "enum": ["create_new", "overwrite", "append", "prepend", "create_if_missing"],
+          "default": "create_if_missing"
+        },
+        "chmod": { "type": "string", "pattern": "^[0-7]{3,4}$", "description": "e.g., 644 or 0755" },
+
+        /* delete_path */
+        "recursive": { "type": "boolean", "default": false },
+        "if_absent": { "type": "string", "enum": ["skip", "error"], "default": "skip" },
+
+        /* rename_path */
+        "from_path": { "$ref": "#/$defs/path" },
+        "to_path": { "$ref": "#/$defs/path" },
+        "overwrite_existing": { "type": "boolean", "default": false },
+
+        /* patch_text */
+        "patches": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/patch" }
+        },
+
+        /* ensure_block */
+        "block_id": { "type": "string", "description": "Stable identifier for a block" },
+        "block_content": { "type": "string" },
+        "anchor": { "type": "string", "description": "Plain string or regex (if regex=true)" },
+        "position": { "type": "string", "enum": ["before", "after", "replace"], "default": "after" },
+        "regex": { "type": "boolean", "default": false },
+        "markers": {
+          "type": "object",
+          "properties": {
+            "start": { "type": "string", "default": "<!-- BEGIN:{id} -->" },
+            "end":   { "type": "string", "default": "<!-- END:{id} -->" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "op": { "const": "write_file" } } },
+          "then": { "required": ["path", "content"] }
+        },
+        {
+          "if": { "properties": { "op": { "const": "delete_path" } } },
+          "then": { "required": ["path"] }
+        },
+        {
+          "if": { "properties": { "op": { "const": "rename_path" } } },
+          "then": { "required": ["from_path", "to_path"] }
+        },
+        {
+          "if": { "properties": { "op": { "const": "patch_text" } } },
+          "then": { "required": ["path", "patches"] }
+        },
+        {
+          "if": { "properties": { "op": { "const": "ensure_block" } } },
+          "then": { "required": ["path", "block_id", "block_content"] }
+        }
+      ]
+    },
+
+    "patch": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "replace_literal",     /* simple substring replace */
+            "replace_regex",       /* regex search & replace */
+            "insert_after",        /* anchor then insert */
+            "insert_before",
+            "replace_between",     /* replace region between two anchors */
+            "ensure_line"          /* ensure a line exists (append if missing) */
+          ]
+        },
+        "match": { "type": "string", "description": "needle or regex" },
+        "replacement": { "type": "string" },
+        "regex": { "type": "boolean", "default": false },
+        "count": { "type": "integer", "minimum": 0, "description": "0=all (default for regex types)" },
+        "anchor": { "type": "string" },
+        "start": { "type": "string" },
+        "end": { "type": "string" },
+        "include_anchors": { "type": "boolean", "default": false },
+        "newline": { "type": "boolean", "default": true }
+      }
+    }
+  }
+}
