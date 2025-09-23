@@ -61,19 +61,17 @@ function updatePromptPreview() {
 
 // Gateway models
 async function fetchGatewayModels() {
-  console.log('[fetchGatewayModels] Starting fetch...');
   try {
     const r = await fetch('/llm-gateway/api/models', { credentials: 'include' });
     const data = await safeJson(r);
     if (!r.ok) {
-      console.warn('[fetchGatewayModels] Failed:', data?.error || data);
+      console.warn('Failed to load gateway models:', data?.error || data);
       state.models = [];
     } else {
       state.models = data.items || [];
-      console.log('[fetchGatewayModels] Loaded models:', state.models.length, state.models);
     }
   } catch (e) {
-    console.warn('[fetchGatewayModels] Exception:', e.message || e);
+    console.warn('Failed to load gateway models:', e.message || e);
     state.models = [];
   }
   populateModelSelects();
@@ -88,31 +86,16 @@ function modelOptionLabel(m) {
   return `${name} · ${prov}${mode}${cost}`;
 }
 function populateModelSelect(selectEl, infoEl, currentValue) {
-  console.log(`[populateModelSelect] Called for ${selectEl?.id}, currentValue: "${currentValue}"`);
-  if (!selectEl) {
-    console.warn('[populateModelSelect] selectEl is null');
-    return;
-  }
+  if (!selectEl) return;
   selectEl.innerHTML = '';
 
-  // Add default option
   const def = document.createElement('option');
   def.value = '';
-  
-  // Different default text for step vs main model select
-  const isStepSelect = selectEl.id === 'sModelSelect';
-  if (isStepSelect) {
-    def.textContent = state.current?.chat?.model 
-      ? `— Inherit from workflow (${state.current.chat.model}) —`
-      : '— Select model —';
-  } else {
-    def.textContent = state.models.length
-      ? '-- Select from llm-gateway --'
-      : '— No models from gateway (click ↻ to refresh) —';
-  }
+  def.textContent = state.models.length
+    ? '-- Select from llm-gateway --'
+    : '— No models from gateway (click ↻ to refresh) —';
   selectEl.appendChild(def);
 
-  console.log(`[populateModelSelect] Adding ${state.models.length} models to ${selectEl.id}`);
   for (const m of state.models) {
     const opt = document.createElement('option');
     opt.value = m.model_name;
@@ -123,13 +106,10 @@ function populateModelSelect(selectEl, infoEl, currentValue) {
     opt.dataset.currency = m.currency || 'USD';
     selectEl.appendChild(opt);
   }
-  
-  // Select current value if found
+  // select current if found
   const val = String(currentValue || '');
   const found = Array.from(selectEl.options).find(o => o.value === val);
-  console.log(`[populateModelSelect] Looking for value "${val}", found: ${!!found}`);
   selectEl.value = found ? val : '';
-  
   if (infoEl) {
     if (found) {
       const m = state.models.find(x => x.model_name === val);
@@ -138,68 +118,34 @@ function populateModelSelect(selectEl, infoEl, currentValue) {
       infoEl.textContent = '';
     }
   }
-  console.log(`[populateModelSelect] Final select value: "${selectEl.value}"`);
 }
 function populateModelSelects() {
-  console.log('[populateModelSelects] Called');
-  console.log('[populateModelSelects] Current workflow model:', state.current?.chat?.model);
-  console.log('[populateModelSelects] Current step index:', state.currentStepIdx);
-  
-  // Main workflow model
-  populateModelSelect($('modelSelect'), $('modelInfo'), state.current?.chat?.model || '');
-  
-  // Step model (only populate if a step is selected)
-  if (state.currentStepIdx >= 0 && state.current?.steps?.[state.currentStepIdx]) {
-    const stepModel = state.current.steps[state.currentStepIdx].model || '';
-    console.log('[populateModelSelects] Step model:', stepModel);
-    populateModelSelect($('sModelSelect'), $('sModelInfo'), stepModel);
-  } else {
-    console.log('[populateModelSelects] No step selected, skipping step model select');
-  }
+  populateModelSelect($('modelSelect'), $('modelInfo'), $('model')?.value);
+  populateModelSelect($('sModelSelect'), $('sModelInfo'), $('sModel')?.value);
 }
-
-
 function onModelSelectChanged(isStep=false) {
-  console.log(`[onModelSelectChanged] isStep: ${isStep}`);
-  
   const select = isStep ? $('sModelSelect') : $('modelSelect');
   const input = isStep ? $('sModel') : $('model');
   const provEl = isStep ? $('sProvider') : $('provider');
   const baseEl = isStep ? $('sBaseUrl') : $('baseUrl');
   const infoEl = isStep ? $('sModelInfo') : $('modelInfo');
 
-  console.log(`[onModelSelectChanged] Select element: ${select?.id}, value: "${select?.value}"`);
-  console.log(`[onModelSelectChanged] Hidden input element: ${input?.id}`);
-
-  if (!select || !input) {
-    console.error('[onModelSelectChanged] Required elements not found');
-    return;
-  }
-
   const val = select.value;
   input.value = val || '';
-  console.log(`[onModelSelectChanged] Set hidden input value to: "${input.value}"`);
-  
   const opt = select.selectedOptions?.[0];
   const prov = opt?.dataset?.provider || '';
   const base = opt?.dataset?.baseUrl || '';
 
-  console.log(`[onModelSelectChanged] Provider: "${prov}", Base URL: "${base}"`);
-
-  // Only update provider/baseUrl if they're empty
-  if (prov && provEl && (!provEl.value || provEl.value === '')) {
-    provEl.value = prov;
-    console.log(`[onModelSelectChanged] Updated provider to: "${prov}"`);
+  if (!isStep) {
+    if (prov) provEl.value = prov;
+    if (base && (!baseEl.value || baseEl.value === '')) baseEl.value = base;
+  } else {
+    if (prov && (!provEl.value || provEl.value === '')) provEl.value = prov;
+    if (base && (!baseEl.value || baseEl.value === '')) baseEl.value = base;
   }
-  if (base && baseEl && (!baseEl.value || baseEl.value === '')) {
-    baseEl.value = base;
-    console.log(`[onModelSelectChanged] Updated base URL to: "${base}"`);
-  }
-  
-  if (infoEl) {
-    infoEl.textContent = val ? `Provider: ${prov} · Base: ${base}` : '';
-  }
+  if (infoEl) infoEl.textContent = val ? `Provider: ${prov} · Base: ${base}` : '';
 }
+
 // Default workflow/step creators
 function newWorkflow() {
   return {
@@ -214,8 +160,6 @@ function newWorkflow() {
   };
 }
 function newStep() {
-  const currentModel = state.current?.chat?.model || '';
-  console.log(`[newStep] Creating new step with inherited model: "${currentModel}"`);
   return {
     id: `step_${Date.now().toString(36)}`,
     name: 'Step',
@@ -228,7 +172,7 @@ function newStep() {
     provider: '',
     baseUrl: '',
     apiKey: '',
-    model: currentModel, // Inherit from workflow
+    model: '',
     temperature: ''
   };
 }
@@ -293,14 +237,6 @@ async function saveCurrent() {
       return;
     }
     state.current = data.workflow;
-    state.current.chat = {
-      provider: $('provider').value,
-      baseUrl: $('baseUrl').value.trim(),
-      apiKey: $('apiKey').value.trim(),
-      model: $('model').value.trim(),  // This reads from the hidden input
-      temperature: $('temperature').value !== '' ? Number($('temperature').value) : undefined,
-      max_tokens: $('max_tokens').value !== '' ? Number($('max_tokens').value) : undefined
-    };
     const idx = state.workflows.findIndex(w => w.id === state.current.id);
     if (idx >= 0) state.workflows[idx] = state.current; else state.workflows.push(state.current);
     renderWorkflowList();
@@ -340,7 +276,7 @@ async function runCurrent() {
   }
   const vars = parseJson($('varsInput').value || '{}', {});
   try {
-    const resp = await fetch(`./api/workflows/${wf.id}/run`, {
+    const resp = await fetch(`/api/workflows/${wf.id}/run`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ vars })
@@ -365,10 +301,13 @@ async function testStep() {
   const vars = parseJson($('varsInput').value || '{}', {});
   try { updateTestButtonTooltip(); } catch {}
 
+  // Ensure the step has a model; if not, inherit from workflow model
+  if (!step.model && wf.chat?.model) step.model = wf.chat.model;
+
   try {
-    const resp = await fetch('./api/testStep', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const resp = await fetch('/api/testStep', {  // absolute path to avoid routing issues
+      method:'POST',
+      headers: { 'Content-Type':'application/json' },
       body: JSON.stringify({ chat: wf.chat, step, vars, execute: $('execInTest')?.checked === true })
     });
     const data = await safeJson(resp);
@@ -386,11 +325,7 @@ async function testStep() {
 
 // Collect from form fields
 function collectWorkflowFromForm() {
-  console.log('[collectWorkflowFromForm] Called');
   if (!state.current) state.current = newWorkflow();
-
-  const modelValue = $('model')?.value?.trim() || '';
-  console.log(`[collectWorkflowFromForm] Main model value: "${modelValue}"`);
 
   state.current.name = $('wfName').value.trim();
   state.current.description = $('wfDesc').value;
@@ -398,18 +333,14 @@ function collectWorkflowFromForm() {
     provider: $('provider').value,
     baseUrl: $('baseUrl').value.trim(),
     apiKey: $('apiKey').value.trim(),
-    model: modelValue,
+    model: $('model').value.trim(),
     temperature: $('temperature').value !== '' ? Number($('temperature').value) : undefined,
     max_tokens: $('max_tokens').value !== '' ? Number($('max_tokens').value) : undefined
   };
   state.current.defaults = parseJson($('defaults').value || '{}', {});
-  
   // Steps
   if (state.currentStepIdx >= 0 && state.current.steps[state.currentStepIdx]) {
     const s = state.current.steps[state.currentStepIdx];
-    const stepModelValue = $('sModel').value.trim();
-    console.log(`[collectWorkflowFromForm] Step model value: "${stepModelValue}"`);
-    
     s.name = $('stepName').value.trim();
     s.prompt = $('stepPrompt').value;
     s.systemGuard = !$('stepNoGuard').checked;
@@ -420,10 +351,8 @@ function collectWorkflowFromForm() {
     s.provider = $('sProvider').value.trim();
     s.baseUrl = $('sBaseUrl').value.trim();
     s.apiKey = $('sApiKey').value.trim();
-    s.model = stepModelValue;
+    s.model = $('sModel').value.trim();
     s.temperature = $('sTemp').value !== '' ? Number($('sTemp').value) : '';
-    
-    console.log(`[collectWorkflowFromForm] Updated step model to: "${s.model}"`);
   }
   return state.current;
 }
@@ -521,18 +450,13 @@ function renderSteps() {
 }
 
 function renderStepEditor() {
-  console.log('[renderStepEditor] Called');
   const steps = state.current?.steps || [];
   const s = steps[state.currentStepIdx];
   const noStep = !s;
-  console.log(`[renderStepEditor] Current step index: ${state.currentStepIdx}, step exists: ${!noStep}`);
-  
   $('stepEditor').style.display = noStep ? 'none' : '';
   $('noStepHint').style.display = noStep ? '' : 'none';
   if (noStep) return;
 
-  console.log(`[renderStepEditor] Step model: "${s.model}"`);
-  
   $('stepName').value = s.name || '';
   $('stepPrompt').value = s.prompt || '';
   $('stepSchema').value = typeof s.schema === 'string' ? s.schema : fmtJson(s.schema || {});
@@ -543,28 +467,26 @@ function renderStepEditor() {
   $('sProvider').value = s.provider || '';
   $('sBaseUrl').value = s.baseUrl || '';
   $('sApiKey').value = s.apiKey || '';
-  $('sModel').value = s.model || '';  // Set the hidden input
-  console.log(`[renderStepEditor] Set hidden input sModel to: "${$('sModel').value}"`);
-  
+  $('sModel').value = s.model || '';
   $('sTemp').value = s.temperature ?? '';
-  
-  // Now populate the select with the step's model value directly
-  console.log(`[renderStepEditor] About to populate select with model: "${s.model || ''}"`);
-  populateModelSelect($('sModelSelect'), $('sModelInfo'), s.model || '');
-
-  updateTestButtonTooltip();
-  updatePromptPreview();
+  // Update test button tooltip with the full prompt for current step
+  const vars = parseJson($('varsInput').value || '{}', {});
+  const full = computeFullPromptForStep(s, vars);
+  const testBtn = $('testStepBtn');
+  if (testBtn) testBtn.title = full;
 }
 
-function removeStep(idx) {
-  state.current.steps.splice(idx, 1);
-  if (state.currentStepIdx === idx) state.currentStepIdx = -1;
+// Helpers to manipulate steps
+function removeStep(idx){
+  const arr = state.current?.steps || [];
+  if (idx < 0 || idx >= arr.length) return;
+  arr.splice(idx, 1);
+  if (state.currentStepIdx >= arr.length) state.currentStepIdx = arr.length - 1;
   renderSteps();
   renderStepEditor();
 }
-
-function moveStep(idx, delta) {
-  const steps = state.current.steps;
+function moveStep(idx, delta){
+  const steps = state.current?.steps || [];
   const j = idx + delta;
   if (j < 0 || j >= steps.length) return;
   const [m] = steps.splice(idx, 1);
@@ -572,20 +494,21 @@ function moveStep(idx, delta) {
   if (state.currentStepIdx === idx) state.currentStepIdx = j;
   renderSteps();
 }
-
-function addStep() {
+function addStep(){
   if (!state.current) state.current = newWorkflow();
-  
-  // IMPORTANT: Collect form data first so the model is available for inheritance
-  collectWorkflowFromForm();
-  
-  state.current.steps.push(newStep());
+  // NEW: pre-fill the new step with the workflow's model/provider/base to avoid losing selection
+  const s = newStep();
+  s.model = state.current.chat?.model || '';
+  s.baseUrl = state.current.chat?.baseUrl || '';
+  s.provider = state.current.chat?.provider || '';
+  state.current.steps.push(s);
   state.currentStepIdx = state.current.steps.length - 1;
   renderSteps();
   renderStepEditor();
 }
 
-function escapeHtml(s) {
+// Runs
+function escapeHtml(s){
   return String(s || '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;')
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -696,6 +619,7 @@ function activateTab(name) {
 }
 function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 
+
 // Safe JSON helper
 async function safeJson(res) {
   const txt = await res.text().catch(() => '');
@@ -705,8 +629,6 @@ async function safeJson(res) {
 
 // Wire up events
 document.addEventListener('DOMContentLoaded', async () => {
-  console.log('[DOMContentLoaded] Starting initialization');
-
   $('tabBtnBuilder').addEventListener('click', () => activateTab('builder'));
   $('tabBtnRuns').addEventListener('click', () => activateTab('runs'));
   $('newWfBtn').addEventListener('click', () => { state.current = newWorkflow(); state.currentStepIdx = -1; renderWorkflowEditor(); });
@@ -715,8 +637,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('addStepBtn').addEventListener('click', addStep);
   $('testStepBtn').addEventListener('click', testStep);
   $('runWfBtn').addEventListener('click', runCurrent);
-  $('sModelSelect')?.addEventListener('change', () => onModelSelectChanged(true));
-  $('refreshModelsBtn2')?.addEventListener('click', fetchGatewayModels);
 
   // Keep form changes in state for current step
   ['wfName','wfDesc','provider','baseUrl','apiKey','model','temperature','max_tokens','defaults',
@@ -730,14 +650,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Model selects
   $('modelSelect')?.addEventListener('change', () => onModelSelectChanged(false));
+  $('sModelSelect')?.addEventListener('change', () => onModelSelectChanged(true));
   $('refreshModelsBtn')?.addEventListener('click', fetchGatewayModels);
-  const elements = ['modelSelect', 'model', 'modelInfo', 'sModelSelect', 'sModel', 'sModelInfo'];
-  for (const id of elements) {
-    const el = $(id);
-    console.log(`[DOMContentLoaded] Element ${id}: ${el ? 'found' : 'NOT FOUND'}`);
-  }
-  
-  
+  $('refreshModelsBtn2')?.addEventListener('click', fetchGatewayModels);
+
   activateTab('builder');
 
   // Load data; failures won’t prevent handlers from being bound

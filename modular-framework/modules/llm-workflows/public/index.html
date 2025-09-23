@@ -86,6 +86,8 @@
                 <select id="modelSelect"></select>
                 <button class="ghost" id="refreshModelsBtn" title="Refresh models">↻</button>
               </div>
+              <input id="model" type="hidden" />
+              <div id="modelInfo" class="muted" style="font-size:11px;margin-top:-6px"></div>
             </div>
             <div>
               <label>Provider</label>
@@ -197,8 +199,12 @@
             <div class="row3">
               <div>
                 <label>Model</label>
-                <input id="sModel" placeholder="(inherit)" list="modelsDatalist" />
-                <datalist id="modelsDatalist"></datalist>
+                <div class="flex">
+                  <select id="sModelSelect"></select>
+                  <button class="ghost" id="refreshModelsBtn2" title="Refresh models">↻</button>
+                </div>
+                <input id="sModel" type="hidden" />
+                <div id="sModelInfo" class="muted" style="font-size:11px;margin-top:-6px"></div>
               </div>
               <div>
                 <label>Temperature</label>
