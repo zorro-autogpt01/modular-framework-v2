@@ -3,7 +3,7 @@ const state = {
   current: null,
   currentStepIdx: -1,
   runs: [],
-  llmModels: []
+  models: [] // from llm-gateway
 };
 
 // Helpers
@@ -52,78 +52,101 @@ function updateTestButtonTooltip() {
   if (btn) btn.title = full || 'No prompt';
 }
 function updatePromptPreview() {
-  // preview block not present on this page; noop kept for parity
+  const pre = $('promptPreview');
+  if (!pre) return;
+  const step = state.current?.steps?.[state.currentStepIdx];
+  const vars = parseJson($('varsInput')?.value || '{}', {});
+  pre.textContent = computeFullPromptForStep(step, vars) || '';
 }
 
-// ---- LLM models fetching and UI ----
-async function loadLlmModels() {
+// Gateway models
+async function fetchGatewayModels() {
   try {
-    const r = await fetch('./api/llm-models');
-    const data = await r.json();
-    state.llmModels = data.items || data.models || [];
-    populateModelSelect();
-    populateModelsDatalist();
-    // After loading, try to select current model if any
-    const curModel = state.current?.chat?.model || '';
-    if (curModel) selectModelByName(curModel);
+    const r = await fetch('/llm-gateway/api/models', { credentials: 'include' });
+    const data = await safeJson(r);
+    if (!r.ok) {
+      console.warn('Failed to load gateway models:', data?.error || data);
+      state.models = [];
+    } else {
+      state.models = data.items || [];
+    }
   } catch (e) {
-    console.warn('Failed to load llm models:', e);
+    console.warn('Failed to load gateway models:', e.message || e);
+    state.models = [];
+  }
+  populateModelSelects();
+}
+function modelOptionLabel(m) {
+  const name = m.display_name || m.model_name;
+  const prov = m.provider_name || m.provider_kind || '';
+  const mode = m.mode && m.mode !== 'auto' ? ` · ${m.mode}` : '';
+  const inC = Number(m.input_cost_per_million || 0);
+  const outC = Number(m.output_cost_per_million || 0);
+  const cost = (inC || outC) ? ` · $${inC}/$${outC}` : '';
+  return `${name} · ${prov}${mode}${cost}`;
+}
+function populateModelSelect(selectEl, infoEl, currentValue) {
+  if (!selectEl) return;
+  selectEl.innerHTML = '';
+
+  const def = document.createElement('option');
+  def.value = '';
+  def.textContent = state.models.length
+    ? '-- Select from llm-gateway --'
+    : '— No models from gateway (click ↻ to refresh) —';
+  selectEl.appendChild(def);
+
+  for (const m of state.models) {
+    const opt = document.createElement('option');
+    opt.value = m.model_name;
+    opt.textContent = modelOptionLabel(m);
+    opt.dataset.provider = m.provider_kind || '';
+    opt.dataset.baseUrl = m.provider_base_url || '';
+    opt.dataset.displayName = m.display_name || '';
+    opt.dataset.currency = m.currency || 'USD';
+    selectEl.appendChild(opt);
+  }
+  // select current if found
+  const val = String(currentValue || '');
+  const found = Array.from(selectEl.options).find(o => o.value === val);
+  selectEl.value = found ? val : '';
+  if (infoEl) {
+    if (found) {
+      const m = state.models.find(x => x.model_name === val);
+      infoEl.textContent = m ? `Provider: ${m.provider_kind} · Base: ${m.provider_base_url}` : '';
+    } else {
+      infoEl.textContent = '';
+    }
   }
 }
-function populateModelSelect() {
-  const sel = $('modelSelect');
-  if (!sel) return;
-  sel.innerHTML = '';
-  const opt0 = document.createElement('option');
-  opt0.value = '';
-  opt0.textContent = '(select a model)';
-  sel.appendChild(opt0);
-
-  state.llmModels.forEach(m => {
-    const opt = document.createElement('option');
-    opt.value = m.model_name;
-    const label = `${m.display_name || m.model_name} · ${m.provider_name || ''} (${m.provider_kind || ''})`;
-    opt.textContent = label;
-    opt.dataset.kind = m.provider_kind || '';
-    opt.dataset.baseurl = m.provider_base_url || '';
-    sel.appendChild(opt);
-  });
-
-  sel.onchange = () => {
-    const modelName = sel.value;
-    if (!state.current) state.current = newWorkflow();
-    state.current.chat = state.current.chat || {};
-    state.current.chat.model = modelName;
-
-    const selected = sel.selectedOptions[0];
-    if (selected) {
-      const kind = selected.dataset.kind || '';
-      const base = selected.dataset.baseurl || '';
-      if (kind) $('provider').value = kind;
-      if (base) $('baseUrl').value = base;
-    }
-  };
+function populateModelSelects() {
+  populateModelSelect($('modelSelect'), $('modelInfo'), $('model')?.value);
+  populateModelSelect($('sModelSelect'), $('sModelInfo'), $('sModel')?.value);
 }
-function populateModelsDatalist() {
-  const dl = $('modelsDatalist'); if (!dl) return;
-  dl.innerHTML = '';
-  state.llmModels.forEach(m => {
-    const opt = document.createElement('option');
-    opt.value = m.model_name;
-    opt.label = `${m.display_name || m.model_name} · ${m.provider_name || ''}`;
-    dl.appendChild(opt);
-  });
-}
-function selectModelByName(name) {
-  const sel = $('modelSelect');
-  if (!sel) return;
-  const idx = Array.from(sel.options).findIndex(o => o.value === name);
-  sel.selectedIndex = idx >= 0 ? idx : 0;
-  // trigger change handler logic to sync provider/baseUrl if we found match
-  if (idx >= 0 && sel.onchange) sel.onchange();
+function onModelSelectChanged(isStep=false) {
+  const select = isStep ? $('sModelSelect') : $('modelSelect');
+  const input = isStep ? $('sModel') : $('model');
+  const provEl = isStep ? $('sProvider') : $('provider');
+  const baseEl = isStep ? $('sBaseUrl') : $('baseUrl');
+  const infoEl = isStep ? $('sModelInfo') : $('modelInfo');
+
+  const val = select.value;
+  input.value = val || '';
+  const opt = select.selectedOptions?.[0];
+  const prov = opt?.dataset?.provider || '';
+  const base = opt?.dataset?.baseUrl || '';
+
+  if (!isStep) {
+    if (prov) provEl.value = prov;
+    if (base && (!baseEl.value || baseEl.value === '')) baseEl.value = base;
+  } else {
+    if (prov && (!provEl.value || provEl.value === '')) provEl.value = prov;
+    if (base && (!baseEl.value || baseEl.value === '')) baseEl.value = base;
+  }
+  if (infoEl) infoEl.textContent = val ? `Provider: ${prov} · Base: ${base}` : '';
 }
 
-// Workflow constructors
+// Default workflow/step creators
 function newWorkflow() {
   return {
     id: null,
@@ -181,49 +204,66 @@ function defaultActionSchema() {
   };
 }
 
-// Load workflows
+// Load workflows with safe JSON handling
 async function loadWorkflows() {
-  const resp = await fetch('./api/workflows');
-  const data = await resp.json();
-  state.workflows = data.workflows || [];
+  try {
+    const resp = await fetch('./api/workflows');
+    const data = await safeJson(resp);
+    if (!resp.ok) {
+      console.warn('Workflows load failed:', data);
+      state.workflows = [];
+    } else {
+      state.workflows = data.workflows || [];
+    }
+  } catch (e) {
+    console.warn('Failed to load workflows:', e);
+    state.workflows = [];
+  }
   renderWorkflowList();
 }
 
 // Save current workflow
 async function saveCurrent() {
   const wf = collectWorkflowFromForm();
-  const resp = await fetch('./api/workflows', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(wf)
-  });
-  const data = await resp.json();
-  if (!data.ok) {
-    toast('Save failed');
-    return;
+  try {
+    const resp = await fetch('./api/workflows', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(wf)
+    });
+    const data = await safeJson(resp);
+    if (!resp.ok || !data.ok) {
+      toast('Save failed: ' + (data?.error || resp.statusText));
+      return;
+    }
+    state.current = data.workflow;
+    const idx = state.workflows.findIndex(w => w.id === state.current.id);
+    if (idx >= 0) state.workflows[idx] = state.current; else state.workflows.push(state.current);
+    renderWorkflowList();
+    renderWorkflowEditor();
+    toast('Saved');
+  } catch (e) {
+    toast('Save failed: ' + e.message);
   }
-  state.current = data.workflow;
-  // Update collection
-  const idx = state.workflows.findIndex(w => w.id === state.current.id);
-  if (idx >= 0) state.workflows[idx] = state.current; else state.workflows.push(state.current);
-  renderWorkflowList();
-  renderWorkflowEditor();
-  toast('Saved');
 }
 
 // Delete current
 async function deleteCurrent() {
   if (!state.current?.id) { toast('Nothing selected'); return; }
   if (!confirm('Delete this workflow?')) return;
-  const resp = await fetch(`./api/workflows/${state.current.id}`, { method: 'DELETE' });
-  if (resp.ok) {
-    state.workflows = state.workflows.filter(w => w.id !== state.current.id);
-    state.current = null;
-    state.currentStepIdx = -1;
-    renderWorkflowList();
-    renderWorkflowEditor();
-  } else {
-    toast('Delete failed');
+  try {
+    const resp = await fetch(`./api/workflows/${state.current.id}`, { method: 'DELETE' });
+    if (resp.ok) {
+      state.workflows = state.workflows.filter(w => w.id !== state.current.id);
+      state.current = null;
+      state.currentStepIdx = -1;
+      renderWorkflowList();
+      renderWorkflowEditor();
+    } else {
+      toast('Delete failed');
+    }
+  } catch (e) {
+    toast('Delete failed: ' + e.message);
   }
 }
 
@@ -235,30 +275,49 @@ async function runCurrent() {
     return;
   }
   const vars = parseJson($('varsInput').value || '{}', {});
-  const resp = await fetch(`./api/workflows/${wf.id}/run`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ vars })
-  });
-  const data = await resp.json();
-  renderRunResult(data);
-  await loadRuns();
+  try {
+    const resp = await fetch(`./api/workflows/${wf.id}/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vars })
+    });
+    const data = await safeJson(resp);
+    if (!resp.ok) {
+      toast('Run failed: ' + (data?.error || resp.statusText));
+      return;
+    }
+    renderRunResult(data);
+    await loadRuns();
+  } catch (e) {
+    toast('Run failed: ' + e.message);
+  }
 }
 
-// Test selected step
+// Test selected step (robust)
 async function testStep() {
   const wf = collectWorkflowFromForm();
   const step = wf.steps[state.currentStepIdx];
   if (!step) { toast('Select a step'); return; }
   const vars = parseJson($('varsInput').value || '{}', {});
   try { updateTestButtonTooltip(); } catch {}
-  const resp = await fetch('./api/testStep', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat: wf.chat, step, vars, execute: $('execInTest')?.checked === true })
-  });
-  const data = await resp.json();
-  renderStepTestResult(data);
+
+  try {
+    const resp = await fetch('./api/testStep', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat: wf.chat, step, vars, execute: $('execInTest')?.checked === true })
+    });
+    const data = await safeJson(resp);
+    if (!resp.ok) {
+      toast('Step test failed: ' + (data?.error || resp.statusText));
+      // Still render something if possible
+      renderStepTestResult({ ok:false, error: data?.error || 'HTTP error', raw: data?.errorText || '' });
+      return;
+    }
+    renderStepTestResult(data);
+  } catch (e) {
+    toast('Step test failed: ' + e.message);
+  }
 }
 
 // Collect from form fields
@@ -271,7 +330,7 @@ function collectWorkflowFromForm() {
     provider: $('provider').value,
     baseUrl: $('baseUrl').value.trim(),
     apiKey: $('apiKey').value.trim(),
-    model: $('modelSelect').value.trim(),
+    model: $('model').value.trim(),
     temperature: $('temperature').value !== '' ? Number($('temperature').value) : undefined,
     max_tokens: $('max_tokens').value !== '' ? Number($('max_tokens').value) : undefined
   };
@@ -311,12 +370,20 @@ function renderWorkflowList() {
     `;
     const btn = div.querySelector('button');
     btn.onclick = async () => {
-      const resp = await fetch(`./api/workflows/${w.id}`);
-      const data = await resp.json();
-      state.current = data.workflow;
-      state.currentStepIdx = -1;
-      renderWorkflowEditor();
-      $('tabBtnBuilder').click();
+      try {
+        const resp = await fetch(`./api/workflows/${w.id}`);
+        const data = await safeJson(resp);
+        if (!resp.ok) {
+          toast('Load workflow failed: ' + (data?.error || resp.statusText));
+          return;
+        }
+        state.current = data.workflow;
+        state.currentStepIdx = -1;
+        renderWorkflowEditor();
+        $('tabBtnBuilder').click();
+      } catch (e) {
+        toast('Load workflow failed: ' + e.message);
+      }
     };
     list.appendChild(div);
   });
@@ -331,10 +398,11 @@ function renderWorkflowEditor() {
     $('provider').value = 'openai';
     $('baseUrl').value = '';
     $('apiKey').value = '';
-    $('modelSelect').value = '';
+    $('model').value = '';
     $('temperature').value = '';
     $('max_tokens').value = '';
     $('defaults').value = '{}';
+    populateModelSelects();
     renderSteps();
     renderStepEditor();
     return;
@@ -344,15 +412,11 @@ function renderWorkflowEditor() {
   $('provider').value = state.current.chat?.provider || 'openai';
   $('baseUrl').value = state.current.chat?.baseUrl || '';
   $('apiKey').value = state.current.chat?.apiKey || '';
+  $('model').value = state.current.chat?.model || '';
   $('temperature').value = state.current.chat?.temperature ?? '';
   $('max_tokens').value = state.current.chat?.max_tokens ?? '';
   $('defaults').value = fmtJson(state.current.defaults || {});
-
-  // Select the model in dropdown if available
-  const modelName = state.current.chat?.model || '';
-  if (modelName) selectModelByName(modelName);
-  else $('modelSelect').selectedIndex = 0;
-
+  populateModelSelects();
   renderSteps();
   renderStepEditor();
 }
@@ -402,7 +466,11 @@ function renderStepEditor() {
   $('sApiKey').value = s.apiKey || '';
   $('sModel').value = s.model || '';
   $('sTemp').value = s.temperature ?? '';
+  // Update selects to match
+  populateModelSelects();
+
   updateTestButtonTooltip();
+  updatePromptPreview();
 }
 
 function removeStep(idx) {
@@ -438,9 +506,19 @@ function escapeHtml(s) {
 
 // Runs
 async function loadRuns() {
-  const resp = await fetch('./api/runs');
-  const data = await resp.json();
-  state.runs = data.runs || [];
+  try {
+    const resp = await fetch('./api/runs');
+    const data = await safeJson(resp);
+    if (!resp.ok) {
+      console.warn('Runs load failed:', data);
+      state.runs = [];
+    } else {
+      state.runs = data.runs || [];
+    }
+  } catch (e) {
+    console.warn('Runs load failed:', e);
+    state.runs = [];
+  }
   renderRuns();
 }
 function renderRuns() {
@@ -461,6 +539,7 @@ function renderRuns() {
     list.appendChild(item);
   });
 }
+
 function renderRunResult(run) {
   $('tabBtnRuns').click();
   $('runDetail').innerHTML = `
@@ -474,6 +553,7 @@ function renderRunResult(run) {
     </div>
   `;
 }
+
 function renderArtifacts(artifacts) {
   if (!artifacts.length) return '<div class="muted">No artifacts</div>';
   return artifacts.map((a, idx) => `
@@ -494,7 +574,7 @@ function renderStepTestResult(data) {
       <h4>JSON</h4>
       <pre>${escapeHtml(JSON.stringify(data.json || {}, null, 2))}</pre>
       <h4>Raw</h4>
-      <pre class="log">${escapeHtml((data.raw || '').slice(0, 4000))}</pre>
+      <pre class="log">${escapeHtml(((data.raw || data.error || '') + '').slice(0, 4000))}</pre>
       <h4>Artifacts (${data.artifacts?.length || 0})</h4>
       ${(data.actionResults && data.actionResults.length) ? `
         <h4>Action Results (${data.actionResults.length})</h4>
@@ -529,6 +609,13 @@ function activateTab(name) {
 }
 function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 
+// Safe JSON helper
+async function safeJson(res) {
+  const txt = await res.text().catch(() => '');
+  try { return JSON.parse(txt); }
+  catch { return { errorText: txt }; }
+}
+
 // Wire up events
 document.addEventListener('DOMContentLoaded', async () => {
   $('tabBtnBuilder').addEventListener('click', () => activateTab('builder'));
@@ -539,10 +626,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('addStepBtn').addEventListener('click', addStep);
   $('testStepBtn').addEventListener('click', testStep);
   $('runWfBtn').addEventListener('click', runCurrent);
-  $('refreshModelsBtn').addEventListener('click', loadLlmModels);
 
   // Keep form changes in state for current step
-  ['wfName','wfDesc','provider','baseUrl','apiKey','temperature','max_tokens','defaults',
+  ['wfName','wfDesc','provider','baseUrl','apiKey','model','temperature','max_tokens','defaults',
    'stepName','stepPrompt','stepSchema','stepNoGuard','stepDontStop','stepExportPath','stepExportAs',
    'sProvider','sBaseUrl','sApiKey','sModel','sTemp'
   ].forEach(id => {
@@ -551,22 +637,35 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (el && el.tagName === 'TEXTAREA') el.addEventListener('input', () => { collectWorkflowFromForm(); updateTestButtonTooltip(); updatePromptPreview(); });
   });
 
+  // Model selects
+  $('modelSelect')?.addEventListener('change', () => onModelSelectChanged(false));
+  $('sModelSelect')?.addEventListener('change', () => onModelSelectChanged(true));
+  $('refreshModelsBtn')?.addEventListener('click', fetchGatewayModels);
+  $('refreshModelsBtn2')?.addEventListener('click', fetchGatewayModels);
+
   activateTab('builder');
+
+  // Load data; failures won’t prevent handlers from being bound
+  await fetchGatewayModels();
   await loadWorkflows();
   await loadRuns();
-  await loadLlmModels();
 
-  $('varsInput')?.addEventListener('input', () => { updateTestButtonTooltip(); });
+  $('varsInput')?.addEventListener('input', () => { updateTestButtonTooltip(); updatePromptPreview(); });
 
-  document.addEventListener('keydown', (e)=>{
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's'){
-      e.preventDefault();
-      saveCurrent();
-    }
+  // Copy / Download actions for the preview (no-op if not present)
+  $('copyPromptBtn')?.addEventListener('click', () => {
+    const text = $('promptPreview')?.textContent || '';
+    navigator.clipboard?.writeText(text);
+  });
+  $('downloadPromptBtn')?.addEventListener('click', () => {
+    const text = $('promptPreview')?.textContent || '';
+    const blob = new Blob([text], { type: 'text/plain' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'prompt.txt';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(a.href);
   });
 });
-
-// Minimal utils
-function copyToClipboard(text) {
-  navigator.clipboard?.writeText(text).then(() => toast('Copied'));
-}

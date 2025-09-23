@@ -1,9 +1,9 @@
 const axios = require('axios');
 const { logDebug, logWarn } = require('./logger');
 
-// Streams via SSE and forwards deltas to callbacks. Uses llm-gateway compat endpoint by default.
+// Streams via SSE and forwards deltas to callbacks. Uses llm-gateway /api/compat/llm-chat.
 async function chatStream({ llmGatewayUrl, overrides, messages, onDelta, onError, onDone }) {
-  const url = (llmGatewayUrl || process.env.LLM_GATEWAY_URL || 'http://llm-gateway:3010/api/compat/llm-chat').replace(/\/$/, '');
+  const url = (llmGatewayUrl || process.env.LLM_GATEWAY_URL || 'http://localhost:3010/api/compat/llm-chat').replace(/\/$/, '');
   const {
     provider='openai', baseUrl, apiKey, model,
     temperature, max_tokens, system

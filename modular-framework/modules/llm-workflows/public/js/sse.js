@@ -12,12 +12,34 @@ export function parseStream(onDelta, onEvent, onDone, onError) {
       if (payload === '[DONE]') { onDone?.(); continue; }
       try {
         const evt = JSON.parse(payload);
-        if (evt.type === 'llm.delta' && typeof evt.data === 'string') {
+
+        // Accept both "llm.delta" (older) and "delta" (normalized) event types
+        if ((evt.type === 'llm.delta' || evt.type === 'delta') && typeof evt.data === 'string') {
           onDelta?.(evt.data);
-        } else if (evt.type === 'error') {
+          continue;
+        }
+        if (evt.type === 'delta' && typeof evt.content === 'string') {
+          onDelta?.(evt.content);
+          continue;
+        }
+
+        if (evt.type === 'error') {
           onError?.(evt.message || 'error');
-        } else if (evt.type === 'done') {
+          continue;
+        }
+        if (evt.type === 'done') {
           onDone?.();
+          continue;
+        }
+
+        // Fallback generic content shapes
+        const content =
+          evt?.choices?.[0]?.delta?.content ??
+          evt?.output_text?.[0]?.content ??
+          evt?.message?.content ??
+          evt?.content;
+        if (content) {
+          onDelta?.(String(content));
         } else {
           onEvent?.(evt);
         }
@@ -28,4 +50,3 @@ export function parseStream(onDelta, onEvent, onDone, onError) {
     }
   };
 }
-
