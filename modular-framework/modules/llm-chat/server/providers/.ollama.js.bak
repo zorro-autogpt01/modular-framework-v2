@@ -1,12 +1,12 @@
 const axios = require('axios');
 const { logDebug, logWarn } = require('../logger');
 
-async function handleOllama({ res, sendSSE, rid, baseUrl, model, messages, temperature, sseMode, conversationId }) {
+async function handleOllama({ res, sendSSE, rid, baseUrl, model, messages, temperature, sseMode }) {
   const url = `${baseUrl.replace(/\/$/, '')}/api/chat`;
   const body = { model, messages, stream: sseMode };
   if (typeof temperature === 'number') body.options = { ...(body.options || {}), temperature };
 
-  logDebug('OLLAMA request', { rid, url, body, conversationId });
+  logDebug('OLLAMA request', { rid, url, body });
 
   if (sseMode) {
     const response = await axios.post(url, body, { responseType: 'stream' });
@@ -20,8 +20,8 @@ async function handleOllama({ res, sendSSE, rid, baseUrl, model, messages, tempe
         } catch { /* ignore */ }
       }
     });
-    response.data.on('end', () => { logDebug('OLLAMA stream end', { rid, conversationId }); res.end(); });
-    response.data.on('error', (e) => { logWarn('OLLAMA stream error', { rid, err: e.message, conversationId }); sendSSE({ type:'error', message: e.message }); res.end(); });
+    response.data.on('end', () => { logDebug('OLLAMA stream end', { rid }); res.end(); });
+    response.data.on('error', (e) => { logWarn('OLLAMA stream error', { rid, err: e.message }); sendSSE({ type:'error', message: e.message }); res.end(); });
   } else {
     const { data } = await axios.post(url, body);
     const content = data?.message?.content || '';

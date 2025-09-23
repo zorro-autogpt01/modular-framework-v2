@@ -1,13 +1,13 @@
 const express = require('express');
 const router = express.Router();
-const { logInfo, logWarn, logError, logDebug, redact } = require('../logger');
+const { logInfo, logWarn, logError, redact } = require('../logger');
 const { extractErrAsync } = require('../util/http');
 const { handleOllama } = require('../providers/ollama');
 const { handleOpenAICompat } = require('../providers/openaiCompat');
 
-// Attach an id to each request (backup; app-level stamp also sets this)
+// Attach an id to each request
 router.use((req, _res, next) => {
-  if (!req.id) req.id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2,7)}`;
+  req.id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2,7)}`;
   next();
 });
 
@@ -24,12 +24,8 @@ router.post('/chat', async (req, res) => {
     max_tokens,
     stream = true,
     useResponses = false,
-    reasoning = false,
-    metadata = {}
+    reasoning = false
   } = req.body || {};
-
-  const conversationId = metadata?.conversationId || req.headers['x-conversation-id'] || null;
-  const clientSource = metadata?.source || 'llm-chat-ui';
 
   const problems = [];
   if (!baseUrl) problems.push('baseUrl is required');
@@ -39,13 +35,9 @@ router.post('/chat', async (req, res) => {
     problems.push('apiKey is required for OpenAI/OpenAI-compatible providers');
   }
   if (problems.length) {
-    logWarn('Validation failed', { rid, problems, body: redact(req.body), conversationId, clientSource });
+    logWarn('Validation failed', { rid, problems, body: redact(req.body) });
     return res.status(400).json({ error: 'Validation failed', details: problems });
   }
-
-  const msgCounts = Array.isArray(messages)
-    ? messages.reduce((acc, m) => { acc[m?.role || 'unknown'] = (acc[m?.role || 'unknown'] || 0) + 1; return acc; }, {})
-    : {};
 
   const sseMode = !!stream;
   if (sseMode) {
@@ -69,35 +61,20 @@ router.post('/chat', async (req, res) => {
     reasoning: !!reasoning,
     temperature: (typeof temperature === 'number' ? temperature : null),
     max_tokens: max_tokens ?? null,
-    messagesCount: messages.length,
-    roles: msgCounts,
-    conversationId,
-    clientSource
   });
-  logDebug('LLM messages meta', { rid, messagesCount: messages.length, conversationId });
-
-  // Track SSE connection lifecycle
-  let ended = false;
-  const onEnd = (kind) => {
-    if (ended) return; ended = true;
-    logInfo('LLM request finished', { rid, provider, model, kind, conversationId });
-  };
-  res.on('close', () => onEnd('close'));
-  res.on('finish', () => onEnd('finish'));
 
   try {
     if (provider === 'ollama') {
-      return await handleOllama({ res, sendSSE, rid, baseUrl, model, messages, temperature, sseMode, conversationId });
+      return await handleOllama({ res, sendSSE, rid, baseUrl, model, messages, temperature, sseMode });
     }
     return await handleOpenAICompat({
       res, sendSSE, rid,
       baseUrl, apiKey, model, messages, temperature,
-      max_tokens, useResponses: useResponses || autoResponses, reasoning, sseMode,
-      conversationId
+      max_tokens, useResponses: useResponses || autoResponses, reasoning, sseMode
     });
   } catch (err) {
     const message = await extractErrAsync(err);
-    logError('LLM fatal error', { rid, message, provider, model, conversationId });
+    logError('LLM fatal error', { rid, message });
     if (sseMode) {
       sendSSE({ type: 'error', message });
       try { res.end(); } catch {}

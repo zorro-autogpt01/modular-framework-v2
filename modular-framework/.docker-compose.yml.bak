@@ -89,10 +89,8 @@ services:
       - NODE_ENV=production
       - NODE_TLS_REJECT_UNAUTHORIZED=${NODE_TLS_REJECT_UNAUTHORIZED}
       - PORT=3004
-      - SPLUNK_HEC_URL=${SPLUNK_HEC_URL}
-      - SPLUNK_HEC_TOKEN=${SPLUNK_HEC_TOKEN}
-      - SPLUNK_SOURCE=llm-chat
-      - LOG_TO_CONSOLE=false
+      #- SPLUNK_HEC_URL=$SPLUNK_HEC_URL
+      #- SPLUNK_HEC_TOKEN=$SPLUNK_HEC_TOKEN
     depends_on:
       - splunk
     networks:

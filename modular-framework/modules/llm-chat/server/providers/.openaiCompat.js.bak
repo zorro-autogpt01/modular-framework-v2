@@ -55,8 +55,7 @@ function handleChatCompletionsChunk(chunk, sendSSE) {
 async function handleOpenAICompat({
   res, sendSSE, rid,
   baseUrl, apiKey, model, messages, temperature,
-  max_tokens, useResponses, reasoning, sseMode,
-  conversationId
+  max_tokens, useResponses, reasoning, sseMode
 }) {
   const headers = { 'Content-Type': 'application/json' };
   if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
@@ -72,16 +71,18 @@ async function handleOpenAICompat({
     }
     if (!isGpt5 && max_tokens) rBodyBase.max_output_tokens = max_tokens;
 
-    logDebug('RESPONSES request', { rid, url, body: rBodyBase, conversationId });
+    logDebug('RESPONSES request', { rid, url, body: rBodyBase });
 
     try {
       if (sseMode) {
         const response = await axios.post(url, rBodyBase, { headers, responseType: 'stream' });
         response.data.on('data', (chunk) => handleResponsesChunk(chunk, sendSSE));
-        response.data.on('end', () => { logDebug('RESPONSES stream end', { rid, conversationId }); res.end(); });
-        response.data.on('error', (e) => { logWarn('RESPONSES stream error', { rid, err: e.message, conversationId }); sendSSE({ type:'error', message: e.message }); res.end(); });
+        response.data.on('end', () => { logDebug('RESPONSES stream end', { rid }); res.end(); });
+        response.data.on('error', (e) => { logWarn('RESPONSES stream error', { rid, err: e.message }); sendSSE({ type:'error', message: e.message }); res.end(); });
       } else {
         const { data } = await axios.post(url, rBodyBase, { headers });
+    
+        // robust text extraction for varied /v1/responses shapes
         function extractText(x) {
           if (!x) return '';
           if (typeof x === 'string') return x;
@@ -90,6 +91,7 @@ async function handleOpenAICompat({
             x.message?.content ||
             x.content;
           if (direct) return String(direct);
+          // deep walk to find any { text: "..." } or { content: "..." } strings
           const acc = [];
           const walk = (v) => {
             if (!v) return;
@@ -104,20 +106,21 @@ async function handleOpenAICompat({
           walk(x);
           return acc.join('');
         }
+    
         const content = extractText(data);
-        logDebug('RESPONSES non-stream result', { rid, empty: !content, topLevelKeys: Object.keys(data || {}), conversationId });
-        if (!content) logWarn('No text extracted from /v1/responses', { rid, conversationId });
+        logDebug('RESPONSES non-stream result', { rid, empty: !content, topLevelKeys: Object.keys(data || {}) });
+        if (!content) logWarn('No text extracted from /v1/responses', { rid });
         res.json({ content });
       }
     } catch (err) {
       if (await isUnsupportedParamErrorAsync(err, 'temperature') && rBodyBase.temperature !== undefined) {
-        logWarn('RESPONSES retry without temperature', { rid, conversationId });
+        logWarn('RESPONSES retry without temperature', { rid });
         const rBodyRetry = { ...rBodyBase }; delete rBodyRetry.temperature;
         if (sseMode) {
           const response = await axios.post(url, rBodyRetry, { headers, responseType: 'stream' });
           response.data.on('data', (chunk) => handleResponsesChunk(chunk, sendSSE));
-          response.data.on('end', () => { logDebug('RESPONSES stream end (retry)', { rid, conversationId }); res.end(); });
-          response.data.on('error', (e) => { logWarn('RESPONSES stream error (retry)', { rid, err: e.message, conversationId }); sendSSE({ type:'error', message: e.message }); res.end(); });
+          response.data.on('end', () => { logDebug('RESPONSES stream end (retry)', { rid }); res.end(); });
+          response.data.on('error', (e) => { logWarn('RESPONSES stream error (retry)', { rid, err: e.message }); sendSSE({ type:'error', message: e.message }); res.end(); });
         } else {
           const { data } = await axios.post(url, rBodyRetry, { headers });
           const content = data?.output_text?.join?.('') || data?.message?.content || data?.content || '';
@@ -139,13 +142,13 @@ async function handleOpenAICompat({
     else body.max_tokens = max_tokens;
   }
 
-  logDebug('CHAT.COMPLETIONS request', { rid, url, body, conversationId });
+  logDebug('CHAT.COMPLETIONS request', { rid, url, body });
 
   if (sseMode) {
     const response = await axios.post(url, body, { headers, responseType: 'stream' });
     response.data.on('data', (chunk) => handleChatCompletionsChunk(chunk, sendSSE));
-    response.data.on('end', () => { logDebug('CHAT stream end', { rid, conversationId }); res.end(); });
-    response.data.on('error', (e) => { logWarn('CHAT stream error', { rid, err: e.message, conversationId }); sendSSE({ type:'error', message: e.message }); res.end(); });
+    response.data.on('end', () => { logDebug('CHAT stream end', { rid }); res.end(); });
+    response.data.on('error', (e) => { logWarn('CHAT stream error', { rid, err: e.message }); sendSSE({ type:'error', message: e.message }); res.end(); });
   } else {
     const { data } = await axios.post(url, body, { headers });
     const content = data.choices?.[0]?.message?.content || '';

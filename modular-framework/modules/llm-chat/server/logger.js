@@ -1,15 +1,28 @@
+const path = require('path');
 const LOG_LEVEL = (process.env.LOG_LEVEL || 'info').toLowerCase();
 const LOG_MAX = Number(process.env.LOG_MAX || 1000);
+const LOG_TO_CONSOLE = (process.env.LOG_TO_CONSOLE || 'false').toLowerCase() === 'true';
+const IS_SPLUNK_CONFIGURED = Boolean(process.env.SPLUNK_HEC_URL && process.env.SPLUNK_HEC_TOKEN);
 
+// Try multiple possible locations for the splunk-logger helper
 let SPLUNK_LOGGER = null;
-try { 
-  SPLUNK_LOGGER = require('../../../splunk-logger'); 
-  console.log('Splunk logger loaded successfully');
-} catch (e) { 
-  console.log('Splunk logger failed to load:', e.message);
-  SPLUNK_LOGGER = null; 
-}
-
+(function resolveSplunkLogger(){
+  const candidates = [
+    '/splunk-logger',
+    path.join(__dirname, '..', 'splunk-logger'),
+    path.join(__dirname, '..', '..', 'splunk-logger'),
+    path.join(__dirname, '..', '..', '..', 'splunk-logger')
+  ];
+  for (const modPath of candidates) {
+    try {
+      // eslint-disable-next-line import/no-dynamic-require, global-require
+      SPLUNK_LOGGER = require(modPath);
+      break;
+    } catch (e) {
+      // continue
+    }
+  }
+})();
 
 const logs = [];
 let reqCounter = 0;
@@ -36,20 +49,55 @@ function safeStringify(v) {
     return '[unstringifiable]';
   }
 }
+
+function shouldConsole(level){
+  if (LOG_TO_CONSOLE) return true;
+  // If Splunk isn't configured, still emit to console so we don't go dark
+  return !IS_SPLUNK_CONFIGURED;
+}
+function consoleOut(level, line){
+  try {
+    if (!shouldConsole(level)) return;
+    if (level === 'debug' && LOG_LEVEL === 'debug') console.debug(line);
+    else if (level === 'info' && (LOG_LEVEL === 'debug' || LOG_LEVEL === 'info')) console.info(line);
+    else if (level === 'warn' && (LOG_LEVEL !== 'error')) console.warn(line);
+    else if (level === 'error') console.error(line);
+  } catch {}
+}
+
 function addLog(level, msg, meta) {
   const entry = { ts: new Date().toISOString(), level, msg, ...meta };
   logs.push(entry);
   if (logs.length > LOG_MAX) logs.shift();
   const line = `[${entry.ts}] [${level.toUpperCase()}] ${msg} ${meta ? safeStringify(meta) : ''}`;
-  if (level === 'debug' && LOG_LEVEL === 'debug') console.debug(line);
-  else if (level === 'info' && (LOG_LEVEL === 'debug' || LOG_LEVEL === 'info')) console.info(line);
-  else if (level === 'warn' && (LOG_LEVEL !== 'error')) console.warn(line);
-  else if (level === 'error') console.error(line);
+  consoleOut(level, line);
 }
-const logDebug = (msg, meta)=> { addLog('debug', msg, meta); if (SPLUNK_LOGGER?.logDebug) SPLUNK_LOGGER.logDebug(msg, meta); };
-const logInfo  = (msg, meta)=> { addLog('info', msg, meta); if (SPLUNK_LOGGER?.logInfo) SPLUNK_LOGGER.logInfo(msg, meta); };
-const logWarn  = (msg, meta)=> { addLog('warn', msg, meta); if (SPLUNK_LOGGER?.logWarn) SPLUNK_LOGGER.logWarn(msg, meta); };
-const logError = (msg, meta)=> { addLog('error', msg, meta); if (SPLUNK_LOGGER?.logError) SPLUNK_LOGGER.logError(msg, meta); };
+
+function augmentMeta(meta){
+  const base = meta && typeof meta === 'object' ? meta : {};
+  return { service: 'llm-chat', ...base };
+}
+
+const logDebug = (msg, meta)=> {
+  const m = augmentMeta(meta);
+  addLog('debug', msg, m);
+  try { SPLUNK_LOGGER?.logDebug?.(msg, m); } catch {}
+};
+const logInfo  = (msg, meta)=> {
+  const m = augmentMeta(meta);
+  addLog('info', msg, m);
+  try { SPLUNK_LOGGER?.logInfo?.(msg, m); } catch {}
+};
+const logWarn  = (msg, meta)=> {
+  const m = augmentMeta(meta);
+  addLog('warn', msg, m);
+  try { SPLUNK_LOGGER?.logWarn?.(msg, m); } catch {}
+};
+const logError = (msg, meta)=> {
+  const m = augmentMeta(meta);
+  addLog('error', msg, m);
+  try { SPLUNK_LOGGER?.logError?.(msg, m); } catch {}
+};
 
 function stamp(req, _res, next) {
   req.id = `${Date.now().toString(36)}-${(++reqCounter).toString(36)}`;
