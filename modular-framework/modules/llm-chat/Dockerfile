@@ -7,6 +7,8 @@ RUN npm install --production
 
 # Copy source
 COPY . .
+COPY ./splunk-logger /splunk-logger
+
 
 ENV NODE_ENV=production
 ENV PORT=3004

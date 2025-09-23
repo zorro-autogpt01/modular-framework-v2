@@ -1,10 +1,6 @@
 const LOG_LEVEL = (process.env.LOG_LEVEL || 'info').toLowerCase();
 const LOG_MAX = Number(process.env.LOG_MAX || 1000);
 
-let SPLUNK_LOGGER = null;
-try { SPLUNK_LOGGER = require('../../../splunk-logger'); } catch { SPLUNK_LOGGER = null; }
-
-
 const logs = [];
 let reqCounter = 0;
 
@@ -40,10 +36,10 @@ function addLog(level, msg, meta) {
   else if (level === 'warn' && (LOG_LEVEL !== 'error')) console.warn(line);
   else if (level === 'error') console.error(line);
 }
-const logDebug = (msg, meta)=> { addLog('debug', msg, meta); if (SPLUNK_LOGGER?.logDebug) SPLUNK_LOGGER.logDebug(msg, meta); };
-const logInfo  = (msg, meta)=> { addLog('info', msg, meta); if (SPLUNK_LOGGER?.logInfo) SPLUNK_LOGGER.logInfo(msg, meta); };
-const logWarn  = (msg, meta)=> { addLog('warn', msg, meta); if (SPLUNK_LOGGER?.logWarn) SPLUNK_LOGGER.logWarn(msg, meta); };
-const logError = (msg, meta)=> { addLog('error', msg, meta); if (SPLUNK_LOGGER?.logError) SPLUNK_LOGGER.logError(msg, meta); };
+const logDebug = (msg, meta)=> addLog('debug', msg, meta);
+const logInfo  = (msg, meta)=> addLog('info', msg, meta);
+const logWarn  = (msg, meta)=> addLog('warn', msg, meta);
+const logError = (msg, meta)=> addLog('error', msg, meta);
 
 function stamp(req, _res, next) {
   req.id = `${Date.now().toString(36)}-${(++reqCounter).toString(36)}`;
