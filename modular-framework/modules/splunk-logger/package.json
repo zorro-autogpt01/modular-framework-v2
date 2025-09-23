@@ -1,0 +1,8 @@
+{
+  "name": "splunk-logger",
+  "version": "1.0.0",
+  "description": "Splunk HEC logger bridge for modular-framework",
+  "main": "server/index.js",
+  "scripts": {"start": "node server/index.js"},
+  "dependencies": {}
+}

@@ -15,11 +15,15 @@ async function chatStream({ llmGatewayUrl, overrides, messages, onDelta, onError
     temperature, max_tokens, stream: true
   };
 
-  logDebug('Calling llm-gateway', { url, provider, model, baseUrl });
+  const red = { ...payload, apiKey: payload.apiKey ? '***REDACTED***' : undefined };
+  logDebug('WF -> GW stream POST', { url, payload: red });
 
   const resp = await axios.post(url, payload, { responseType: 'stream' });
+  logDebug('WF <- GW stream started', { status: resp.status });
+
   resp.data.on('data', (chunk) => {
     const str = chunk.toString();
+    logDebug('WF <- GW SSE chunk', { size: Buffer.byteLength(str), head: str.slice(0, 800) });
     for (const line of str.split('\n')) {
       if (!line.startsWith('data:')) continue;
       const payload = line.replace(/^data:\s*/, '').trim();
@@ -27,6 +31,7 @@ async function chatStream({ llmGatewayUrl, overrides, messages, onDelta, onError
       if (payload === '[DONE]') { onDone?.(); continue; }
       try {
         const evt = JSON.parse(payload);
+        logDebug('WF <- GW SSE parsed', { evt });
         if ((evt.type === 'llm.delta' && typeof evt.data === 'string')) {
           onDelta?.(evt.data);
         } else if (evt.type === 'delta' && typeof evt.content === 'string') {
@@ -48,8 +53,8 @@ async function chatStream({ llmGatewayUrl, overrides, messages, onDelta, onError
       }
     }
   });
-  resp.data.on('end', () => onDone?.());
-  resp.data.on('error', (e) => { logWarn('llm-gateway stream error', { msg:e.message }); onError?.(e.message); });
+  resp.data.on('end', () => { logDebug('WF <- GW stream end'); onDone?.(); });
+  resp.data.on('error', (e) => { logWarn('WF <- GW stream error', { msg:e.message }); onError?.(e.message); });
 }
 
 module.exports = { chatStream };

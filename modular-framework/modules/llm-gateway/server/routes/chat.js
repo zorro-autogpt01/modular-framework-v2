@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { logInfo, logWarn, logError } = require('../logger');
+const { logInfo, logWarn, logError, logDebug } = require('../logger');
 const {
   getModel, getModelByKey, getModelByName, logUsage
 } = require('../db');
@@ -16,7 +16,14 @@ function prepareSSE(res) {
   res.setHeader('Cache-Control', 'no-cache, no-transform');
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders?.();
-  return (payload) => { try { res.write(`data: ${JSON.stringify(payload)}\n\n`); } catch {} };
+  return (payload) => {
+    try {
+      logDebug('GW -> client SSE', { payload });
+      res.write(`data: ${JSON.stringify(payload)}\n\n`);
+    } catch (e) {
+      logWarn('GW SSE write error', { message: e.message });
+    }
+  };
 }
 
 function isGpt5ModelName(model) { return /^gpt-5/i.test(model) || /^o5/i.test(model); }
@@ -57,8 +64,10 @@ async function dispatch(modelRow, reqBody, res, sse) {
   logInfo('GW LLM request', {
     provider_kind: modelRow.provider_kind,
     model: upstream.model,
-    stream, useResponses: upstream.useResponses, reasoning: upstream.reasoning
+    stream, useResponses: upstream.useResponses, reasoning: upstream.reasoning,
+    messagesCount: Array.isArray(messages) ? messages.length : 0
   });
+  logDebug('GW upstream payload', { upstream });
 
   // Tokenization + cost prep
   const encName = pickEncodingForModel(modelRow.model_name);
@@ -75,11 +84,12 @@ async function dispatch(modelRow, reqBody, res, sse) {
   let completionText = '';
 
   const onDelta = (d) => {
+    logDebug('GW upstream delta', { len: typeof d === 'string' ? d.length : 0, data: d });
     if (typeof d === 'string' && d) completionText += d;
     sse?.({ type: 'delta', content: d });
   };
-  const onDone = () => sse?.({ type: 'done' });
-  const onError = (m) => sse?.({ type: 'error', message: m });
+  const onDone = () => { logDebug('GW upstream done'); sse?.({ type: 'done' }); };
+  const onError = (m) => { logWarn('GW upstream error', { message: m }); sse?.({ type: 'error', message: m }); };
 
   // OLLAMA
   if (modelRow.provider_kind === 'ollama') {
@@ -95,7 +105,7 @@ async function dispatch(modelRow, reqBody, res, sse) {
       await logUsage({
         provider_id: modelRow.provider_id,
         model_id: modelRow.id,
-        conversation_id: metaBase.conversationId || null,
+        conversation_id: metaBase.conversation_id || metaBase.conversationId || null,
         input_tokens: inTok,
         output_tokens: outTok,
         prompt_chars: promptChars,
@@ -107,6 +117,7 @@ async function dispatch(modelRow, reqBody, res, sse) {
     } else {
       const { content } = await callOllama({ ...upstream, stream:false });
       completionText = content || '';
+      logDebug('GW -> client JSON (ollama)', { contentHead: completionText.slice(0, 800) });
       const completionChars = completionText.length;
       const outTok = countTextTokens(completionText, encName);
       const cost = calcCost({
@@ -117,7 +128,7 @@ async function dispatch(modelRow, reqBody, res, sse) {
       await logUsage({
         provider_id: modelRow.provider_id,
         model_id: modelRow.id,
-        conversation_id: metaBase.conversationId || null,
+        conversation_id: metaBase.conversation_id || metaBase.conversationId || null,
         input_tokens: inTok,
         output_tokens: outTok,
         prompt_chars: promptChars,
@@ -145,7 +156,7 @@ async function dispatch(modelRow, reqBody, res, sse) {
     await logUsage({
       provider_id: modelRow.provider_id,
       model_id: modelRow.id,
-      conversation_id: metaBase.conversationId || null,
+      conversation_id: metaBase.conversation_id || metaBase.conversationId || null,
       input_tokens: inTok,
       output_tokens: outTok,
       prompt_chars: promptChars,
@@ -158,6 +169,7 @@ async function dispatch(modelRow, reqBody, res, sse) {
       ...upstream, stream: false
     });
     completionText = content || '';
+    logDebug('GW -> client JSON (openai-compat)', { contentHead: completionText.slice(0, 800) });
     const completionChars = completionText.length;
     const outTok = countTextTokens(completionText, encName);
     const cost = calcCost({
@@ -168,7 +180,7 @@ async function dispatch(modelRow, reqBody, res, sse) {
     await logUsage({
       provider_id: modelRow.provider_id,
       model_id: modelRow.id,
-      conversation_id: metaBase.conversationId || null,
+      conversation_id: metaBase.conversation_id || metaBase.conversationId || null,
       input_tokens: inTok,
       output_tokens: outTok,
       prompt_chars: promptChars,
@@ -184,6 +196,17 @@ async function dispatch(modelRow, reqBody, res, sse) {
 router.post('/v1/chat', async (req, res) => {
   const stream = !!(req.body?.stream ?? true);
   const sse = stream ? prepareSSE(res) : null;
+
+  logInfo('GW /api/v1/chat <- client', {
+    ip: req.ip,
+    stream,
+    modelId: req.body?.modelId,
+    modelKey: req.body?.modelKey,
+    model: req.body?.model,
+    temperature: req.body?.temperature,
+    max_tokens: req.body?.max_tokens,
+    messages: req.body?.messages
+  });
 
   try {
     const modelRow = await resolveModel(req.body || {});
@@ -204,6 +227,15 @@ router.post('/v1/chat', async (req, res) => {
 router.post('/compat/llm-chat', async (req, res) => {
   const stream = !!(req.body?.stream ?? true);
   const sse = stream ? prepareSSE(res) : null;
+
+  logInfo('GW /api/compat/llm-chat <- client', {
+    ip: req.ip,
+    stream,
+    model: req.body?.model,
+    temperature: req.body?.temperature,
+    max_tokens: req.body?.max_tokens,
+    messages: req.body?.messages
+  });
 
   try {
     let modelRow = null;
@@ -230,6 +262,17 @@ router.post('/compat/llm-chat', async (req, res) => {
 router.post('/compat/llm-workflows', async (req, res) => {
   const stream = !!(req.body?.stream ?? true);
   const write = stream ? prepareSSE(res) : null;
+
+  logInfo('GW /api/compat/llm-workflows <- workflows', {
+    ip: req.ip,
+    stream,
+    modelId: req.body?.modelId,
+    modelKey: req.body?.modelKey,
+    model: req.body?.model,
+    temperature: req.body?.temperature,
+    max_tokens: req.body?.max_tokens,
+    messages: req.body?.messages
+  });
 
   // map standard payloads to workflows SSE schema
   const sse = stream ? (payload) => {

@@ -36,6 +36,9 @@ services:
     build: ./modules/llm-workflows
     container_name: llm-workflows-module
     environment:
+      - SPLUNK_HEC_URL=$SPLUNK_HEC_URL
+      - SPLUNK_HEC_TOKEN=$SPLUNK_HEC_TOKEN
+      - NODE_TLS_REJECT_UNAUTHORIZED=${NODE_TLS_REJECT_UNAUTHORIZED}
       - NODE_ENV=production
       - PORT=3005
       # Point to llm-gateway compat endpoint designed for workflows SSE
@@ -55,6 +58,7 @@ services:
       - ./modules/llm-workflows/data:/app/data
     depends_on:
       - llm-gateway
+      - splunk
     networks:
       - app-network
     restart: unless-stopped
@@ -80,9 +84,15 @@ services:
     container_name: llm-chat-module
     ports:
       - "3004:3004"
+    env_file: ./.env
     environment:
       - NODE_ENV=production
+      - NODE_TLS_REJECT_UNAUTHORIZED=${NODE_TLS_REJECT_UNAUTHORIZED}
       - PORT=3004
+      #- SPLUNK_HEC_URL=$SPLUNK_HEC_URL
+      #- SPLUNK_HEC_TOKEN=$SPLUNK_HEC_TOKEN
+    depends_on:
+      - splunk
     networks:
       - app-network
     restart: unless-stopped
@@ -156,6 +166,7 @@ services:
   llm-gateway:
     build: ./modules/llm-gateway
     container_name: llm-gateway
+    env_file: ./.env
     environment:
       - NODE_ENV=production
       - PORT=3010
@@ -165,12 +176,39 @@ services:
       - PGUSER=postgres
       - PGPASSWORD=postgres
       - PGDATABASE=llm_gateway
+      #- SPLUNK_HEC_TOKEN=$SPLUNK_HEC_TOKEN
+      #- SPLUNK_HEC_URL=$SPLUNK_HEC_URL
+      - NODE_TLS_REJECT_UNAUTHORIZED=${NODE_TLS_REJECT_UNAUTHORIZED}
+      #- SPLUNK_PASSWORD=${SPLUNK_PASSWORD}
     expose:
       - "3010"
     ports:
       - "3010:3010"
     depends_on:
       - postgres
+      - splunk
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  splunk:
+    image: splunk/splunk:latest
+    container_name: splunk
+    env_file: ./splunk/.env
+    environment:
+      - SPLUNK_START_ARGS=--accept-license
+      - SPLUNK_GENERAL_TERMS=--accept-sgt-current-at-splunk-com
+      # If you prefer, you can set SPLUNK_PASSWORD in .env instead of inline
+      #- SPLUNK_PASSWORD=$SPLUNK_PASSWORD
+      #- SPLUNK_PASSWORD=test
+    ports:
+      - "7999:8000"  # Web UI
+      - "8088:8088"  # HEC
+      - "8089:8089"  # mgmt API
+    volumes:
+      - ./splunk/var:/opt/splunk/var
+      - ./splunk/etc:/opt/splunk/etc
+      - ./splunk/hec-app:/opt/splunk/etc/apps/hec
     networks:
       - app-network
     restart: unless-stopped

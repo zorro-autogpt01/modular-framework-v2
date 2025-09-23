@@ -6,6 +6,7 @@ const axios = require('axios');
 const bodyParser = require('body-parser');
 const Ajv = require('ajv');
 const { execBash, execPython, sanitizeCwd } = require('./executor');
+const { logDebug, logInfo, logWarn, logError } = require('./logger');
 
 const BASE_PATH = (process.env.BASE_PATH || '').replace(/\/$/, ''); // e.g. /modules/llm-workflows
 
@@ -154,14 +155,29 @@ function validateAgainstSchema(json, schema) {
 
 // Call llm-gateway backend (workflows compat endpoint). Model lookup is done in gateway DB.
 async function callgateway({ model, temperature, max_tokens, messages }) {
-  // Minimal required fields for gateway compat: model + messages
+  const url = LLM_GATEWAY_CHAT_URL;
   const body = { model, messages, stream: false };
   if (typeof temperature === 'number') body.temperature = temperature;
   if (typeof max_tokens === 'number') body.max_tokens = max_tokens;
 
-  const resp = await axios.post(LLM_GATEWAY_CHAT_URL, body, { timeout: 60_000 });
-  const content = resp?.data?.content || '';
-  return content;
+  logInfo('WF -> GW POST', { url, body });
+
+  try {
+    const resp = await axios.post(url, body, { timeout: 60_000 });
+    const content = resp?.data?.content || '';
+    logInfo('WF <- GW response', {
+      status: resp.status,
+      dataHead: JSON.stringify(resp.data)?.slice(0, 1000),
+      contentHead: String(content).slice(0, 500),
+      contentLen: String(content).length
+    });
+    return content;
+  } catch (e) {
+    const status = e?.response?.status;
+    const dataText = typeof e?.response?.data === 'string' ? e.response.data : JSON.stringify(e?.response?.data);
+    logError('WF <- GW error', { status, message: e.message, dataHead: (dataText || '').slice(0, 1000) });
+    throw e;
+  }
 }
 
 // Engine: run a single step
@@ -203,7 +219,7 @@ async function runStep({ chatConfig, step, vars }) {
   // Log config (redact key)
   const redacted = { ...mergedChat, apiKey: mergedChat.apiKey ? '***REDACTED***' : undefined };
   log('debug', 'Merged chat config', redacted);
-  log('debug', 'Messages summary', { count: messages.length });
+  log('debug', 'Messages summary', { count: messages.length, messages });
 
   // Require at least a model name (gateway DB will provide provider/baseUrl/apiKey)
   if (!mergedChat.model) {
@@ -360,10 +376,14 @@ if (BASE_PATH) app.post(`${BASE_PATH}/api/validate`, (req, res) => {
 
 // NEW: API proxy to fetch models from llm-gateway
 app.get('/api/llm-models', async (_req, res) => {
+  const url = `${LLM_GATEWAY_API_BASE}/models`;
+  logInfo('WF -> GW GET models', { url });
   try {
-    const r = await axios.get(`${LLM_GATEWAY_API_BASE}/models`, { timeout: 10_000 });
+    const r = await axios.get(url, { timeout: 10_000 });
+    logInfo('WF <- GW models', { status: r.status, count: (r.data?.items || []).length });
     res.json(r.data);
   } catch (e) {
+    logError('WF <- GW models error', { message: e.message });
     res.status(502).json({ error: 'Failed to fetch models from gateway', detail: e.message });
   }
 });
