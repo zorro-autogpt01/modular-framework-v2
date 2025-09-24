@@ -39,7 +39,6 @@ function prepareSSE(res, rid) {
   };
 }
 
-
 function isGpt5ModelName(model) { return /^gpt-5/i.test(model) || /^o5/i.test(model); }
 
 function calcCost({ inTok, outTok, inPerM, outPerM }) {
@@ -55,6 +54,29 @@ async function resolveModel(body) {
   if (body.modelKey) return await getModelByKey(String(body.modelKey));
   if (body.model) return await getModelByName(String(body.model));
   return null;
+}
+
+/**
+ * Extracts plain text from an OpenAI Responses API payload for accounting.
+ * Looks in: output[].message.content[].output_text.text (preferred),
+ * then content[].text or content[].content as fallbacks.
+ */
+function pickContentFromResponses(data) {
+  if (!data || typeof data !== 'object') return '';
+  if (Array.isArray(data.output)) {
+    const msg = data.output.find(p => p?.type === 'message');
+    const parts = msg?.content;
+    if (Array.isArray(parts)) {
+      const ot = parts.find(p => p?.type === 'output_text' && typeof p?.text === 'string');
+      if (ot?.text) return ot.text;
+      if (typeof parts[0]?.text === 'string') return parts[0].text;
+      if (typeof parts[0]?.content === 'string') return parts[0].content;
+    }
+  }
+  // Some providers may flatten to data.text or data.content
+  if (typeof data.text === 'string') return data.text;
+  if (typeof data.content === 'string') return data.content;
+  return '';
 }
 
 async function dispatch(modelRow, reqBody, res, sse, rid) {
@@ -81,7 +103,8 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
     stream, useResponses: upstream.useResponses, reasoning: upstream.reasoning,
     messagesCount: Array.isArray(messages) ? messages.length : 0
   });
-  logDebug('GW upstream payload', { rid, upstream });
+  // Be careful not to log secrets here:
+  logDebug('GW upstream payload', { rid, upstream: { ...upstream, apiKey: upstream.apiKey ? '***REDACTED***' : undefined } });
 
   // Tokenization + cost prep
   const encName = pickEncodingForModel(modelRow.model_name);
@@ -156,6 +179,7 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
 
   // OpenAI / OpenAI-compatible
   if (stream) {
+    // Streaming path unchanged
     await callOpenAICompat({
       ...upstream, rid,
       onDelta, onDone, onError
@@ -179,13 +203,46 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
       meta: metaBase
     });
   } else {
-    const { content } = await callOpenAICompat({
+    // NON-STREAM: Option A — pass through Responses API when in use
+    const respPayload = await callOpenAICompat({
       ...upstream, rid, stream: false
     });
-    completionText = content || '';
-    logDebug('GW -> client JSON (openai-compat)', { contentHead: completionText.slice(0, 800) });
-    const completionChars = completionText.length;
-    const outTok = countTextTokens(completionText, encName);
+
+    if (upstream.useResponses) {
+      // Extract text only for accounting; return full payload to client.
+      const textForAccounting = pickContentFromResponses(respPayload) || '';
+      const completionChars = textForAccounting.length;
+      const outTok = countTextTokens(textForAccounting, encName);
+      const cost = calcCost({
+        inTok, outTok,
+        inPerM: modelRow.input_cost_per_million,
+        outPerM: modelRow.output_cost_per_million
+      });
+
+      logDebug('GW -> client JSON (responses-pass-thru)', {
+        head: JSON.stringify(respPayload).slice(0, 800)
+      });
+
+      await logUsage({
+        provider_id: modelRow.provider_id,
+        model_id: modelRow.id,
+        conversation_id: metaBase.conversation_id || metaBase.conversationId || null,
+        input_tokens: inTok,
+        output_tokens: outTok,
+        prompt_chars: promptChars,
+        completion_chars: completionChars,
+        cost,
+        meta: metaBase
+      });
+
+      return res.json(respPayload);
+    }
+
+    // Legacy chat-completions or compat providers: keep returning { content }
+    const completionTextLocal = (respPayload && respPayload.content) || '';
+    logDebug('GW -> client JSON (openai-compat)', { contentHead: completionTextLocal.slice(0, 800) });
+    const completionChars = completionTextLocal.length;
+    const outTok = countTextTokens(completionTextLocal, encName);
     const cost = calcCost({
       inTok, outTok,
       inPerM: modelRow.input_cost_per_million,
@@ -202,7 +259,7 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
       cost,
       meta: metaBase
     });
-    return res.json({ content: completionText });
+    return res.json({ content: completionTextLocal });
   }
 }
 

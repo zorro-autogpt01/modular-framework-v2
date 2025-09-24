@@ -1,3 +1,4 @@
+// app.js
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -11,7 +12,6 @@ const { logDebug, logInfo, logWarn, logError } = require('./logger');
 const BASE_PATH = (process.env.BASE_PATH || '').replace(/\/$/, ''); // e.g. /modules/llm-workflows
 
 // Gateway endpoints:
-// Prefer workflows-specific compat endpoint that emits "llm.delta" events.
 const DEFAULT_GW_API = 'http://llm-gateway:3010/api';
 
 const LLM_GATEWAY_CHAT_URL =
@@ -42,8 +42,13 @@ app.get('/', (_req, res) => res.sendFile(path.join(pub, 'index.html')));
 if (BASE_PATH) app.get(`${BASE_PATH}/`, (_req, res) => res.sendFile(path.join(pub, 'index.html')));
 
 // Health
-app.get('/health', (_req, res) => res.json({ status: 'healthy', gatewayChatUrl: LLM_GATEWAY_CHAT_URL, gatewayApiBase: LLM_GATEWAY_API_BASE }));
-if (BASE_PATH) app.get(`${BASE_PATH}/health`, (_req, res) => res.json({ status: 'healthy', gatewayChatUrl: LLM_GATEWAY_CHAT_URL, gatewayApiBase: LLM_GATEWAY_API_BASE }));
+app.get('/health', (_req, res) =>
+  res.json({ status: 'healthy', gatewayChatUrl: LLM_GATEWAY_CHAT_URL, gatewayApiBase: LLM_GATEWAY_API_BASE })
+);
+if (BASE_PATH)
+  app.get(`${BASE_PATH}/health`, (_req, res) =>
+    res.json({ status: 'healthy', gatewayChatUrl: LLM_GATEWAY_CHAT_URL, gatewayApiBase: LLM_GATEWAY_API_BASE })
+  );
 
 // Storage helpers
 function ensureDir(p) { if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true }); }
@@ -74,31 +79,7 @@ function addRun(r) {
   while (runs.length > RUN_MAX) runs.shift();
 }
 
-// JSON helpers
-function tryParseJson(text) {
-  // 1) fast path
-  try { return JSON.parse(text); } catch {}
-
-  // 2) fenced ```json
-  const m = text.match(/```json\s*([\s\S]*?)```/i);
-  if (m) { try { return JSON.parse(m[1]); } catch {} }
-
-  // 3) balanced brace blocks (first valid wins)
-  const blocks = [];
-  let depth = 0, start = -1, inStr = false, esc = false;
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
-    if (inStr) { if (esc) esc = false; else if (c === '\\') esc = true; else if (c === '"') inStr = false; continue; }
-    if (c === '"') { inStr = true; continue; }
-    if (c === '{') { if (depth === 0) start = i; depth++; continue; }
-    if (c === '}') { depth--; if (depth === 0 && start >= 0) { blocks.push(text.slice(start, i + 1)); start = -1; } }
-  }
-  for (const b of blocks) { try { return JSON.parse(b); } catch {} }
-
-  return null;
-}
-
-// Templating
+// --- Template helpers ---
 function renderTemplate(tpl, vars) {
   return (tpl || '').replace(/\{\{\s*([\w.\-]+)\s*\}\}/g, (_m, k) => {
     const val = lookup(vars, k);
@@ -115,6 +96,7 @@ function lookup(obj, pathStr) {
   return cur;
 }
 
+// --- Schema handling ---
 const BUILTIN_SCHEMAS = { 'actions.v1': defaultActionSchema() };
 function resolveSchema(schemaLike) {
   if (!schemaLike) return defaultActionSchema();
@@ -153,39 +135,217 @@ function validateAgainstSchema(json, schema) {
   }
 }
 
-// Call llm-gateway backend (workflows compat endpoint). Model lookup is done in gateway DB.
-async function callgateway({ model, temperature, max_tokens, messages }) {
+// --- JSON parsing helpers (robust) ---
+function tryParseJson(text) {
+  if (text == null) return null;
+  const s = String(text).trim();
+
+  // 1) fast path
+  try {
+    const once = JSON.parse(s);
+    // If the model returned JSON-as-a-string, parse again
+    if (typeof once === 'string') {
+      try { return JSON.parse(once); } catch {}
+    }
+    return once;
+  } catch {}
+
+  // 2) fenced ```json
+  const m = s.match(/```json\s*([\s\S]*?)```/i);
+  if (m) {
+    try {
+      const once = JSON.parse(m[1]);
+      if (typeof once === 'string') { try { return JSON.parse(once); } catch {} }
+      return once;
+    } catch {}
+  }
+
+  // 3) balanced brace blocks (first valid wins)
+  const blocks = [];
+  let depth = 0, start = -1, inStr = false, esc = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === '\\') esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') { inStr = true; continue; }
+    if (c === '{') { if (depth === 0) start = i; depth++; continue; }
+    if (c === '}') {
+      depth--;
+      if (depth === 0 && start >= 0) {
+        blocks.push(s.slice(start, i + 1));
+        start = -1;
+      }
+    }
+  }
+  for (const b of blocks) {
+    try {
+      const once = JSON.parse(b);
+      if (typeof once === 'string') { try { return JSON.parse(once); } catch {} }
+      return once;
+    } catch {}
+  }
+
+  return null;
+}
+
+function firstDefined(...vals) {
+  for (const v of vals) if (v !== undefined && v !== null) return v;
+  return undefined;
+}
+
+/**
+ * Normalizes the llm-gateway compat/Responses API body into a single string.
+ * Supports:
+ * - { content: "..." }
+ * - { message: { content: "..." } }
+ * - { choices[0].message.content }
+ * - Responses API: { output: [ { type:"message", content:[ { type:"output_text", text:"..." } ] } ] }
+ * - { output_text: [ { content: "..." } ] }
+ * - { text: "..." }
+ * - Plain string bodies
+ */
+function pickContentFromGateway(data) {
+  if (typeof data === 'string') return data;
+
+  let content = firstDefined(
+    data?.content,
+    data?.message?.content,
+    data?.text
+  );
+
+  if (!content) content = data?.choices?.[0]?.message?.content;
+
+  if (!content && Array.isArray(data?.output_text) && data.output_text[0]?.content) {
+    content = data.output_text[0].content;
+  }
+
+  if (!content && Array.isArray(data?.output)) {
+    const msg = data.output.find(p => p?.type === 'message');
+    const parts = msg?.content;
+    if (Array.isArray(parts)) {
+      const ot = parts.find(p => p?.type === 'output_text' && typeof p?.text === 'string');
+      if (ot?.text) content = ot.text;
+      else if (typeof parts[0]?.text === 'string') content = parts[0].text;
+      else if (typeof parts[0]?.content === 'string') content = parts[0].content;
+    }
+  }
+
+   // NEW: gateway wrapper support — if body is { content:"", raw:{...Responses...} }
+ if (!content && data && typeof data === 'object' && data.raw) {
+   const fromRaw = pickContentFromResponses(data.raw);
+   if (fromRaw) return fromRaw;
+ }
+
+ // Also handle the case the gateway already passed a Responses payload directly
+ if (!content && data && typeof data === 'object' && data.output) {
+   const fromResponses = pickContentFromResponses(data);
+   if (fromResponses) return fromResponses;
+ }
+
+  if (!content && typeof data === 'object') {
+    const maybe = firstDefined(
+      data?.data?.content,
+      data?.data?.message?.content
+    );
+    if (maybe) content = maybe;
+  }
+
+  return typeof content === 'string' ? content : '';
+}
+
+function pickContentFromResponses(data) {
+  if (!data || typeof data !== 'object') return '';
+  // OpenAI Responses API: output[].message.content[] parts
+  if (Array.isArray(data.output)) {
+    const msg = data.output.find(p => p?.type === 'message');
+    const parts = msg?.content;
+    if (Array.isArray(parts)) {
+      const ot = parts.find(p => p?.type === 'output_text' && typeof p?.text === 'string');
+      if (ot?.text) return ot.text;
+      if (typeof parts[0]?.text === 'string') return parts[0].text;
+      if (typeof parts[0]?.content === 'string') return parts[0].content;
+    }
+  }
+  // Some providers flatten to data.text or data.content
+  if (typeof data.text === 'string') return data.text;
+  if (typeof data.content === 'string') return data.content;
+  return '';
+}
+
+
+
+// --- Gateway call (uses extractor) ---
+async function callgateway({ model, temperature, max_tokens, messages, corr, ctx }) {
   const url = LLM_GATEWAY_CHAT_URL;
   const body = { model, messages, stream: false };
   if (typeof temperature === 'number') body.temperature = temperature;
   if (typeof max_tokens === 'number') body.max_tokens = max_tokens;
 
-  logInfo('WF -> GW POST', { url, body });
+  logInfo('WF -> GW POST', { ctx, corr, url, model, temperature, max_tokens, messagesCount: Array.isArray(messages) ? messages.length : 0 });
 
   try {
     const resp = await axios.post(url, body, { timeout: 60_000 });
-    const content = resp?.data?.content || '';
+
+    const rawData = resp?.data;
+    // NEW: log top-level keys to verify what we received (no secrets)
+    const shape = rawData && typeof rawData === 'object'
+      ? Object.keys(rawData).slice(0, 12)
+      : typeof rawData;
+    const hasOutput = !!(rawData && rawData.output && Array.isArray(rawData.output));
+    const hasChoices = !!(rawData && rawData.choices);
+    const hasContent = !!(rawData && rawData.content);
+    const hasText = !!(rawData && rawData.text);
+
+    // Try normal extraction
+    let content = pickContentFromGateway(rawData) ?? '';
+
+    // ULTRA-SAFE FALLBACK: if still empty but we have an object with data, stringify it.
+    // Your tryParseJson() has a brace scanner, so it can pull out the first valid { ... } block from this string.
+    if (!content && rawData && typeof rawData === 'object') {
+      try {
+        content = JSON.stringify(rawData);
+      } catch {
+        // ignore
+      }
+    }
+
     logInfo('WF <- GW response', {
+      ctx, corr,
       status: resp.status,
-      dataHead: JSON.stringify(resp.data)?.slice(0, 1000),
-      contentHead: String(content).slice(0, 500),
-      contentLen: String(content).length
+      contentLen: String(content || '').length,
+      // Helpful diagnostics to catch mismatches between environments
+      shape,
+      hasOutput, hasChoices, hasContent, hasText,
+      // small head of whatever we’ll hand to the parser
+      contentHead: String(content || '').slice(0, 500)
     });
-    return content;
+
+    return content || '';
   } catch (e) {
     const status = e?.response?.status;
     const dataText = typeof e?.response?.data === 'string' ? e.response.data : JSON.stringify(e?.response?.data);
-    logError('WF <- GW error', { status, message: e.message, dataHead: (dataText || '').slice(0, 1000) });
+    logError('WF <- GW error', { ctx, corr, status, message: e.message, dataHead: (dataText || '').slice(0, 1000) });
     throw e;
   }
 }
 
-// Engine: run a single step
-async function runStep({ chatConfig, step, vars }) {
+// --- Engine: run a single step ---
+async function runStep({ chatConfig, step, vars, ctx = 'runStep', corr }) {
   const logs = [];
-  function log(level, msg, meta) { logs.push({ ts: new Date().toISOString(), level, msg, meta }); }
+  function log(level, msg, meta) {
+    const entry = { ts: new Date().toISOString(), level, msg, meta };
+    logs.push(entry);
+    const base = { ctx, corr, stepId: step?.id || null, stepName: step?.name || null, model: step?.model || chatConfig?.model || null, ...(meta || {}) };
+    if (level === 'debug') logDebug(msg, base);
+    else if (level === 'info') logInfo(msg, base);
+    else if (level === 'warn') logWarn(msg, base);
+    else if (level === 'error') logError(msg, base);
+  }
 
-  // Build system + user content
   const effectiveSchema = resolveSchema(step.schema || defaultActionSchema());
   const sys = step.systemGuard === false ? (step.system || '') : buildSystemGuard(effectiveSchema);
 
@@ -195,12 +355,10 @@ async function runStep({ chatConfig, step, vars }) {
     userPreview: user.slice(0, 800)
   });
 
-  // Build messages
   const messages = [];
   if (sys) messages.push({ role: 'system', content: sys });
   messages.push({ role: 'user', content: user });
 
-  // Determine effective chat settings (but for gateway compat we only need model, tokens/temperature optional)
   const mergedChat = {
     provider: step.provider || chatConfig.provider,
     baseUrl: step.baseUrl || chatConfig.baseUrl,
@@ -216,12 +374,10 @@ async function runStep({ chatConfig, step, vars }) {
     delete mergedChat.temperature;
   }
 
-  // Log config (redact key)
   const redacted = { ...mergedChat, apiKey: mergedChat.apiKey ? '***REDACTED***' : undefined };
   log('debug', 'Merged chat config', redacted);
-  log('debug', 'Messages summary', { count: messages.length, messages });
+  log('debug', 'Messages summary', { count: messages.length });
 
-  // Require at least a model name (gateway DB will provide provider/baseUrl/apiKey)
   if (!mergedChat.model) {
     log('error', 'Chat config incomplete: missing model');
     return { ok: false, logs, raw: '', json: null, validation: { valid: false, errors: [{ message: 'Model is required' }] } };
@@ -229,29 +385,26 @@ async function runStep({ chatConfig, step, vars }) {
 
   let raw = '';
   try {
-    raw = await callgateway({ model: mergedChat.model, temperature: mergedChat.temperature, max_tokens: mergedChat.max_tokens, messages });
+    raw = await callgateway({ model: mergedChat.model, temperature: mergedChat.temperature, max_tokens: mergedChat.max_tokens, messages, corr, ctx });
     log('info', 'LLM returned', { length: raw.length, head: raw.slice(0, 200) });
-    if (!raw.length) log('warn', 'LLM response was empty');
+    if (!raw.length) log('warn', 'LLM response was empty', { length: 0 });
   } catch (e) {
     log('error', 'LLM call failed', { message: e.message });
     return { ok: false, logs, raw, json: null, validation: { valid: false, errors: [{ message: 'LLM call failed: ' + e.message }] } };
   }
 
-  // Parse JSON
   const parsed = tryParseJson(raw);
   if (!parsed) {
-    log('error', 'Failed to parse JSON', { raw: raw.slice(0, 500) });
+    log('error', 'Failed to parse JSON', { rawHead: raw.slice(0, 500), length: raw.length });
     return { ok: false, logs, raw, json: null, validation: { valid: false, errors: [{ message: 'JSON parse failed' }] } };
   }
 
-  // Validate
   const validation = validateAgainstSchema(parsed, effectiveSchema);
   if (!validation.valid) {
-    log('warn', 'Schema validation failed', { errors: validation.errors });
+    log('warn', 'Schema validation failed', { errorCount: (validation.errors || []).length });
     return { ok: false, logs, raw, json: parsed, validation };
   }
 
-  // Extract artifacts conventionally from parsed.actions
   const artifacts = [];
   const actions = Array.isArray(parsed.actions) ? parsed.actions : [];
   for (const a of actions) {
@@ -301,7 +454,7 @@ function defaultActionSchema() {
   };
 }
 
-// API: list workflows
+// --- API: list workflows ---
 app.get('/api/workflows', (_req, res) => {
   const { workflows } = readStore();
   res.json({ workflows });
@@ -311,7 +464,7 @@ if (BASE_PATH) app.get(`${BASE_PATH}/api/workflows`, (req, res) => {
   res.json({ workflows });
 });
 
-// API: get workflow
+// --- API: get workflow ---
 app.get('/api/workflows/:id', (req, res) => {
   const { id } = req.params;
   const { workflows } = readStore();
@@ -327,7 +480,7 @@ if (BASE_PATH) app.get(`${BASE_PATH}/api/workflows/:id`, (req, res) => {
   res.json({ workflow: wf });
 });
 
-// API: create/update workflow
+// --- API: create/update workflow ---
 app.post('/api/workflows', (req, res) => {
   const payload = req.body || {};
   const store = readStore();
@@ -348,7 +501,7 @@ if (BASE_PATH) app.post(`${BASE_PATH}/api/workflows`, (req, res) => {
   app._router.handle(req, res);
 });
 
-// API: delete workflow
+// --- API: delete workflow ---
 app.delete('/api/workflows/:id', (req, res) => {
   const { id } = req.params;
   const store = readStore();
@@ -363,7 +516,7 @@ if (BASE_PATH) app.delete(`${BASE_PATH}/api/workflows/:id`, (req, res) => {
   app._router.handle(req, res);
 });
 
-// API: validate JSON against schema
+// --- API: validate JSON against schema ---
 app.post('/api/validate', (req, res) => {
   const { json, schema } = req.body || {};
   const result = validateAgainstSchema(json, schema || defaultActionSchema());
@@ -374,7 +527,7 @@ if (BASE_PATH) app.post(`${BASE_PATH}/api/validate`, (req, res) => {
   app._router.handle(req, res);
 });
 
-// NEW: API proxy to fetch models from llm-gateway
+// --- API: proxy to fetch models from llm-gateway ---
 app.get('/api/llm-models', async (_req, res) => {
   const url = `${LLM_GATEWAY_API_BASE}/models`;
   logInfo('WF -> GW GET models', { url });
@@ -392,13 +545,14 @@ if (BASE_PATH) app.get(`${BASE_PATH}/api/llm-models`, (req, res) => {
   app._router.handle(req, res);
 });
 
-// API: test single step
+// --- API: test single step ---
 app.post('/api/testStep', async (req, res) => {
   const { chat, step, vars, execute=false } = req.body || {};
+  const corr = `test_${uuid()}`;
   try {
-    const result = await runStep({ chatConfig: chat || {}, step: step || {}, vars: vars || {} });
+    logInfo('WF TEST_STEP start', { corr, ip: req.ip, model: step?.model || chat?.model, stepId: step?.id || null, hasVars: !!vars, execute });
+    const result = await runStep({ chatConfig: chat || {}, step: step || {}, vars: vars || {}, ctx: 'testStep', corr });
     if (execute && result.ok && Array.isArray(result.json?.actions)) {
-      const { execBash, execPython, sanitizeCwd } = require('./executor');
       const actionResults = [];
       for (const [i, a] of result.json.actions.entries()) {
         if (!a || typeof a !== 'object') continue;
@@ -428,8 +582,10 @@ app.post('/api/testStep', async (req, res) => {
       }
       result.actionResults = actionResults;
     }
+    logInfo('WF TEST_STEP result', { corr, ok: !!result.ok, rawLen: (result.raw || '').length, hasJson: !!result.json, validationErrors: (result.validation?.errors || []).length, artifacts: (result.artifacts || []).length });
     res.json(result);
   } catch (e) {
+    logError('WF TEST_STEP error', { corr, message: e.message });
     res.status(500).json({ ok: false, error: e.message });
   }
 });
@@ -438,7 +594,7 @@ if (BASE_PATH) app.post(`${BASE_PATH}/api/testStep`, (req, res) => {
   app._router.handle(req, res);
 });
 
-// API: run a workflow
+// --- API: run a workflow ---
 app.post('/api/workflows/:id/run', async (req, res) => {
   const { id } = req.params;
   const inputs = req.body?.vars || {};
@@ -461,11 +617,13 @@ app.post('/api/workflows/:id/run', async (req, res) => {
 
   function runLog(level, msg, meta) { run.logs.push({ ts: new Date().toISOString(), level, msg, meta }); }
 
+  logInfo('WF RUN start', { corr: run.id, workflowId: run.workflowId, steps: (wf.steps || []).length });
+
   try {
     const vars = { ...(wf.defaults || {}), ...(inputs || {}) };
     for (const step of (wf.steps || [])) {
       runLog('info', `Step start: ${step.name || step.id}`);
-      const r = await runStep({ chatConfig: wf.chat || {}, step, vars });
+      const r = await runStep({ chatConfig: wf.chat || {}, step, vars, ctx: 'workflowRun', corr: run.id });
       run.outputByStep[step.id || step.name || `step_${Math.random()}`] = {
         ok: r.ok, json: r.json, validation: r.validation, raw: r.raw, logs: r.logs
       };
@@ -486,6 +644,7 @@ app.post('/api/workflows/:id/run', async (req, res) => {
         if (step.stopOnFailure !== false) {
           run.status = 'failed';
           run.finishedAt = new Date().toISOString();
+          logWarn('WF RUN failed', { corr: run.id, atStep: step.name || step.id });
           return res.json(run);
         }
       } else {
@@ -494,11 +653,13 @@ app.post('/api/workflows/:id/run', async (req, res) => {
     }
     run.status = 'ok';
     run.finishedAt = new Date().toISOString();
+    logInfo('WF RUN ok', { corr: run.id });
     res.json(run);
   } catch (e) {
     run.status = 'error';
     run.finishedAt = new Date().toISOString();
     runLog('error', 'Run error', { message: e.message });
+    logError('WF RUN error', { corr: run.id, message: e.message });
     res.status(500).json(run);
   }
 });
@@ -507,7 +668,7 @@ if (BASE_PATH) app.post(`${BASE_PATH}/api/workflows/:id/run`, (req, res) => {
   app._router.handle(req, res);
 });
 
-// API: runs history
+// --- API: runs history ---
 app.get('/api/runs', (_req, res) => {
   res.json({ runs });
 });
