@@ -10,3 +10,5 @@
 /modules/RAG/redis_data
 /modules/RAG/logs
 /modules/llm-gateway/pgdata/
+*.bak
+*.bak.*

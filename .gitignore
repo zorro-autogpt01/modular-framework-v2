@@ -1,3 +1,5 @@
 /modular-framework/splunk/etc
 /modular-framework/splunk/var
 /modular-framework/splunk/hec-app
+*.bak
+*.bak.*
