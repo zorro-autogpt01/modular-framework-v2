@@ -11,20 +11,34 @@ const {
 } = require('../utils/tokens');
 
 // SSE helper
-function prepareSSE(res) {
+function prepareSSE(res, rid) {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
   res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders?.();
+  res.setHeader('X-Accel-Buffering', 'no'); // helpful behind some proxies
+  if (typeof res.flushHeaders === 'function') res.flushHeaders();
+
+  // Track SSE connection lifecycle once
+  let ended = false;
+  const onEnd = (kind) => {
+    if (ended) return;
+    ended = true;
+    logInfo('GW /v1/chat finished', { rid, kind });
+  };
+  res.on('close', () => onEnd('close'));
+  res.on('finish', () => onEnd('finish'));
+
+  // Return a sender
   return (payload) => {
     try {
-      logDebug('GW -> client SSE', { payload });
+      logDebug('GW -> client SSE', { rid, payload });
       res.write(`data: ${JSON.stringify(payload)}\n\n`);
     } catch (e) {
-      logWarn('GW SSE write error', { message: e.message });
+      logWarn('GW SSE write error', { rid, message: e.message });
     }
   };
 }
+
 
 function isGpt5ModelName(model) { return /^gpt-5/i.test(model) || /^o5/i.test(model); }
 
@@ -43,7 +57,7 @@ async function resolveModel(body) {
   return null;
 }
 
-async function dispatch(modelRow, reqBody, res, sse) {
+async function dispatch(modelRow, reqBody, res, sse, rid) {
   const {
     messages = [], temperature, max_tokens, stream = true, useResponses, reasoning, metadata
   } = reqBody || {};
@@ -61,13 +75,13 @@ async function dispatch(modelRow, reqBody, res, sse) {
     stream
   };
 
-  logInfo('GW LLM request', {
+  logInfo('GW LLM request', { rid,
     provider_kind: modelRow.provider_kind,
     model: upstream.model,
     stream, useResponses: upstream.useResponses, reasoning: upstream.reasoning,
     messagesCount: Array.isArray(messages) ? messages.length : 0
   });
-  logDebug('GW upstream payload', { upstream });
+  logDebug('GW upstream payload', { rid, upstream });
 
   // Tokenization + cost prep
   const encName = pickEncodingForModel(modelRow.model_name);
@@ -84,17 +98,17 @@ async function dispatch(modelRow, reqBody, res, sse) {
   let completionText = '';
 
   const onDelta = (d) => {
-    logDebug('GW upstream delta', { len: typeof d === 'string' ? d.length : 0, data: d });
+    logDebug('GW upstream delta', { rid, len: typeof d === 'string' ? d.length : 0, data: d });
     if (typeof d === 'string' && d) completionText += d;
     sse?.({ type: 'delta', content: d });
   };
-  const onDone = () => { logDebug('GW upstream done'); sse?.({ type: 'done' }); };
-  const onError = (m) => { logWarn('GW upstream error', { message: m }); sse?.({ type: 'error', message: m }); };
+  const onDone = () => { logDebug('GW upstream done', { rid }); sse?.({ type: 'done' }); };
+  const onError = (m) => { logWarn('GW upstream error', { rid, message: m }); sse?.({ type: 'error', message: m }); };
 
   // OLLAMA
   if (modelRow.provider_kind === 'ollama') {
     if (stream) {
-      await callOllama({ ...upstream, onDelta, onDone, onError });
+      await callOllama({ ...upstream, onDelta, onDone, onError, rid });
       const completionChars = completionText.length;
       const outTok = countTextTokens(completionText, encName);
       const cost = calcCost({
@@ -115,7 +129,7 @@ async function dispatch(modelRow, reqBody, res, sse) {
       });
       return;
     } else {
-      const { content } = await callOllama({ ...upstream, stream:false });
+      const { content } = await callOllama({ ...upstream, stream:false, rid });
       completionText = content || '';
       logDebug('GW -> client JSON (ollama)', { contentHead: completionText.slice(0, 800) });
       const completionChars = completionText.length;
@@ -143,7 +157,7 @@ async function dispatch(modelRow, reqBody, res, sse) {
   // OpenAI / OpenAI-compatible
   if (stream) {
     await callOpenAICompat({
-      ...upstream,
+      ...upstream, rid,
       onDelta, onDone, onError
     });
     const completionChars = completionText.length;
@@ -166,7 +180,7 @@ async function dispatch(modelRow, reqBody, res, sse) {
     });
   } else {
     const { content } = await callOpenAICompat({
-      ...upstream, stream: false
+      ...upstream, rid, stream: false
     });
     completionText = content || '';
     logDebug('GW -> client JSON (openai-compat)', { contentHead: completionText.slice(0, 800) });
@@ -193,11 +207,12 @@ async function dispatch(modelRow, reqBody, res, sse) {
 }
 
 // Canonical gateway endpoint
-router.post('/v1/chat', async (req, res) => {
-  const stream = !!(req.body?.stream ?? true);
-  const sse = stream ? prepareSSE(res) : null;
+router.post('/v1/chat', async (req, res) => {  const rid = req.id;
 
-  logInfo('GW /api/v1/chat <- client', {
+  const stream = !!(req.body?.stream ?? true);
+  const sse = stream ? prepareSSE(res, rid) : null;
+
+  logInfo('GW /api/v1/chat <- client', { rid,
     ip: req.ip,
     stream,
     modelId: req.body?.modelId,
@@ -214,21 +229,22 @@ router.post('/v1/chat', async (req, res) => {
       if (sse) sse({ type:'error', message: 'Model not configured in gateway.' });
       return stream ? res.end() : res.status(400).json({ error: 'Model not configured' });
     }
-    if (stream) await dispatch(modelRow, req.body, res, sse);
-    else await dispatch(modelRow, req.body, res, null);
+    if (stream) await dispatch(modelRow, req.body, res, sse, rid);
+    else await dispatch(modelRow, req.body, res, null, rid);
   } catch (err) {
-    logError('GW /v1/chat error', { err: err?.message || String(err) });
+    logError('GW /v1/chat error', { rid, err: err?.message || String(err) });
     if (stream) { sse({ type:'error', message: err?.message || 'error' }); res.end(); }
     else res.status(500).json({ error: err?.message || 'error' });
   }
 });
 
 // Compatibility endpoint (accepts llm-chat-like body and maps to DB)
-router.post('/compat/llm-chat', async (req, res) => {
-  const stream = !!(req.body?.stream ?? true);
-  const sse = stream ? prepareSSE(res) : null;
+router.post('/compat/llm-chat', async (req, res) => {  const rid = req.id;
 
-  logInfo('GW /api/compat/llm-chat <- client', {
+  const stream = !!(req.body?.stream ?? true);
+  const sse = stream ? prepareSSE(res, rid) : null;
+
+  logInfo('GW /api/compat/llm-chat <- client', { rid,
     ip: req.ip,
     stream,
     model: req.body?.model,
@@ -249,21 +265,22 @@ router.post('/compat/llm-chat', async (req, res) => {
       return stream ? res.end() : res.status(400).json({ error: 'Model not found' });
     }
 
-    if (stream) await dispatch(modelRow, req.body, res, sse);
-    else await dispatch(modelRow, req.body, res, null);
+    if (stream) await dispatch(modelRow, req.body, res, sse, rid);
+    else await dispatch(modelRow, req.body, res, null, rid);
   } catch (err) {
-    logError('GW /compat/llm-chat error', { err: err?.message || String(err) });
+    logError('GW /compat/llm-chat error', { rid, err: err?.message || String(err) });
     if (stream) { sse({ type:'error', message: err?.message || 'error' }); res.end(); }
     else res.status(500).json({ error: err?.message || 'error' });
   }
 });
 
 // NEW: workflows-friendly compat endpoint (SSE deltas as "llm.delta")
-router.post('/compat/llm-workflows', async (req, res) => {
-  const stream = !!(req.body?.stream ?? true);
-  const write = stream ? prepareSSE(res) : null;
+router.post('/compat/llm-workflows', async (req, res) => {  const rid = req.id;
 
-  logInfo('GW /api/compat/llm-workflows <- workflows', {
+  const stream = !!(req.body?.stream ?? true);
+  const write = stream ? prepareSSE(res, rid) : null;
+
+  logInfo('GW /api/compat/llm-workflows <- workflows', { rid,
     ip: req.ip,
     stream,
     modelId: req.body?.modelId,
@@ -278,11 +295,11 @@ router.post('/compat/llm-workflows', async (req, res) => {
   const sse = stream ? (payload) => {
     if (!payload) return;
     if (payload.type === 'delta') {
-      write({ type: 'llm.delta', data: payload.content });
+      write({ type: 'llm.delta', data: payload.content, rid });
     } else if (payload.type === 'done') {
-      write({ type: 'done' });
+      write({ type: 'done', rid });
     } else if (payload.type === 'error') {
-      write({ type: 'error', message: payload.message });
+      write({ type: 'error', message: payload.message, rid });
     } else {
       write(payload);
     }
@@ -300,10 +317,10 @@ router.post('/compat/llm-workflows', async (req, res) => {
       return res.status(400).json({ error: 'Model not found' });
     }
 
-    if (stream) await dispatch(modelRow, req.body, res, sse);
-    else await dispatch(modelRow, req.body, res, null);
+    if (stream) await dispatch(modelRow, req.body, res, sse, rid);
+    else await dispatch(modelRow, req.body, res, null, rid);
   } catch (err) {
-    logError('GW /compat/llm-workflows error', { err: err?.message || String(err) });
+    logError('GW /compat/llm-workflows error', { rid, err: err?.message || String(err) });
     if (stream) { sse({ type:'error', message: err?.message || 'error' }); res.end(); }
     else res.status(500).json({ error: err?.message || 'error' });
   }

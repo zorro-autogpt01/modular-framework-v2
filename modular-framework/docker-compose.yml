@@ -89,10 +89,10 @@ services:
       - NODE_ENV=production
       - NODE_TLS_REJECT_UNAUTHORIZED=${NODE_TLS_REJECT_UNAUTHORIZED}
       - PORT=3004
-      - SPLUNK_HEC_URL=${SPLUNK_HEC_URL}
+      - SPLUNK_HEC_URL=${SPLUNK_HEC_URL}      
+      - LOG_TO_CONSOLE=false
       - SPLUNK_HEC_TOKEN=${SPLUNK_HEC_TOKEN}
       - SPLUNK_SOURCE=llm-chat
-      - LOG_TO_CONSOLE=false
     depends_on:
       - splunk
     networks:
@@ -171,6 +171,7 @@ services:
     env_file: ./.env
     environment:
       - NODE_ENV=production
+      - LOG_TO_CONSOLE=false
       - PORT=3010
       - BASE_PATH=/llm-gateway
       - PGHOST=postgres
@@ -178,8 +179,9 @@ services:
       - PGUSER=postgres
       - PGPASSWORD=postgres
       - PGDATABASE=llm_gateway
-      #- SPLUNK_HEC_TOKEN=$SPLUNK_HEC_TOKEN
-      #- SPLUNK_HEC_URL=$SPLUNK_HEC_URL
+      - SPLUNK_HEC_TOKEN=${SPLUNK_HEC_TOKEN}
+      - SPLUNK_HEC_URL=${SPLUNK_HEC_URL}
+      - SPLUNK_SOURCE=llm-gateway
       - NODE_TLS_REJECT_UNAUTHORIZED=${NODE_TLS_REJECT_UNAUTHORIZED}
       #- SPLUNK_PASSWORD=${SPLUNK_PASSWORD}
     expose:

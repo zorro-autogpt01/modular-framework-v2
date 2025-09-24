@@ -67,7 +67,7 @@ function redactHeaders(h = {}) {
 
 async function callOpenAICompat({
   baseUrl, apiKey, model, messages, temperature,
-  max_tokens, useResponses, reasoning, stream, onDelta, onDone, onError
+  max_tokens, useResponses, reasoning, stream, onDelta, onDone, onError, rid
 }) {
   const headers = { 'Content-Type': 'application/json' };
   if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
@@ -81,20 +81,20 @@ async function callOpenAICompat({
     if (!isGpt5 && typeof temperature === 'number' && !Number.isNaN(temperature)) body.temperature = temperature;
     if (!isGpt5 && max_tokens) body.max_output_tokens = max_tokens;
 
-    logDebug('GW RESPONSES request', { url, model, stream, headers: redactHeaders(headers) });
-    logDebug('GW RESPONSES request body', { body });
+    logDebug('GW RESPONSES request', { rid, url, model, stream, headers: redactHeaders(headers) });
+    logDebug('GW RESPONSES request body', { rid, body });
 
     if (stream) {
       const response = await axios.post(url, body, { headers, responseType: 'stream' });
-      logDebug('GW RESPONSES streaming started', { status: response.status });
+      logDebug('GW RESPONSES streaming started', { rid, status: response.status });
       return new Promise((resolve) => {
         response.data.on('data', (chunk) => handleResponsesChunk(chunk, onDelta, onDone, onError));
-        response.data.on('end', () => { logDebug('GW RESPONSES stream end'); onDone?.(); resolve(); });
-        response.data.on('error', (e) => { logWarn('GW RESPONSES stream error', { message: e.message }); onError?.(e.message); resolve(); });
+        response.data.on('end', () => { logDebug('GW RESPONSES stream end', { rid }); onDone?.(); resolve(); });
+        response.data.on('error', (e) => { logWarn('GW RESPONSES stream error', { rid, message: e.message }); onError?.(e.message); resolve(); });
       });
     } else {
       const resp = await axios.post(url, body, { headers });
-      logDebug('GW RESPONSES non-stream response', {
+      logDebug('GW RESPONSES non-stream response', { rid,
         status: resp.status,
         dataHead: JSON.stringify(resp.data)?.slice(0, 1000)
       });
@@ -116,20 +116,20 @@ async function callOpenAICompat({
     else body.max_tokens = max_tokens;
   }
 
-  logDebug('GW CHAT request', { url, model, stream, headers: redactHeaders(headers) });
-  logDebug('GW CHAT request body', { body });
+  logDebug('GW CHAT request', { rid, url, model, stream, headers: redactHeaders(headers) });
+  logDebug('GW CHAT request body', { rid, body });
 
   if (stream) {
     const response = await axios.post(url, body, { headers, responseType: 'stream' });
-    logDebug('GW CHAT streaming started', { status: response.status });
+    logDebug('GW CHAT streaming started', { rid, status: response.status });
     return new Promise((resolve) => {
       response.data.on('data', (chunk) => handleChatCompletionsChunk(chunk, onDelta, onDone));
-      response.data.on('end', () => { logDebug('GW CHAT stream end'); onDone?.(); resolve(); });
-      response.data.on('error', (e) => { logWarn('GW CHAT stream error', { message: e.message }); onError?.(e.message); resolve(); });
+      response.data.on('end', () => { logDebug('GW CHAT stream end', { rid }); onDone?.(); resolve(); });
+      response.data.on('error', (e) => { logWarn('GW CHAT stream error', { rid, message: e.message }); onError?.(e.message); resolve(); });
     });
   } else {
     const resp = await axios.post(url, body, { headers });
-    logDebug('GW CHAT non-stream response', {
+    logDebug('GW CHAT non-stream response', { rid,
       status: resp.status,
       dataHead: JSON.stringify(resp.data)?.slice(0, 1000)
     });
