@@ -22,7 +22,8 @@ import PyPDF2
 import tiktoken
 import redis
 import numpy as np
-from loguru import logger
+from loguru import logger as _loguru
+from logging_control import router as logging_router, RequestIdMiddleware, app_logger
 from fastapi import FastAPI, UploadFile, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -41,11 +42,13 @@ from qdrant_client.models import (
 )
 
 # ---------- Logging ----------
-logger.add("rag_system.log", rotation="500 MB", retention="30 days", level="INFO")
-
+_loguru.add("rag_system.log", rotation="500 MB", retention="30 days", level="INFO")
+# Use the adapter everywhere as `logger`
+logger = app_logger
 # ---------- FastAPI ----------
-app = FastAPI(title="Simple RAG System", version="1.2.0")
-
+app = FastAPI(title="Simple RAG System", version="1.3.0")
+app.add_middleware(RequestIdMiddleware)
+app.include_router(logging_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # tighten for prod

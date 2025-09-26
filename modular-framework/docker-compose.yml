@@ -15,6 +15,9 @@ services:
       - github-hub-module
       - llm-chat
       - browser-module
+      - llm-gateway
+      - logging-orchestrator
+
     networks:
       - app-network
     restart: unless-stopped
@@ -216,6 +219,28 @@ services:
     networks:
       - app-network
     restart: unless-stopped
+  logging-orchestrator:
+    build: ./modules/logging-orchestrator
+    container_name: logging-orchestrator
+    environment:
+      - PORT=3015
+      # Optional: set a token to require Bearer auth for write endpoints
+      - ORCH_TOKEN=${ORCH_TOKEN}
+      # Seed known services (you can add more at runtime in the UI)
+      - SERVICES=[{"name":"llm-gateway","logging_url":"http://llm-gateway:3010/api/logging"},{"name":"rag","logging_url":"http://rag-api-module:8000/admin-api/logging"},{"name":"llm-chat","logging_url":"http://llm-chat-module:3004/admin-api/logging"}]
+      # Optional: default HEC
+      - SPLUNK_HEC_URL=${SPLUNK_HEC_URL}
+      - SPLUNK_HEC_TOKEN=${SPLUNK_HEC_TOKEN}
+      - SPLUNK_SOURCE=platform
+      - SPLUNK_INDEX=${SPLUNK_INDEX}
+    volumes:
+      - ./modules/logging-orchestrator/data:/data
+    ports:
+      - "3015:3015"
+    networks:
+      - app-network
+    restart: unless-stopped
+
 
 networks:
   app-network:

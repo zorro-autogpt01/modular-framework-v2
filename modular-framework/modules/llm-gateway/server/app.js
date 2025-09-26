@@ -12,6 +12,7 @@ const { router: adminRouter } = require('./routes/admin');
 const { router: chatRouter } = require('./routes/chat');
 const { router: usageRouter } = require('./routes/usage');
 const { router: tokensRouter } = require('./routes/tokens');
+const { router: loggingRouter } = require('./routes/logging');
 
 const app = express();
 const BASE_PATH = (process.env.BASE_PATH || '/llm-gateway').replace(/\/$/, '');
@@ -50,6 +51,7 @@ app.use('/api', infoRouter);         // /api/info
 
 // Admin API// Log buffer API
 app.use('/api', logsRouter);
+app.use('/api', loggingRouter);
 
 // Admin API
 

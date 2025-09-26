@@ -1,0 +1,37 @@
+{
+  "desired": {
+    "level": "info",
+    "sampling_rate": 1,
+    "console": true,
+    "buffer_max": 1000,
+    "level_overrides": {},
+    "fields": {
+      "service": "orchestrated"
+    },
+    "hec": {
+      "enabled": true,
+      "url": "http://splunk:8088/services/collector",
+      "token": "00000000-1111-2222-3333-444444444444",
+      "index": "Main",
+      "source": "platform"
+    }
+  },
+  "services": [
+    {
+      "name": "llm-gateway",
+      "logging_url": "http://llm-gateway:3010/api/logging",
+      "id": "llm-gateway"
+    },
+    {
+      "name": "rag",
+      "logging_url": "http://rag-api-module:8000/admin-api/logging",
+      "id": "rag"
+    },
+    {
+      "name": "llm-chat",
+      "logging_url": "http://llm-chat-module:3004/admin-api/logging",
+      "id": "llm-chat"
+    }
+  ],
+  "rollouts": []
+}

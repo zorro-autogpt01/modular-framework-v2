@@ -1,0 +1,213 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>Logging Orchestrator</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <style>
+    :root{
+      --bg:#0b0b0d; --card:#121217; --line:#2a2a33; --fg:#e8e8f0;
+      --muted:#9aa0a6; --accent:#6ea8fe; --danger:#ff6b6b; --ok:#22c55e;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0; font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,Arial;
+         background:var(--bg); color:var(--fg)}
+    .header{display:flex; gap:12px; align-items:center; padding:12px 16px; border-bottom:1px solid var(--line); background:#0d0d11; position:sticky; top:0}
+    .inline{display:flex; align-items:center; gap:8px}
+    .grow{flex:1}
+    .pill,.btn,button{appearance:none; border:1px solid var(--line); background:#15151b; color:var(--fg);
+                      padding:6px 10px; border-radius:999px; cursor:pointer}
+    .pill:hover,.btn:hover,button:hover{background:#1a1a22}
+    .ghost{background:transparent}
+    .danger{border-color:#5a1e1e; color:#ffd2d2; background:#2a0f10}
+    .danger:hover{background:#3a1517}
+    .tab{padding:4px 8px; border-radius:8px; border:1px solid var(--line)}
+    .active{background:#161623}
+    .dot{width:10px; height:10px; border-radius:50%; display:inline-block; background:#737373}
+    .on{background:var(--ok)}
+    .muted{color:var(--muted); font-size:12px}
+    .pane{max-width:1100px; margin:18px auto; padding:0 16px}
+    .card{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px}
+    h3{margin:6px 0 12px 0; font-size:16px}
+    textarea{width:100%; background:#0f0f14; color:var(--fg); border:1px solid var(--line); border-radius:8px; padding:10px}
+    label{display:block; margin-bottom:6px; color:var(--muted)}
+    input[type=text],input[type=url],input[type=password]{width:100%; background:#0f0f14; color:var(--fg); border:1px solid var(--line); border-radius:8px; padding:8px}
+    .row{display:grid; grid-template-columns:1fr 2fr; gap:12px}
+    table{width:100%; border-collapse:collapse}
+    th,td{border-top:1px solid var(--line); padding:8px 6px; text-align:left; vertical-align:top}
+    th{color:var(--muted); font-weight:600}
+    pre.small{font-size:12px; overflow:auto; max-height:40vh}
+    .grid2{display:grid; grid-template-columns:1fr 1fr; gap:12px}
+    .kbd{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size:12px; padding:2px 6px; border:1px solid var(--line); border-radius:6px; background:#0f0f14}
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="inline">
+      <span class="dot on"></span>
+      <strong>Logging Orchestrator</strong>
+      <span class="tab active">Admin</span>
+    </div>
+    <div class="grow"></div>
+    <span class="muted">Base URL:</span>
+    <span class="kbd" id="baseUrl"></span>
+    <a class="pill" href="#" onclick="loadStatus();return false;">Refresh Status</a>
+  </div>
+
+  <div class="pane">
+    <div class="grid2">
+      <div class="card">
+        <h3>Desired Config</h3>
+        <textarea id="cfg" rows="16" spellcheck="false"></textarea>
+        <div class="inline" style="margin-top:8px; gap:8px">
+          <button class="btn" onclick="saveCfg()">Save</button>
+          <button class="ghost" onclick="loadCfg()">Reload</button>
+          <span class="grow"></span>
+          <button onclick="push(false)">Push to All</button>
+          <button class="ghost" onclick="push(true)">Dry-run All</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Auth & Settings</h3>
+        <label>ORCH_TOKEN (optional; only needed if set on server)</label>
+        <input id="token" type="password" placeholder="Paste token…">
+        <div class="inline" style="margin-top:8px">
+          <button onclick="saveToken()">Save Token</button>
+          <button class="ghost" onclick="clearToken()">Clear</button>
+          <span class="muted">Token is stored in <span class="kbd">localStorage</span> and sent as <span class="kbd">Authorization: Bearer …</span> for mutating calls.</span>
+        </div>
+
+        <div class="card" style="margin-top:12px">
+          <h3 style="margin-top:0">Quick Actions</h3>
+          <div class="inline" style="gap:8px">
+            <button onclick="loadRollouts()">Reload Rollouts</button>
+            <button class="ghost" onclick="loadStatus()">Reload Status</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <h3>Services</h3>
+      <div class="row">
+        <div>
+          <label>Name</label>
+          <input id="sName" type="text" placeholder="llm-gateway">
+        </div>
+        <div>
+          <label>Logging URL</label>
+          <input id="sUrl" type="url" placeholder="http://llm-gateway:3010/api/logging  or  http://rag-api-module:8000/admin-api/logging">
+        </div>
+      </div>
+      <div class="inline" style="margin-top:8px">
+        <button onclick="addService()">Add Service</button>
+        <span class="muted">Mutations require ORCH_TOKEN if configured on server.</span>
+      </div>
+
+      <table id="svcTbl" style="margin-top:10px">
+        <thead><tr><th style="width:180px">Name</th><th>Logging URL</th><th style="width:240px">Actions</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="grid2" style="margin-top:12px">
+      <div class="card">
+        <h3>Status (effective configs)</h3>
+        <pre id="statusBox" class="small" style="white-space:pre-wrap; background:#0f0f14; padding:10px; border-radius:6px; border:1px solid var(--line)"></pre>
+      </div>
+      <div class="card">
+        <h3>Rollouts</h3>
+        <pre id="rollouts" class="small" style="white-space:pre-wrap; background:#0f0f14; padding:10px; border-radius:6px; border:1px solid var(--line)"></pre>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const API = '/api/logging-admin';
+  const $ = sel => document.querySelector(sel);
+  const cfg = $('#cfg');
+  const statusBox = $('#statusBox');
+  const rollouts = $('#rollouts');
+  const tokenInput = $('#token');
+
+  function hdrs(json=false, mutate=false){
+    const h = {};
+    if (json) h['Content-Type'] = 'application/json';
+    const t = localStorage.getItem('orch_token');
+    if (mutate && t) h['Authorization'] = `Bearer ${t}`;
+    return h;
+  }
+  function setBaseLabel(){ $('#baseUrl').textContent = location.origin; }
+
+  async function loadCfg(){
+    const r = await fetch(`${API}/config`).then(r=>r.json());
+    cfg.value = JSON.stringify(r.desired ?? {}, null, 2);
+  }
+  async function saveCfg(){
+    try{
+      const body = JSON.parse(cfg.value || '{}');
+      const r = await fetch(`${API}/config`, { method:'PUT', headers: hdrs(true, true), body: JSON.stringify(body) });
+      const j = await r.json();
+      alert(j.ok ? 'Saved' : ('Failed: ' + (j.error||'error')));
+    }catch(e){ alert('Invalid JSON: ' + e.message); }
+  }
+  function svcRow(s){
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td><strong>${s.name}</strong></td>
+      <td><span class="kbd">${s.logging_url}</span></td>
+      <td>
+        <div class="inline" style="gap:6px; flex-wrap:wrap">
+          <button class="ghost" onclick="push(false,'${s.name}')">Push</button>
+          <button class="ghost" onclick="push(true,'${s.name}')">Dry-run</button>
+          <button class="danger" onclick="delService('${s.name}')">Delete</button>
+        </div>
+      </td>`;
+    return tr;
+  }
+  async function listServices(){
+    const r = await fetch(`${API}/services`).then(r=>r.json());
+    const tb = document.querySelector('#svcTbl tbody'); tb.innerHTML='';
+    (r.items||[]).forEach(s => tb.appendChild(svcRow(s)));
+  }
+  async function addService(){
+    const b = { name: $('#sName').value.trim(), logging_url: $('#sUrl').value.trim() };
+    if (!b.name || !b.logging_url) return alert('name and logging_url required');
+    const r = await fetch(`${API}/services`, { method:'POST', headers: hdrs(true, true), body: JSON.stringify(b) });
+    const j = await r.json();
+    if (j.ok) { listServices(); $('#sName').value=''; $('#sUrl').value=''; }
+    else alert('Failed: ' + (j.error||'error'));
+  }
+  async function delService(n){
+    if (!confirm('Delete service '+n+'?')) return;
+    const r = await fetch(`${API}/services/${encodeURIComponent(n)}`, { method:'DELETE', headers: hdrs(false, true) });
+    const j = await r.json();
+    if (j.ok) listServices(); else alert('Failed');
+  }
+  async function push(dryRun, service){
+    const q = new URLSearchParams(); if (dryRun) q.set('dry_run','1'); if (service) q.set('service', service);
+    const r = await fetch(`${API}/push?${q.toString()}`, { method:'POST', headers: hdrs(false, true) }).then(r=>r.json());
+    statusBox.textContent = JSON.stringify(r, null, 2);
+    loadRollouts();
+  }
+  async function loadStatus(){
+    const r = await fetch(`${API}/status`).then(r=>r.json());
+    statusBox.textContent = JSON.stringify(r, null, 2);
+  }
+  async function loadRollouts(){
+    const r = await fetch(`${API}/rollouts`).then(r=>r.json());
+    rollouts.textContent = JSON.stringify(r, null, 2);
+  }
+
+  function saveToken(){ localStorage.setItem('orch_token', tokenInput.value.trim()); alert('Token saved'); }
+  function clearToken(){ localStorage.removeItem('orch_token'); tokenInput.value=''; alert('Token cleared'); }
+
+  document.addEventListener('DOMContentLoaded', ()=>{
+    setBaseLabel();
+    tokenInput.value = localStorage.getItem('orch_token') || '';
+    loadCfg(); listServices(); loadStatus(); loadRollouts();
+  });
+</script>
+</body>
+</html>
