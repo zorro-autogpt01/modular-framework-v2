@@ -1,39 +1,41 @@
-const path = require('path');
-const LOG_LEVEL = (process.env.LOG_LEVEL || 'info').toLowerCase();
-const LOG_MAX = Number(process.env.LOG_MAX || 1000);
-const LOG_TO_CONSOLE = (process.env.LOG_TO_CONSOLE || 'false').toLowerCase() === 'true';
-const IS_SPLUNK_CONFIGURED = Boolean(process.env.SPLUNK_HEC_URL && process.env.SPLUNK_HEC_TOKEN);
+// modular-framework/modules/llm-chat/server/logger.js
+const os = require('os');
 
-// Try multiple possible locations for the splunk-logger helper
-let SPLUNK_LOGGER = null;
-(function resolveSplunkLogger(){
-  const candidates = [
-    '/splunk-logger',
-    path.join(__dirname, '..', 'splunk-logger'),
-    path.join(__dirname, '..', '..', 'splunk-logger'),
-    path.join(__dirname, '..', '..', '..', 'splunk-logger')
-  ];
-  for (const modPath of candidates) {
-    try {
-      // eslint-disable-next-line import/no-dynamic-require, global-require
-      SPLUNK_LOGGER = require(modPath);
-      break;
-    } catch (e) {
-      // continue
+// ===== Defaults from ENV (backward-compatible) =====
+const ENV_DEFAULTS = {
+  level: (process.env.LOG_LEVEL || 'info').toLowerCase(),
+  console: (process.env.LOG_TO_CONSOLE || 'false').toLowerCase() === 'true',
+  buffer_max: Number(process.env.LOG_MAX || 1000),
+  sinks: {
+    hec: {
+      enabled: !!(process.env.SPLUNK_HEC_URL && process.env.SPLUNK_HEC_TOKEN),
+      url: process.env.SPLUNK_HEC_URL || null,
+      token: process.env.SPLUNK_HEC_TOKEN || null,
+      source: process.env.SPLUNK_SOURCE || 'llm-chat',
+      index: process.env.SPLUNK_INDEX || undefined,
+      tls_verify: String(process.env.NODE_TLS_REJECT_UNAUTHORIZED || '1') !== '0',
+      timeout_ms: 3000,
+      batch_max: 100
     }
-  }
-})();
+  },
+  fields: { service: 'llm-chat', host: os.hostname() },
+  sampling: { rate: 1.0 },
+  level_overrides: {}, // e.g. { http_access: 'info', llm: 'debug' }
+};
 
+// ===== In-memory log buffer =====
 const logs = [];
-let reqCounter = 0;
+function pushBuffer(entry, cfg) {
+  logs.push(entry);
+  const max = Math.max(1, Number(cfg.buffer_max || 1000));
+  while (logs.length > max) logs.shift();
+}
 
-function redact(obj) {
-  if (!obj || typeof obj !== 'object') return obj;
-  const clone = JSON.parse(JSON.stringify(obj));
-  if (clone.apiKey) clone.apiKey = '***REDACTED***';
-  if (clone.headers && clone.headers.Authorization) clone.headers.Authorization = '***REDACTED***';
-  if (clone.headers && clone.headers.authorization) clone.headers.authorization = '***REDACTED***';
-  return clone;
+// ===== Utilities =====
+let reqCounter = 0;
+function stamp(req, _res, next) {
+  req.id = `${Date.now().toString(36)}-${(++reqCounter).toString(36)}`;
+  next();
 }
 function safeStringify(v) {
   try {
@@ -49,59 +51,146 @@ function safeStringify(v) {
     return '[unstringifiable]';
   }
 }
-
-function shouldConsole(level){
-  if (LOG_TO_CONSOLE) return true;
-  // If Splunk isn't configured, still emit to console so we don't go dark
-  return !IS_SPLUNK_CONFIGURED;
+function deepMerge(a, b) {
+  if (b === null || b === undefined) return a;
+  if (Array.isArray(a) || Array.isArray(b) || typeof a !== 'object' || typeof b !== 'object') return b;
+  const out = { ...a };
+  for (const k of Object.keys(b)) out[k] = deepMerge(a[k], b[k]);
+  return out;
 }
-function consoleOut(level, line){
+
+// Redaction helpers (public redact used by routes)
+function redactMeta(obj) {
+  if (!obj || typeof obj !== 'object') return obj;
+  const clone = JSON.parse(JSON.stringify(obj));
+  const REDACT_KEYS = ['authorization', 'Authorization', 'apiKey', 'token', 'password', 'secret'];
+  (function walk(o) {
+    if (!o || typeof o !== 'object') return;
+    for (const k of Object.keys(o)) {
+      if (REDACT_KEYS.includes(k)) o[k] = '***REDACTED***';
+      else if (typeof o[k] === 'object') walk(o[k]);
+    }
+  })(clone);
+  return clone;
+}
+function redact(obj) { return redactMeta(obj); }
+
+// ===== Levels & filtering =====
+const LEVELS = ['debug', 'info', 'warn', 'error'];
+function levelAllows(min, lvl) {
+  const mi = LEVELS.indexOf((min || 'info').toLowerCase());
+  const li = LEVELS.indexOf((lvl || 'info').toLowerCase());
+  return li >= mi;
+}
+
+// ===== Active config (hot-reloadable) =====
+let cfg = JSON.parse(JSON.stringify(ENV_DEFAULTS));
+function loadFromEnv() { return JSON.parse(JSON.stringify(ENV_DEFAULTS)); }
+
+function validateConfig(c) {
+  const err = (m) => { const e = new Error(m); e.status = 400; throw e; };
+  if (!c || typeof c !== 'object') err('config must be an object');
+  if (c.level && !LEVELS.includes(c.level)) err(`invalid level: ${c.level}`);
+  if (c.sampling && typeof c.sampling.rate === 'number' && (c.sampling.rate < 0 || c.sampling.rate > 1))
+    err('sampling.rate must be between 0 and 1');
+  if (c.sinks?.hec?.enabled) {
+    const { url, token } = c.sinks.hec;
+    if (!url || !token) err('hec.url and hec.token are required when hec.enabled=true');
+  }
+  return c;
+}
+
+function getEffectiveLoggingConfig() { return redact(cfg); }
+function setLoggingConfig(patch, { dryRun = false } = {}) {
+  if (patch && patch._reload) {
+    const reloaded = loadFromEnv();
+    validateConfig(reloaded);
+    if (!dryRun) cfg = reloaded;
+    return { applied: !dryRun, effective: redact(cfg) };
+    }
+  const next = validateConfig(deepMerge(cfg, patch));
+  if (dryRun) return { validated: true, next: redact(next) };
+  cfg = next; return { applied: true, effective: redact(cfg) };
+}
+
+// ===== Sinks =====
+async function sendConsole(entry) {
+  if (!cfg.console) return;
+  const line = `[${entry.ts}] [${entry.level.toUpperCase()}] ${entry.msg} ${entry.meta ? safeStringify(entry.meta) : ''}`;
   try {
-    if (!shouldConsole(level)) return;
-    if (level === 'debug' && LOG_LEVEL === 'debug') console.debug(line);
-    else if (level === 'info' && (LOG_LEVEL === 'debug' || LOG_LEVEL === 'info')) console.info(line);
-    else if (level === 'warn' && (LOG_LEVEL !== 'error')) console.warn(line);
-    else if (level === 'error') console.error(line);
+    if (entry.level === 'debug') console.debug(line);
+    else if (entry.level === 'info') console.info(line);
+    else if (entry.level === 'warn') console.warn(line);
+    else console.error(line);
   } catch {}
 }
+async function sendHec(entry) {
+  const h = cfg.sinks?.hec || {};
+  if (!h.enabled) return;
+  const payload = {
+    event: { level: entry.level, message: entry.msg, meta: entry.meta },
+    time: Math.floor(Date.now() / 1000),
+    host: cfg.fields?.host || os.hostname(),
+    sourcetype: '_json',
+    source: h.source || 'llm-chat',
+  };
+  if (h.index) payload.index = h.index;
 
-function addLog(level, msg, meta) {
-  const entry = { ts: new Date().toISOString(), level, msg, ...meta };
-  logs.push(entry);
-  if (logs.length > LOG_MAX) logs.shift();
-  const line = `[${entry.ts}] [${level.toUpperCase()}] ${msg} ${meta ? safeStringify(meta) : ''}`;
-  consoleOut(level, line);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Number(h.timeout_ms || 3000));
+  try {
+    await fetch(h.url, {
+      method: 'POST',
+      headers: { 'Authorization': `Splunk ${h.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+  } finally { clearTimeout(timeout); }
 }
 
-function augmentMeta(meta){
-  const base = meta && typeof meta === 'object' ? meta : {};
-  return { service: 'llm-chat', ...base };
+const sinks = [ sendConsole, sendHec ];
+
+function categoryLevel(min, category) {
+  const override = cfg.level_overrides?.[category];
+  return override || min;
 }
 
-const logDebug = (msg, meta)=> {
-  const m = augmentMeta(meta);
-  addLog('debug', msg, m);
-  try { SPLUNK_LOGGER?.logDebug?.(msg, m); } catch {}
-};
-const logInfo  = (msg, meta)=> {
-  const m = augmentMeta(meta);
-  addLog('info', msg, m);
-  try { SPLUNK_LOGGER?.logInfo?.(msg, m); } catch {}
-};
-const logWarn  = (msg, meta)=> {
-  const m = augmentMeta(meta);
-  addLog('warn', msg, m);
-  try { SPLUNK_LOGGER?.logWarn?.(msg, m); } catch {}
-};
-const logError = (msg, meta)=> {
-  const m = augmentMeta(meta);
-  addLog('error', msg, m);
-  try { SPLUNK_LOGGER?.logError?.(msg, m); } catch {}
-};
+function addLog(level, msg, meta, category) {
+  const min = categoryLevel(cfg.level, category);
+  if (!levelAllows(min, level)) return;
+  const rate = Number(cfg.sampling?.rate ?? 1);
+  if (rate < 1 && Math.random() > rate) return;
 
-function stamp(req, _res, next) {
-  req.id = `${Date.now().toString(36)}-${(++reqCounter).toString(36)}`;
-  next();
+  const baseMeta = { ...(meta || {}), service: cfg.fields?.service || 'llm-chat' };
+  const entry = {
+    ts: new Date().toISOString(),
+    level,
+    msg: typeof msg === 'string' ? msg : safeStringify(msg),
+    meta: redactMeta(baseMeta),
+  };
+  pushBuffer(entry, cfg);
+  for (const sink of sinks) { sink(entry).catch?.(() => {}); }
 }
 
-module.exports = { logs, redact, safeStringify, addLog, logDebug, logInfo, logWarn, logError, stamp };
+const logDebug = (msg, meta, category) => addLog('debug', msg, meta, category);
+const logInfo  = (msg, meta, category) => addLog('info',  msg, meta, category);
+const logWarn  = (msg, meta, category) => addLog('warn',  msg, meta, category);
+const logError = (msg, meta, category) => addLog('error', msg, meta, category);
+
+// Test hook
+async function testLoggingSink() {
+  const probe = { ts: Date.now(), probe: true, source: 'logging_test' };
+  logInfo('logging_test', probe, 'ops');
+  return { sent: true };
+}
+
+module.exports = {
+  logs,
+  stamp,
+  logDebug, logInfo, logWarn, logError,
+  safeStringify,
+  getEffectiveLoggingConfig,
+  setLoggingConfig,
+  testLoggingSink,
+  redact,
+};

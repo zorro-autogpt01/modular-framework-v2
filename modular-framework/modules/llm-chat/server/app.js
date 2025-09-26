@@ -8,7 +8,8 @@ const { router: infoRouter } = require('./routes/info');
 const { router: healthRouter } = require('./routes/health');
 const { router: chatRouter } = require('./routes/chat');
 const { router: workflowsRouter } = require('./routes/workflows');
-const { router: agentRouter } = require('./routes/agent');
+const { router: agentRouter } = require('./routes/agent');const { router: loggingRouter } = require('./routes/logging');
+
 const { stamp, logInfo } = require('./logger');
 
 const app = express();
@@ -51,7 +52,11 @@ if (BASE_PATH) app.get(`${BASE_PATH}/`, (_req, res) => res.sendFile(path.join(pu
 app.get('/config', (_req, res) => res.sendFile(path.join(pub, 'config.html')));
 if (BASE_PATH) app.get(`${BASE_PATH}/config`, (_req, res) => res.sendFile(path.join(pub, 'config.html')));
 
-// basic routes
+// basic routes// admin logging API (for logging orchestrator)
+app.use('/admin-api', loggingRouter);
+if (BASE_PATH) app.use(`${BASE_PATH}/admin-api`, loggingRouter);
+
+
 app.use('/', healthRouter);            // /health (root for Docker healthcheck)
 app.use('/api', infoRouter);           // /api/info
 app.use('/api', logsRouter);           // /api/logs, /api/logs/clear
