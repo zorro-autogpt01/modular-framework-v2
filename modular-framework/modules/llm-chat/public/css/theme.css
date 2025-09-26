@@ -172,6 +172,25 @@ button:focus-visible { outline: none; box-shadow: var(--focus); }
 /* Messages area */
 .msgs { flex: 1; overflow: auto; background: var(--bg); padding: 16px; }
 .msg { max-width: 90%; padding: 10px 12px; border-radius: 8px; margin-bottom: 10px; white-space: pre-wrap; word-wrap: break-word; }
+/* Copy-to-clipboard button inside message bubbles */
+.msg { position: relative; padding-right: 30px; }
+.copy-bubble-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: #3e3e42;
+  color: #e8e8e8;
+  border: 1px solid #555;
+  border-radius: 6px;
+  padding: 2px 6px;
+  font-size: 12px;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity .15s ease, filter .15s ease;
+}
+.copy-bubble-btn:hover { opacity: 1; filter: brightness(1.05); }
+.copy-bubble-btn:focus-visible { outline: none; box-shadow: var(--focus); }
+
 .user { background: #2a2a2a; align-self: flex-end; }
 .assistant { background: #1f2a33; border: 1px solid #203747; }
 

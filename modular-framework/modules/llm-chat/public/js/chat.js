@@ -1,6 +1,6 @@
 import { getGlobal, getProfiles, getActiveName } from './storage.js';
 import { parseStream } from './sse.js';
-import { getEl, setBusy, addMsg, detectBasePath } from './ui.js';
+import { getEl, setBusy, addMsg, detectBasePath, attachCopyButton } from './ui.js';
 
 const state = { 
   controller: null, 
@@ -85,8 +85,10 @@ function displayConversationHistory() {
   state.messages.forEach(msg => {
     const el = document.createElement('div');
     el.className = `msg ${msg.role === 'user' ? 'user' : 'assistant'}`;
-    el.textContent = msg.content;
+    el.textContent = msg.content || '';
+    el.dataset.msg = msg.content || '';
     msgsDiv.appendChild(el);
+    try { attachCopyButton(el, () => el.dataset.msg || el.textContent || ''); } catch {}
   });
   msgsDiv.scrollTop = msgsDiv.scrollHeight;
 }
@@ -327,7 +329,7 @@ export async function summarizeConversation() {
     const decoder = new TextDecoder();
     const pump = parseStream(
       (d)=> { placeholder.textContent += d; },
-      ()=> { state.messages.push({ role:'assistant', content: placeholder.textContent }); },
+      ()=> { placeholder.dataset.msg = placeholder.textContent; try { attachCopyButton(placeholder, () => placeholder.textContent); } catch {} state.messages.push({ role:'assistant', content: placeholder.textContent }); },
       (m)=> { placeholder.textContent += `\n[error] ${m}`; }
     );
     while (true) {
@@ -435,6 +437,9 @@ export async function send(buildOverrides) {
         ragMsg.className = 'msg assistant';
         ragMsg.innerHTML = `<span class="rag-badge">RAG</span> ${ragResponse?.answer || ''}`;
         msgsDiv.appendChild(ragMsg);
+        ragMsg.dataset.msg = ragResponse?.answer || '';
+        try { attachCopyButton(ragMsg, () => ragMsg.dataset.msg || ragMsg.textContent || ''); } catch {}
+
 
         // Panels: RAG sources + tagged memories (if enabled)
         if (ragResponse?.sources) displaySources(ragResponse.sources);
@@ -525,6 +530,8 @@ Use this information to answer the user's question accurately. If the knowledge 
     const pump = parseStream(
       (d)=> { placeholder.textContent += d; },
       ()=> { 
+        placeholder.dataset.msg = placeholder.textContent;
+        try { attachCopyButton(placeholder, () => placeholder.textContent); } catch {}
         state.messages.push({ role:'assistant', content: placeholder.textContent }); 
         updateMessageCount();
         // Display RAG sources if used

@@ -1,0 +1,104 @@
+{
+  "version": "1.0",
+  "project_root": "modular-framework/modules/llm-chat",
+  "dry_run": false,
+  "backup": true,
+  "changes": [
+    {
+      "id": "css-copy-btn-styles",
+      "description": "Add styles for per-message copy-to-clipboard button and make message bubble a positioned container",
+      "op": "patch_text",
+      "path": "public/css/theme.css",
+      "patches": [
+        {
+          "type": "insert_after",
+          "anchor": ".msg { max-width: 90%; padding: 10px 12px; border-radius: 8px; margin-bottom: 10px; white-space: pre-wrap; word-wrap: break-word; }",
+          "replacement": "\n/* Copy-to-clipboard button inside message bubbles */\n.msg { position: relative; padding-right: 30px; }\n.copy-bubble-btn {\n  position: absolute;\n  top: 6px;\n  right: 6px;\n  background: #3e3e42;\n  color: #e8e8e8;\n  border: 1px solid #555;\n  border-radius: 6px;\n  padding: 2px 6px;\n  font-size: 12px;\n  cursor: pointer;\n  opacity: 0.7;\n  transition: opacity .15s ease, filter .15s ease;\n}\n.copy-bubble-btn:hover { opacity: 1; filter: brightness(1.05); }\n.copy-bubble-btn:focus-visible { outline: none; box-shadow: var(--focus); }\n"
+        }
+      ]
+    },
+    {
+      "id": "ui-add-attachCopyButton",
+      "description": "Add attachCopyButton utility and enhance addMsg to set dataset and auto-attach copy button",
+      "op": "patch_text",
+      "path": "public/js/ui.js",
+      "patches": [
+        {
+          "type": "replace_literal",
+          "match": "export function addMsg(role, content) {\n  const msgs = getEl('msgs'); if (!msgs) return;\n  const el = document.createElement('div');\n  el.className = `msg ${role==='user'?'user':'assistant'}`;\n  el.textContent = content;\n  msgs.appendChild(el); msgs.scrollTop = msgs.scrollHeight;\n}\n",
+          "replacement": "export function addMsg(role, content) {\n  const msgs = getEl('msgs'); if (!msgs) return;\n  const el = document.createElement('div');\n  el.className = `msg ${role==='user'?'user':'assistant'}`;\n  el.textContent = content;\n  el.dataset.msg = content;\n  msgs.appendChild(el);\n  msgs.scrollTop = msgs.scrollHeight;\n  try { attachCopyButton(el, () => el.dataset.msg || el.textContent || ''); } catch {}\n}\n"
+        },
+        {
+          "type": "insert_before",
+          "anchor": "export function toast(msg){ alert(msg); }",
+          "replacement": "\nfunction _getMsgText(el) {\n  return (el?.dataset?.msg ?? '').toString() || (el?.textContent ?? '').toString();\n}\n\nasync function _writeClipboard(text) {\n  const t = String(text ?? '');\n  try {\n    await navigator.clipboard.writeText(t);\n    return true;\n  } catch (err) {\n    try {\n      const ta = document.createElement('textarea');\n      ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0'; ta.setAttribute('readonly', '');\n      document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);\n      return true;\n    } catch (e) {\n      console.error('Copy to clipboard failed', e);\n      return false;\n    }\n  }\n}\n\nexport function attachCopyButton(msgEl, textProvider) {\n  try {\n    if (!msgEl || !(msgEl instanceof HTMLElement)) return;\n    if (msgEl.querySelector('.copy-bubble-btn')) return; // already attached\n    const btn = document.createElement('button');\n    btn.type = 'button';\n    btn.className = 'copy-bubble-btn';\n    btn.title = 'Copy to clipboard';\n    btn.setAttribute('aria-label', 'Copy message to clipboard');\n    btn.textContent = '📋';\n    btn.addEventListener('click', async (e) => {\n      e.stopPropagation();\n      const text = typeof textProvider === 'function' ? textProvider() : _getMsgText(msgEl);\n      const ok = await _writeClipboard(text);\n      const prev = btn.textContent;\n      btn.textContent = ok ? '✅' : '⚠️';\n      setTimeout(() => { btn.textContent = prev || '📋'; }, 1200);\n    });\n    msgEl.appendChild(btn);\n  } catch (e) {\n    console.error('attachCopyButton failed', e);\n  }\n}\n"
+        }
+      ]
+    },
+    {
+      "id": "chat-import-attachCopyButton",
+      "description": "Import attachCopyButton from ui.js",
+      "op": "patch_text",
+      "path": "public/js/chat.js",
+      "patches": [
+        {
+          "type": "replace_literal",
+          "match": "import { getEl, setBusy, addMsg, detectBasePath } from './ui.js';",
+          "replacement": "import { getEl, setBusy, addMsg, detectBasePath, attachCopyButton } from './ui.js';"
+        }
+      ]
+    },
+    {
+      "id": "chat-history-attach-buttons",
+      "description": "Attach copy buttons to restored conversation history messages",
+      "op": "patch_text",
+      "path": "public/js/chat.js",
+      "patches": [
+        {
+          "type": "replace_literal",
+          "match": "function displayConversationHistory() {\n  const msgsDiv = getEl('msgs');\n  if (!msgsDiv) return;\n  \n  msgsDiv.innerHTML = '';\n  state.messages.forEach(msg => {\n    const el = document.createElement('div');\n    el.className = `msg ${msg.role === 'user' ? 'user' : 'assistant'}`;\n    el.textContent = msg.content;\n    msgsDiv.appendChild(el);\n  });\n  msgsDiv.scrollTop = msgsDiv.scrollHeight;\n}\n",
+          "replacement": "function displayConversationHistory() {\n  const msgsDiv = getEl('msgs');\n  if (!msgsDiv) return;\n  \n  msgsDiv.innerHTML = '';\n  state.messages.forEach(msg => {\n    const el = document.createElement('div');\n    el.className = `msg ${msg.role === 'user' ? 'user' : 'assistant'}`;\n    el.textContent = msg.content || '';\n    el.dataset.msg = msg.content || '';\n    msgsDiv.appendChild(el);\n    try { attachCopyButton(el, () => el.dataset.msg || el.textContent || ''); } catch {}\n  });\n  msgsDiv.scrollTop = msgsDiv.scrollHeight;\n}\n"
+        }
+      ]
+    },
+    {
+      "id": "chat-rag-only-copy-button",
+      "description": "Ensure RAG-only assistant answer gets a copy button with clean text",
+      "op": "patch_text",
+      "path": "public/js/chat.js",
+      "patches": [
+        {
+          "type": "insert_after",
+          "anchor": "msgsDiv.appendChild(ragMsg);",
+          "replacement": "\n        ragMsg.dataset.msg = ragResponse?.answer || '';\n        try { attachCopyButton(ragMsg, () => ragMsg.dataset.msg || ragMsg.textContent || ''); } catch {}\n"
+        }
+      ]
+    },
+    {
+      "id": "chat-summarize-parseStream-onDone",
+      "description": "After summarize streaming completes, attach copy button to the assistant message",
+      "op": "patch_text",
+      "path": "public/js/chat.js",
+      "patches": [
+        {
+          "type": "replace_literal",
+          "match": "    const pump = parseStream(\n      (d)=> { placeholder.textContent += d; },\n      ()=> { state.messages.push({ role:'assistant', content: placeholder.textContent }); },\n      (m)=> { placeholder.textContent += `\\n[error] ${m}`; }\n    );",
+          "replacement": "    const pump = parseStream(\n      (d)=> { placeholder.textContent += d; },\n      ()=> { placeholder.dataset.msg = placeholder.textContent; try { attachCopyButton(placeholder, () => placeholder.textContent); } catch {} state.messages.push({ role:'assistant', content: placeholder.textContent }); },\n      (m)=> { placeholder.textContent += `\\n[error] ${m}`; }\n    );"
+        }
+      ]
+    },
+    {
+      "id": "chat-send-parseStream-onDone",
+      "description": "After assistant streaming completes, attach copy button to the assistant message",
+      "op": "patch_text",
+      "path": "public/js/chat.js",
+      "patches": [
+        {
+          "type": "replace_literal",
+          "match": "    const pump = parseStream(\n      (d)=> { placeholder.textContent += d; },\n      ()=> { \n        state.messages.push({ role:'assistant', content: placeholder.textContent }); \n        updateMessageCount();\n        // Display RAG sources if used\n        if (ragResponse && ragResponse.sources) {\n          displaySources(ragResponse.sources);\n        }\n        if (memorySnippets.length) {\n         displayMemories(memorySnippets);\n       }\n        // Auto-save every 10 messages\n        if (state.messages.length % 10 === 0) {\n          saveConversation();\n        }\n      },\n      (m)=> { placeholder.textContent += `\\n[error] ${m}`; }\n    );",
+          "replacement": "    const pump = parseStream(\n      (d)=> { placeholder.textContent += d; },\n      ()=> { \n        placeholder.dataset.msg = placeholder.textContent;\n        try { attachCopyButton(placeholder, () => placeholder.textContent); } catch {}\n        state.messages.push({ role:'assistant', content: placeholder.textContent }); \n        updateMessageCount();\n        // Display RAG sources if used\n        if (ragResponse && ragResponse.sources) {\n          displaySources(ragResponse.sources);\n        }\n        if (memorySnippets.length) {\n         displayMemories(memorySnippets);\n       }\n        // Auto-save every 10 messages\n        if (state.messages.length % 10 === 0) {\n          saveConversation();\n        }\n      },\n      (m)=> { placeholder.textContent += `\\n[error] ${m}`; }\n    );"
+        }
+      ]
+    }
+  ]
+}

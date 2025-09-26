@@ -12,9 +12,58 @@ export function addMsg(role, content) {
   const el = document.createElement('div');
   el.className = `msg ${role==='user'?'user':'assistant'}`;
   el.textContent = content;
-  msgs.appendChild(el); msgs.scrollTop = msgs.scrollHeight;
+  el.dataset.msg = content;
+  msgs.appendChild(el);
+  msgs.scrollTop = msgs.scrollHeight;
+  try { attachCopyButton(el, () => el.dataset.msg || el.textContent || ''); } catch {}
 }
 
+
+function _getMsgText(el) {
+  return (el?.dataset?.msg ?? '').toString() || (el?.textContent ?? '').toString();
+}
+
+async function _writeClipboard(text) {
+  const t = String(text ?? '');
+  try {
+    await navigator.clipboard.writeText(t);
+    return true;
+  } catch (err) {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0'; ta.setAttribute('readonly', '');
+      document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+      return true;
+    } catch (e) {
+      console.error('Copy to clipboard failed', e);
+      return false;
+    }
+  }
+}
+
+export function attachCopyButton(msgEl, textProvider) {
+  try {
+    if (!msgEl || !(msgEl instanceof HTMLElement)) return;
+    if (msgEl.querySelector('.copy-bubble-btn')) return; // already attached
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'copy-bubble-btn';
+    btn.title = 'Copy to clipboard';
+    btn.setAttribute('aria-label', 'Copy message to clipboard');
+    btn.textContent = '📋';
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const text = typeof textProvider === 'function' ? textProvider() : _getMsgText(msgEl);
+      const ok = await _writeClipboard(text);
+      const prev = btn.textContent;
+      btn.textContent = ok ? '✅' : '⚠️';
+      setTimeout(() => { btn.textContent = prev || '📋'; }, 1200);
+    });
+    msgEl.appendChild(btn);
+  } catch (e) {
+    console.error('attachCopyButton failed', e);
+  }
+}
 export function toast(msg){ alert(msg); }
 
 /** Detects the base path of the module (handles /, /modules/llm-chat/, and /modules/llm-chat/config) */
