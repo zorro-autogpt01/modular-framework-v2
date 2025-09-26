@@ -1,6 +1,7 @@
+// modular-framework/modules/llm-chat/public/js/chat.js
 import { getGlobal, getProfiles, getActiveName } from './storage.js';
 import { parseStream } from './sse.js';
-import { getEl, setBusy, addMsg, detectBasePath, attachCopyButton } from './ui.js';
+import { getEl, setBusy, addMsg, detectBasePath, attachCopyButton, attachMessageControls } from './ui.js';
 
 const state = { 
   controller: null, 
@@ -14,11 +15,10 @@ const state = {
 function getGatewayUrl() {
   let val = window.LLM_GATEWAY_URL || localStorage.getItem('llmGatewayUrl') || '';
   if (!val) return '';
-  return val.trim().replace(/\/+$/, ''); // remove the “ensure /api” logic
+  return val.trim().replace(/\/+$/, ''); // remove trailing slashes, caller decides path
 }
 
 // RAG Service configuration
-const RAG_SERVICE_URL = window.RAG_SERVICE_URL || '/rag';
 function getRagUrl() {
   return window.RAG_SERVICE_URL || localStorage.getItem('ragServiceUrl') || '/rag';
 }
@@ -42,7 +42,6 @@ function displayMemories(snippets) {
   `;
   msgsDiv.appendChild(memDiv);
 }
-
 
 // Initialize or continue conversation
 export async function initConversation() {
@@ -70,7 +69,7 @@ export async function initConversation() {
           displayConversationHistory();
         }
       }
-    } catch (error) {
+    } catch (_error) {
       console.log('No previous conversation found or RAG not available');
     }
   }
@@ -87,12 +86,13 @@ function displayConversationHistory() {
     el.className = `msg ${msg.role === 'user' ? 'user' : 'assistant'}`;
     el.textContent = msg.content || '';
     el.dataset.msg = msg.content || '';
+    el.dataset.role = msg.role || '';
+    el.dataset.timestamp = new Date().toISOString();
     msgsDiv.appendChild(el);
     try { attachCopyButton(el, () => el.dataset.msg || el.textContent || ''); } catch {}
   });
   msgsDiv.scrollTop = msgsDiv.scrollHeight;
 }
-
 
 // Query RAG system
 async function queryRAG(question, searchCode = true, searchDocs = true) {
@@ -160,7 +160,7 @@ export async function saveConversation() {
   catch (error) {
     console.error('Failed to save conversation:', error);
     alert(`Failed to save conversation: ${error.message}`);
-}
+  }
 }
 
 // Search past conversations
@@ -204,7 +204,7 @@ export async function searchPastConversations() {
       } else {
         searchResults.innerHTML = '<div class="muted">No results found</div>';
       }
-    } catch (error) {
+    } catch (_error) {
       searchResults.innerHTML = '<div class="muted">Search failed</div>';
     }
   };
@@ -300,9 +300,10 @@ export async function summarizeConversation() {
   const placeholder = document.createElement('div');
   placeholder.className = 'msg assistant';
   placeholder.textContent = '🔎 Summarizing…';
+  placeholder.dataset.streaming = 'true';
+  placeholder.dataset.role = 'assistant';
+  placeholder.dataset.timestamp = new Date().toISOString();
   const msgsDiv = getEl('msgs'); msgsDiv.appendChild(placeholder); msgsDiv.scrollTop = msgsDiv.scrollHeight;
-  try { attachCopyButton(placeholder, () => placeholder.textContent); } catch {}
- 
 
   setBusy(true);
   const controller = new AbortController(); state.controller = controller;
@@ -329,16 +330,33 @@ export async function summarizeConversation() {
     placeholder.textContent = '';
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
+
+    let doneSignaled = false;
+    const finalize = () => {
+      if (doneSignaled) return; doneSignaled = true;
+      placeholder.dataset.msg = placeholder.textContent;
+      delete placeholder.dataset.streaming;
+      placeholder.dataset.complete = 'true';
+      // Defer attach to ensure layout is ready
+      requestAnimationFrame(() => {
+        try { attachMessageControls(placeholder, () => placeholder.dataset.msg || placeholder.textContent || ''); } catch {}
+      });
+      state.messages.push({ role:'assistant', content: placeholder.textContent });
+    };
+
     const pump = parseStream(
       (d)=> { placeholder.textContent += d; },
-      ()=> { placeholder.dataset.msg = placeholder.textContent; try { attachCopyButton(placeholder, () => placeholder.textContent); } catch {} state.messages.push({ role:'assistant', content: placeholder.textContent }); },
+      ()=> { finalize(); },
       (m)=> { placeholder.textContent += `\n[error] ${m}`; }
     );
+
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;
       if (value) pump(decoder.decode(value, { stream:true }));
     }
+    // Fallback finalize on stream close
+    finalize();
   } catch (e) {
     placeholder.textContent += `\n[stopped] ${e.message}`;
   } finally {
@@ -385,34 +403,33 @@ export async function send(buildOverrides) {
   let enhancedSystem = system;
   let memorySnippets = [];
 
- // ----- Fetch tag-scoped memories across conversations -----
- if (useMemories) {
-   try {
-     const tags = readConvTags();
-     const resp = await fetch(`${getRagUrl()}/conversation/search`, {
-       method: 'POST',
-       headers: { 'Content-Type': 'application/json' },
-       body: JSON.stringify({
-         query: text,
-         limit: 5,
-         profile: getActiveName(),
-         tags
-       })
-     });
-     if (resp.ok) {
-       const data = await resp.json();
-       const results = data.results || [];
-       // Keep short snippets to avoid prompt bloat
-       memorySnippets = results
-         .map(r => (r.content || '').slice(0, 400))
-         .filter(Boolean)
-         .slice(0, 3);
-     }
-   } catch (e) {
-     console.warn('Memory search failed', e);
-   }
- }
-
+  // ----- Fetch tag-scoped memories across conversations -----
+  if (useMemories) {
+    try {
+      const tags = readConvTags();
+      const resp = await fetch(`${getRagUrl()}/conversation/search`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: text,
+          limit: 5,
+          profile: getActiveName(),
+          tags
+        })
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        const results = data.results || [];
+        // Keep short snippets to avoid prompt bloat
+        memorySnippets = results
+          .map(r => (r.content || '').slice(0, 400))
+          .filter(Boolean)
+          .slice(0, 3);
+      }
+    } catch (e) {
+      console.warn('Memory search failed', e);
+    }
+  }
 
   // Query RAG if enabled
   if (useRAG) {
@@ -440,8 +457,10 @@ export async function send(buildOverrides) {
         ragMsg.innerHTML = `<span class="rag-badge">RAG</span> ${ragResponse?.answer || ''}`;
         msgsDiv.appendChild(ragMsg);
         ragMsg.dataset.msg = ragResponse?.answer || '';
-        try { attachCopyButton(ragMsg, () => ragMsg.dataset.msg || ragMsg.textContent || ''); } catch {}
-
+        // Defer attach to avoid top-left pinning
+        requestAnimationFrame(() => {
+          try { attachCopyButton(ragMsg, () => ragMsg.dataset.msg || ragMsg.textContent || ''); } catch {}
+        });
 
         // Panels: RAG sources + tagged memories (if enabled)
         if (ragResponse?.sources) displaySources(ragResponse.sources);
@@ -475,14 +494,14 @@ Use this information to answer the user's question accurately. If the knowledge 
   if (enhancedSystem) msgs.push({ role:'system', content: enhancedSystem });
 
   // Inject memories (if any)
- if (memorySnippets.length) {
-   msgs.push({
-     role: 'system',
-     content:
-       "Relevant info from prior tagged conversations:\n" +
-       memorySnippets.map(s => `- ${s}`).join('\n')
-   });
- }
+  if (memorySnippets.length) {
+    msgs.push({
+      role: 'system',
+      content:
+        "Relevant info from prior tagged conversations:\n" +
+        memorySnippets.map(s => `- ${s}`).join('\n')
+    });
+  }
   
   // Add conversation context from RAG if available
   if (state.ragContext?.relevant_history?.length > 0) {
@@ -498,13 +517,18 @@ Use this information to answer the user's question accurately. If the knowledge 
   msgs.push(...state.messages, { role:'user', content: text });
 
   addMsg('user', text);
+
   const placeholder = document.createElement('div');
   placeholder.className = 'msg assistant'; 
   placeholder.textContent = '';
+  // mark as streaming so CSS shows dots and controls aren't attached yet
+  placeholder.dataset.streaming = 'true';
+  placeholder.dataset.role = 'assistant';
+  placeholder.dataset.timestamp = new Date().toISOString();
   const msgsDiv = getEl('msgs');
   msgsDiv.appendChild(placeholder); 
   msgsDiv.scrollTop = msgsDiv.scrollHeight;
-  try { attachCopyButton(placeholder, () => placeholder.textContent); } catch {}
+
   state.messages.push({ role:'user', content: text });
   input.value='';
 
@@ -530,32 +554,39 @@ Use this information to answer the user's question accurately. If the knowledge 
 
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
+
+    let doneSignaled = false;
+    const finalize = () => {
+      if (doneSignaled) return; doneSignaled = true;
+      // finalize message: clear streaming, attach controls, persist
+      placeholder.dataset.msg = placeholder.textContent;
+      delete placeholder.dataset.streaming;
+      placeholder.dataset.complete = 'true';
+      requestAnimationFrame(() => {
+        try { attachMessageControls(placeholder, () => placeholder.dataset.msg || placeholder.textContent || ''); } catch {}
+      });
+      state.messages.push({ role:'assistant', content: placeholder.textContent }); 
+      updateMessageCount();
+      // Display RAG sources if used
+      if (ragResponse && ragResponse.sources) displaySources(ragResponse.sources);
+      if (memorySnippets.length) displayMemories(memorySnippets);
+      // Auto-save every 10 messages
+      if (state.messages.length % 10 === 0) saveConversation();
+    };
+
     const pump = parseStream(
       (d)=> { placeholder.textContent += d; },
-      ()=> { 
-        placeholder.dataset.msg = placeholder.textContent;
-        try { attachCopyButton(placeholder, () => placeholder.textContent); } catch {}
-        state.messages.push({ role:'assistant', content: placeholder.textContent }); 
-        updateMessageCount();
-        // Display RAG sources if used
-        if (ragResponse && ragResponse.sources) {
-          displaySources(ragResponse.sources);
-        }
-        if (memorySnippets.length) {
-         displayMemories(memorySnippets);
-       }
-        // Auto-save every 10 messages
-        if (state.messages.length % 10 === 0) {
-          saveConversation();
-        }
-      },
+      ()=> { finalize(); },
       (m)=> { placeholder.textContent += `\n[error] ${m}`; }
     );
+
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;
       if (value) pump(decoder.decode(value, { stream:true }));
     }
+    // Fallback finalize on stream close
+    finalize();
   } catch (e) {
     placeholder.textContent += `\n[stopped] ${e.message}`;
   } finally {

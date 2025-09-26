@@ -1,3 +1,5 @@
+// modular-framework/modules/llm-chat/public/js/ui.js
+
 export const getEl = (id)=> document.getElementById(id);
 
 export function setBusy(b) {
@@ -18,10 +20,10 @@ export function addMsg(role, content) {
   el.dataset.timestamp = new Date().toISOString();
   msgs.appendChild(el);
   msgs.scrollTop = msgs.scrollHeight;
-  // Only attach controls for completed messages
-  setTimeout(() => {
+  // Only attach controls for completed messages; defer a frame to avoid layout race
+  requestAnimationFrame(() => {
     try { attachMessageControls(el, () => el.dataset.msg || el.textContent || ''); } catch {}
-  }, 10);
+  });
 }
 
 function _getMsgText(el) {
@@ -101,7 +103,6 @@ function navigateToMessage(direction) {
 
 function editMessage(msgEl) {
   const currentText = msgEl.dataset.msg || msgEl.textContent || '';
-  const role = msgEl.dataset.role || (msgEl.classList.contains('user') ? 'user' : 'assistant');
   
   // Create textarea for editing
   const textarea = document.createElement('textarea');
@@ -137,10 +138,10 @@ function editMessage(msgEl) {
       msgEl.textContent = newText;
       msgEl.dataset.msg = newText;
       msgEl.dataset.edited = 'true';
-      // Re-attach controls
-      setTimeout(() => {
+      // Re-attach controls on next frame
+      requestAnimationFrame(() => {
         try { attachMessageControls(msgEl, () => newText); } catch {}
-      }, 10);
+      });
     }
   };
   
@@ -166,7 +167,15 @@ export function attachMessageControls(msgEl, textProvider) {
     // Don't attach if still streaming or already has controls
     if (msgEl.dataset.streaming === 'true') return;
     if (msgEl.querySelector('.msg-controls')) return;
-    
+
+    // ✅ Defensive: ensure the message container is a positioned ancestor
+    try {
+      const cs = window.getComputedStyle(msgEl);
+      if (!cs || cs.position === 'static') {
+        msgEl.style.position = 'relative';
+      }
+    } catch {}
+
     const controls = document.createElement('div');
     controls.className = 'msg-controls';
     
@@ -190,7 +199,7 @@ export function attachMessageControls(msgEl, textProvider) {
       }, 1200);
     });
     
-    // Edit button (for user messages) or Regenerate button (for assistant)
+    // Edit button only for user bubbles
     const isUser = msgEl.classList.contains('user');
     if (isUser) {
       const editBtn = document.createElement('button');
@@ -206,7 +215,7 @@ export function attachMessageControls(msgEl, textProvider) {
       controls.appendChild(editBtn);
     }
     
-    // Up to top button
+    // Navigation controls
     const topBtn = document.createElement('button');
     topBtn.type = 'button';
     topBtn.className = 'msg-btn';
@@ -218,7 +227,6 @@ export function attachMessageControls(msgEl, textProvider) {
       navigateToMessage('first');
     });
     
-    // Up button
     const upBtn = document.createElement('button');
     upBtn.type = 'button';
     upBtn.className = 'msg-btn';
@@ -230,7 +238,6 @@ export function attachMessageControls(msgEl, textProvider) {
       navigateToMessage('up');
     });
     
-    // Down button
     const downBtn = document.createElement('button');
     downBtn.type = 'button';
     downBtn.className = 'msg-btn';
@@ -242,7 +249,6 @@ export function attachMessageControls(msgEl, textProvider) {
       navigateToMessage('down');
     });
     
-    // Down to bottom button
     const bottomBtn = document.createElement('button');
     bottomBtn.type = 'button';
     bottomBtn.className = 'msg-btn';
@@ -254,7 +260,7 @@ export function attachMessageControls(msgEl, textProvider) {
       navigateToMessage('last');
     });
     
-    // Add timestamp indicator
+    // Timestamp indicator (read-only)
     const timestamp = msgEl.dataset.timestamp;
     if (timestamp) {
       const timeBtn = document.createElement('span');
@@ -272,8 +278,11 @@ export function attachMessageControls(msgEl, textProvider) {
     controls.appendChild(upBtn);
     controls.appendChild(downBtn);
     controls.appendChild(bottomBtn);
-    
-    msgEl.appendChild(controls);
+
+    // Defer append to avoid top-left flashes before layout stabilizes
+    requestAnimationFrame(() => {
+      msgEl.appendChild(controls);
+    });
   } catch (e) {
     console.error('attachMessageControls failed', e);
   }
