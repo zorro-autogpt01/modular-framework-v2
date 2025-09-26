@@ -301,6 +301,8 @@ export async function summarizeConversation() {
   placeholder.className = 'msg assistant';
   placeholder.textContent = '🔎 Summarizing…';
   const msgsDiv = getEl('msgs'); msgsDiv.appendChild(placeholder); msgsDiv.scrollTop = msgsDiv.scrollHeight;
+  try { attachCopyButton(placeholder, () => placeholder.textContent); } catch {}
+ 
 
   setBusy(true);
   const controller = new AbortController(); state.controller = controller;
@@ -502,6 +504,7 @@ Use this information to answer the user's question accurately. If the knowledge 
   const msgsDiv = getEl('msgs');
   msgsDiv.appendChild(placeholder); 
   msgsDiv.scrollTop = msgsDiv.scrollHeight;
+  try { attachCopyButton(placeholder, () => placeholder.textContent); } catch {}
   state.messages.push({ role:'user', content: text });
   input.value='';
 

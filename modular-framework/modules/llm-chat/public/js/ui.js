@@ -13,11 +13,16 @@ export function addMsg(role, content) {
   el.className = `msg ${role==='user'?'user':'assistant'}`;
   el.textContent = content;
   el.dataset.msg = content;
+  el.dataset.complete = 'true';
+  el.dataset.role = role;
+  el.dataset.timestamp = new Date().toISOString();
   msgs.appendChild(el);
   msgs.scrollTop = msgs.scrollHeight;
-  try { attachCopyButton(el, () => el.dataset.msg || el.textContent || ''); } catch {}
+  // Only attach controls for completed messages
+  setTimeout(() => {
+    try { attachMessageControls(el, () => el.dataset.msg || el.textContent || ''); } catch {}
+  }, 10);
 }
-
 
 function _getMsgText(el) {
   return (el?.dataset?.msg ?? '').toString() || (el?.textContent ?? '').toString();
@@ -41,29 +46,244 @@ async function _writeClipboard(text) {
   }
 }
 
-export function attachCopyButton(msgEl, textProvider) {
+function navigateToMessage(direction) {
+  const msgs = document.querySelectorAll('.msg');
+  if (!msgs.length) return;
+  
+  const msgsContainer = getEl('msgs');
+  const containerRect = msgsContainer.getBoundingClientRect();
+  const currentScrollTop = msgsContainer.scrollTop;
+  
+  if (direction === 'first') {
+    msgs[0].scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+  if (direction === 'last') {
+    msgs[msgs.length - 1].scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+  
+  // Find the current visible message
+  let currentIndex = -1;
+  for (let i = 0; i < msgs.length; i++) {
+    const rect = msgs[i].getBoundingClientRect();
+    const relativeTop = rect.top - containerRect.top;
+    if (relativeTop >= -10 && relativeTop <= containerRect.height / 2) {
+      currentIndex = i;
+      break;
+    }
+  }
+  
+  // If no current message found, use scroll position
+  if (currentIndex === -1) {
+    for (let i = 0; i < msgs.length; i++) {
+      const msgTop = msgs[i].offsetTop - msgsContainer.offsetTop;
+      if (msgTop >= currentScrollTop) {
+        currentIndex = i;
+        break;
+      }
+    }
+  }
+  
+  if (currentIndex === -1) currentIndex = msgs.length - 1;
+  
+  let targetIndex;
+  if (direction === 'up') {
+    targetIndex = Math.max(0, currentIndex - 1);
+  } else if (direction === 'down') {
+    targetIndex = Math.min(msgs.length - 1, currentIndex + 1);
+  }
+  
+  if (targetIndex !== undefined && msgs[targetIndex]) {
+    msgs[targetIndex].scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+function editMessage(msgEl) {
+  const currentText = msgEl.dataset.msg || msgEl.textContent || '';
+  const role = msgEl.dataset.role || (msgEl.classList.contains('user') ? 'user' : 'assistant');
+  
+  // Create textarea for editing
+  const textarea = document.createElement('textarea');
+  textarea.className = 'msg-edit';
+  textarea.value = currentText;
+  textarea.style.cssText = `
+    width: 100%;
+    min-height: 100px;
+    padding: 10px;
+    border: 1px solid var(--accent);
+    background: var(--bg);
+    color: var(--txt);
+    border-radius: 8px;
+    font: inherit;
+    resize: vertical;
+  `;
+  
+  // Hide original text
+  const originalContent = msgEl.innerHTML;
+  msgEl.innerHTML = '';
+  msgEl.appendChild(textarea);
+  
+  // Create save/cancel buttons
+  const editControls = document.createElement('div');
+  editControls.style.cssText = 'margin-top: 8px; display: flex; gap: 8px;';
+  
+  const saveBtn = document.createElement('button');
+  saveBtn.textContent = '✅ Save';
+  saveBtn.className = 'btn';
+  saveBtn.onclick = () => {
+    const newText = textarea.value.trim();
+    if (newText) {
+      msgEl.textContent = newText;
+      msgEl.dataset.msg = newText;
+      msgEl.dataset.edited = 'true';
+      // Re-attach controls
+      setTimeout(() => {
+        try { attachMessageControls(msgEl, () => newText); } catch {}
+      }, 10);
+    }
+  };
+  
+  const cancelBtn = document.createElement('button');
+  cancelBtn.textContent = '❌ Cancel';
+  cancelBtn.className = 'ghost';
+  cancelBtn.onclick = () => {
+    msgEl.innerHTML = originalContent;
+  };
+  
+  editControls.appendChild(saveBtn);
+  editControls.appendChild(cancelBtn);
+  msgEl.appendChild(editControls);
+  
+  textarea.focus();
+  textarea.select();
+}
+
+export function attachMessageControls(msgEl, textProvider) {
   try {
     if (!msgEl || !(msgEl instanceof HTMLElement)) return;
-    if (msgEl.querySelector('.copy-bubble-btn')) return; // already attached
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'copy-bubble-btn';
-    btn.title = 'Copy to clipboard';
-    btn.setAttribute('aria-label', 'Copy message to clipboard');
-    btn.textContent = '📋';
-    btn.addEventListener('click', async (e) => {
+    
+    // Don't attach if still streaming or already has controls
+    if (msgEl.dataset.streaming === 'true') return;
+    if (msgEl.querySelector('.msg-controls')) return;
+    
+    const controls = document.createElement('div');
+    controls.className = 'msg-controls';
+    
+    // Copy button
+    const copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
+    copyBtn.className = 'msg-btn';
+    copyBtn.title = 'Copy to clipboard';
+    copyBtn.setAttribute('aria-label', 'Copy message');
+    copyBtn.innerHTML = '📋';
+    copyBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
       const text = typeof textProvider === 'function' ? textProvider() : _getMsgText(msgEl);
       const ok = await _writeClipboard(text);
-      const prev = btn.textContent;
-      btn.textContent = ok ? '✅' : '⚠️';
-      setTimeout(() => { btn.textContent = prev || '📋'; }, 1200);
+      const prev = copyBtn.innerHTML;
+      copyBtn.innerHTML = ok ? '✅' : '⚠️';
+      copyBtn.classList.toggle('copied', ok);
+      setTimeout(() => { 
+        copyBtn.innerHTML = prev; 
+        copyBtn.classList.remove('copied');
+      }, 1200);
     });
-    msgEl.appendChild(btn);
+    
+    // Edit button (for user messages) or Regenerate button (for assistant)
+    const isUser = msgEl.classList.contains('user');
+    if (isUser) {
+      const editBtn = document.createElement('button');
+      editBtn.type = 'button';
+      editBtn.className = 'msg-btn';
+      editBtn.title = 'Edit message';
+      editBtn.setAttribute('aria-label', 'Edit message');
+      editBtn.innerHTML = '✏️';
+      editBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        editMessage(msgEl);
+      });
+      controls.appendChild(editBtn);
+    }
+    
+    // Up to top button
+    const topBtn = document.createElement('button');
+    topBtn.type = 'button';
+    topBtn.className = 'msg-btn';
+    topBtn.title = 'Jump to first';
+    topBtn.setAttribute('aria-label', 'Jump to first message');
+    topBtn.innerHTML = '⏫';
+    topBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      navigateToMessage('first');
+    });
+    
+    // Up button
+    const upBtn = document.createElement('button');
+    upBtn.type = 'button';
+    upBtn.className = 'msg-btn';
+    upBtn.title = 'Previous';
+    upBtn.setAttribute('aria-label', 'Previous message');
+    upBtn.innerHTML = '⬆️';
+    upBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      navigateToMessage('up');
+    });
+    
+    // Down button
+    const downBtn = document.createElement('button');
+    downBtn.type = 'button';
+    downBtn.className = 'msg-btn';
+    downBtn.title = 'Next';
+    downBtn.setAttribute('aria-label', 'Next message');
+    downBtn.innerHTML = '⬇️';
+    downBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      navigateToMessage('down');
+    });
+    
+    // Down to bottom button
+    const bottomBtn = document.createElement('button');
+    bottomBtn.type = 'button';
+    bottomBtn.className = 'msg-btn';
+    bottomBtn.title = 'Jump to last';
+    bottomBtn.setAttribute('aria-label', 'Jump to last message');
+    bottomBtn.innerHTML = '⏬';
+    bottomBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      navigateToMessage('last');
+    });
+    
+    // Add timestamp indicator
+    const timestamp = msgEl.dataset.timestamp;
+    if (timestamp) {
+      const timeBtn = document.createElement('span');
+      timeBtn.className = 'msg-btn';
+      timeBtn.style.cssText = 'cursor: default; font-size: 10px; padding: 2px 4px;';
+      const date = new Date(timestamp);
+      const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      timeBtn.textContent = timeStr;
+      timeBtn.title = date.toLocaleString();
+      controls.appendChild(timeBtn);
+    }
+    
+    controls.appendChild(copyBtn);
+    controls.appendChild(topBtn);
+    controls.appendChild(upBtn);
+    controls.appendChild(downBtn);
+    controls.appendChild(bottomBtn);
+    
+    msgEl.appendChild(controls);
   } catch (e) {
-    console.error('attachCopyButton failed', e);
+    console.error('attachMessageControls failed', e);
   }
 }
+
+// Export the old function name for backward compatibility
+export function attachCopyButton(msgEl, textProvider) {
+  return attachMessageControls(msgEl, textProvider);
+}
+
 export function toast(msg){ alert(msg); }
 
 /** Detects the base path of the module (handles /, /modules/llm-chat/, and /modules/llm-chat/config) */
