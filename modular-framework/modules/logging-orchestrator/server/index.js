@@ -52,7 +52,10 @@ let STORE = readStore();
 const app = express();
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '1mb' }));
-app.use('/admin', express.static(path.join(__dirname, '..', 'public')));
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'public', 'admin.html'));
+});
+app.use('/', express.static(path.join(__dirname, '..', 'public')));
 
 // ---- auth (for mutating endpoints) ----
 function requireAuth(req, res, next) {

@@ -224,6 +224,7 @@ services:
     container_name: logging-orchestrator
     environment:
       - PORT=3015
+      - BASE_PATH=/logging
       # Optional: set a token to require Bearer auth for write endpoints
       - ORCH_TOKEN=${ORCH_TOKEN}
       # Seed known services (you can add more at runtime in the UI)
