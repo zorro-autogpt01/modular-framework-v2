@@ -5,9 +5,11 @@ const path = require('path');
 const fs = require('fs');
 const axios = require('axios');
 const bodyParser = require('body-parser');
-const Ajv = require('ajv');
+const Ajv = require('ajv');const { router: logsRouter } = require('./routes/logs');
+const { router: loggingRouter } = require('./routes/logging');
+
 const { execBash, execPython, sanitizeCwd } = require('./executor');
-const { logDebug, logInfo, logWarn, logError } = require('./logger');
+const { stamp, logDebug, logInfo, logWarn, logError } = require('./logger');
 
 const BASE_PATH = (process.env.BASE_PATH || '').replace(/\/$/, ''); // e.g. /modules/llm-workflows
 
@@ -31,12 +33,39 @@ ensureFile(WF_FILE, JSON.stringify({ workflows: [] }, null, 2));
 
 const app = express();
 app.use(cors({ origin: true, credentials: true }));
-app.use(bodyParser.json({ limit: '2mb' }));
+app.use(bodyParser.json({ limit: '2mb' }));// Attach request id to each request
+app.use(stamp);
+
+// Lightweight http access logging compatible with Splunk
+app.use((req, res, next) => {
+  const start = process.hrtime.bigint();
+  res.on('finish', () => {
+    const durMs = Number(process.hrtime.bigint() - start) / 1e6;
+    logInfo('http_access', {
+      rid: req.id,
+      method: req.method,
+      path: req.originalUrl || req.url,
+      status: res.statusCode,
+      duration_ms: Math.round(durMs),
+      ip: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
+      ua: req.headers['user-agent'] || ''
+    });
+  });
+  next();
+});
+
 
 // Static UI
 const pub = path.join(__dirname, '..', 'public');
-app.use(express.static(pub));
-if (BASE_PATH) app.use(BASE_PATH, express.static(pub));
+app.use(express.static(pub));// Log buffer and dynamic logging config
+app.use('/api', logsRouter);
+app.use('/api', loggingRouter);
+
+if (BASE_PATH) app.use(BASE_PATH, express.static(pub));if (BASE_PATH) {
+  app.use(`${BASE_PATH}/api`, logsRouter);
+  app.use(`${BASE_PATH}/api`, loggingRouter);
+}
+
 
 app.get('/', (_req, res) => res.sendFile(path.join(pub, 'index.html')));
 if (BASE_PATH) app.get(`${BASE_PATH}/`, (_req, res) => res.sendFile(path.join(pub, 'index.html')));
@@ -49,6 +78,12 @@ if (BASE_PATH)
   app.get(`${BASE_PATH}/health`, (_req, res) =>
     res.json({ status: 'healthy', gatewayChatUrl: LLM_GATEWAY_CHAT_URL, gatewayApiBase: LLM_GATEWAY_API_BASE })
   );
+// Central error handler to ensure JSON + logging
+app.use((err, _req, res, _next) => {
+  try { logError('unhandled_error', { message: err?.message || String(err), stack: err?.stack }); } catch {}
+  res.status(500).json({ error: 'Internal Server Error' });
+});
+
 
 // Storage helpers
 function ensureDir(p) { if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true }); }

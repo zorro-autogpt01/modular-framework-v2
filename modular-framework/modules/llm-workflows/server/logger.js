@@ -1,18 +1,53 @@
-const LOG_LEVEL = (process.env.LOG_LEVEL || 'info').toLowerCase();
-const LOG_MAX = Number(process.env.LOG_MAX || 1000);
-const LOG_TO_CONSOLE = String(process.env.LOG_TO_CONSOLE || 'true').toLowerCase() !== 'false';
-const SOURCE = process.env.SPLUNK_SOURCE || 'llm-workflows';
+// modular-framework/modules/llm-workflows/server/logger.js
+const os = require('os');
+const path = require('path');
 
-let SPLUNK = null;
-try {
-  SPLUNK = require('../splunk-logger');
-  console.log('Splunk logger loaded for llm-workflows');
-} catch (e) {
-  console.log('Splunk logger not available for llm-workflows:', e.message);
+// ===== Defaults from ENV (backward-compatible) =====
+const ENV_DEFAULTS = {
+  level: (process.env.LOG_LEVEL || 'info').toLowerCase(),
+  console: (process.env.LOG_TO_CONSOLE || 'false').toLowerCase() === 'true',
+  buffer_max: Number(process.env.LOG_MAX || 1000),
+  sinks: {
+    hec: {
+      enabled: !!(process.env.SPLUNK_HEC_URL && process.env.SPLUNK_HEC_TOKEN),
+      url: process.env.SPLUNK_HEC_URL || null,
+      token: process.env.SPLUNK_HEC_TOKEN || null,
+      source: process.env.SPLUNK_SOURCE || 'llm-workflows',
+      index: process.env.SPLUNK_INDEX || undefined,
+      tls_verify: String(process.env.NODE_TLS_REJECT_UNAUTHORIZED || '1') !== '0',
+      timeout_ms: 3000,
+      batch_max: 100
+    }
+  },
+  fields: { service: 'llm-workflows', host: os.hostname() },
+  sampling: { rate: 1.0 },
+  level_overrides: {}
+};
+
+// ===== In-memory log buffer =====
+const logs = [];
+function pushBuffer(entry, cfg) {
+  logs.push(entry);
+  const max = Math.max(1, Number(cfg.buffer_max || 1000));
+  while (logs.length > max) logs.shift();
 }
 
-const logs = [];
-
+// ===== Utilities =====
+let reqCounter = 0;
+function stamp(req, _res, next) {
+  req.id = `${Date.now().toString(36)}-${(++reqCounter).toString(36)}`;
+  next();
+}
+function redact(obj) {
+  if (!obj || typeof obj !== 'object') return obj;
+  const clone = JSON.parse(JSON.stringify(obj));
+  const hide = (o, k) => { if (o && o[k]) o[k] = '***REDACTED***'; };
+  hide(clone, 'apiKey'); hide(clone, 'token'); hide(clone, 'Authorization'); hide(clone, 'authorization');
+  if (clone.headers && clone.headers.Authorization) clone.headers.Authorization = '***REDACTED***';
+  if (clone.headers && clone.headers.authorization) clone.headers.authorization = '***REDACTED***';
+  if (Array.isArray(clone.redact)) clone.redact = ['<rules hidden>'];
+  return clone;
+}
 function safeStringify(v) {
   try {
     const seen = new WeakSet();
@@ -27,35 +62,165 @@ function safeStringify(v) {
     return '[unstringifiable]';
   }
 }
-
-function add(level, msg, meta) {
-  const entry = { ts: new Date().toISOString(), level, msg, ...(meta || {}) };
-  logs.push(entry);
-  if (logs.length > LOG_MAX) logs.shift();
-
-  const line = `[${entry.ts}] [${level.toUpperCase()}] ${msg} ${meta ? safeStringify(meta) : ''}`;
-  if (LOG_TO_CONSOLE) {
-    if (level === 'debug' && LOG_LEVEL === 'debug') console.debug(line);
-    else if (level === 'info' && (LOG_LEVEL === 'info' || LOG_LEVEL === 'debug')) console.info(line);
-    else if (level === 'warn' && LOG_LEVEL !== 'error') console.warn(line);
-    else if (level === 'error') console.error(line);
-  }
-
-  try {
-    if (SPLUNK) {
-      const metaWithSource = { source: SOURCE, ...(meta || {}) };
-      if (level === 'debug' && SPLUNK.logDebug) SPLUNK.logDebug(msg, metaWithSource);
-      else if (level === 'info' && SPLUNK.logInfo) SPLUNK.logInfo(msg, metaWithSource);
-      else if (level === 'warn' && SPLUNK.logWarn) SPLUNK.logWarn(msg, metaWithSource);
-      else if (level === 'error' && SPLUNK.logError) SPLUNK.logError(msg, metaWithSource);
-    }
-  } catch { /* ignore Splunk failures */ }
+function deepMerge(a, b) {
+  if (b === null || b === undefined) return a;
+  if (Array.isArray(a) || Array.isArray(b) || typeof a !== 'object' || typeof b !== 'object') return b;
+  const out = { ...a };
+  for (const k of Object.keys(b)) out[k] = deepMerge(a[k], b[k]);
+  return out;
 }
 
-const logDebug = (m, meta) => add('debug', m, meta);
-const logInfo = (m, meta) => add('info', m, meta);
-const logWarn = (m, meta) => add('warn', m, meta);
-const logError = (m, meta) => add('error', m, meta);
+// ===== Levels & filtering =====
+const LEVELS = ['debug', 'info', 'warn', 'error'];
+function levelAllows(min, lvl) {
+  const mi = LEVELS.indexOf((min || 'info').toLowerCase());
+  const li = LEVELS.indexOf((lvl || 'info').toLowerCase());
+  return li >= mi;
+}
 
-module.exports = { logs, logDebug, logInfo, logWarn, logError };
+// ===== Active config (hot-reloadable) =====
+let cfg = ENV_DEFAULTS;
+function loadFromEnv() { return JSON.parse(JSON.stringify(ENV_DEFAULTS)); }
 
+function validateConfig(c) {
+  const err = (m) => { const e = new Error(m); e.status = 400; throw e; };
+  if (!c || typeof c !== 'object') err('config must be an object');
+  if (c.level && !LEVELS.includes(c.level)) err(`invalid level: ${c.level}`);
+  if (c.sampling && typeof c.sampling.rate === 'number' && (c.sampling.rate < 0 || c.sampling.rate > 1))
+    err('sampling.rate must be between 0 and 1');
+  if (c.sinks?.hec?.enabled) {
+    const { url, token } = c.sinks.hec;
+    if (!url || !token) err('hec.url and hec.token are required when hec.enabled=true');
+  }
+  return c;
+}
+
+function getEffectiveLoggingConfig() {
+  return redact(cfg);
+}
+
+function setLoggingConfig(patch, { dryRun = false } = {}) {
+  if (patch && patch._reload) {
+    const reloaded = loadFromEnv();
+    validateConfig(reloaded);
+    if (!dryRun) cfg = reloaded;
+    return { applied: !dryRun, effective: redact(cfg) };
+    }
+  const next = validateConfig(deepMerge(cfg, patch));
+  if (dryRun) return { validated: true, next: redact(next) };
+  cfg = next;
+  return { applied: true, effective: redact(cfg) };
+}
+
+// ===== Sinks =====
+async function sendConsole(entry) {
+  if (!cfg.console) return;
+  const line = `[${entry.ts}] [${entry.level.toUpperCase()}] ${entry.msg} ${entry.meta ? safeStringify(entry.meta) : ''}`;
+  try {
+    if (entry.level === 'debug') console.debug(line);
+    else if (entry.level === 'info') console.info(line);
+    else if (entry.level === 'warn') console.warn(line);
+    else console.error(line);
+  } catch {}
+}
+
+async function sendHec(entry) {
+  const h = cfg.sinks?.hec || {};
+  if (!h.enabled) return;
+  const payload = {
+    event: {
+      level: entry.level,
+      message: entry.msg,
+      meta: entry.meta
+    },
+    time: Math.floor(Date.now() / 1000),
+    host: cfg.fields?.host || os.hostname(),
+    sourcetype: '_json',
+    source: h.source || 'llm-workflows',
+  };
+  if (h.index) payload.index = h.index;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Number(h.timeout_ms || 3000));
+  try {
+    await fetch(h.url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Splunk ${h.token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+const sinks = [ sendConsole, sendHec ];
+
+// ===== Redaction of meta payloads =====
+function redactMeta(obj) {
+  if (!obj || typeof obj !== 'object') return obj;
+  const clone = JSON.parse(JSON.stringify(obj));
+  const REDACT_KEYS = ['authorization', 'Authorization', 'apiKey', 'token', 'password', 'secret'];
+  (function walk(o) {
+    if (!o || typeof o !== 'object') return;
+    for (const k of Object.keys(o)) {
+      if (REDACT_KEYS.includes(k)) o[k] = '***REDACTED***';
+      else if (typeof o[k] === 'object') walk(o[k]);
+    }
+  })(clone);
+  return clone;
+}
+
+// ===== Public log API =====
+function categoryLevel(min, category) {
+  const override = cfg.level_overrides?.[category];
+  return override || min;
+}
+
+function addLog(level, msg, meta, category) {
+  const min = categoryLevel(cfg.level, category);
+  if (!levelAllows(min, level)) return;
+
+  const rate = Number(cfg.sampling?.rate ?? 1);
+  if (rate < 1 && Math.random() > rate) return;
+
+  const baseMeta = { ...(meta || {}), service: cfg.fields?.service || 'llm-workflows' };
+  const entry = {
+    ts: new Date().toISOString(),
+    level,
+    msg: typeof msg === 'string' ? msg : safeStringify(msg),
+    meta: redactMeta(baseMeta),
+  };
+
+  pushBuffer(entry, cfg);
+
+  for (const sink of sinks) {
+    sink(entry).catch?.(() => {});
+  }
+}
+
+const logDebug = (msg, meta, category)=> addLog('debug', msg, meta, category);
+const logInfo  = (msg, meta, category)=> addLog('info',  msg, meta, category);
+const logWarn  = (msg, meta, category)=> addLog('warn',  msg, meta, category);
+const logError = (msg, meta, category)=> addLog('error', msg, meta, category);
+
+function safeStringifyPublic(v){ return safeStringify(v); }
+
+async function testLoggingSink() {
+  const probe = { ts: Date.now(), probe: true, source: 'logging_test' };
+  logInfo('logging_test', probe, 'ops');
+  return { sent: true };
+}
+
+module.exports = {
+  logs,
+  stamp,
+  logDebug, logInfo, logWarn, logError,
+  safeStringify: safeStringifyPublic,
+  getEffectiveLoggingConfig,
+  setLoggingConfig,
+  testLoggingSink,
+};
