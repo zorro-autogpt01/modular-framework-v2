@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Advanced Web IDE Pro</title>
+  <link rel="stylesheet" href="assets/css/base.css" />
+  <link rel="stylesheet" href="assets/css/ide.css" />
+</head>
+<body>
+  <div class="ide-container">
+    <!-- Repository Sidebar -->
+    <aside class="repo-sidebar">
+      <div class="sidebar-header">
+        <span>REPOSITORY</span>
+        <button class="btn small" data-action="modal:open" data-target="#githubModal" aria-label="Open GitHub modal">🔗</button>
+      </div>
+      <div class="sidebar-content">
+        <div class="repo-explorer">
+          <!-- Git Section -->
+          <section class="repo-section">
+            <header class="repo-section-header" data-toggle-section="git">
+              <span>🌿 Git Repository</span>
+              <span id="gitToggle">▼</span>
+            </header>
+            <div class="repo-section-content" id="gitSection">
+              <div class="input-group">
+                <label for="branchSelector">Current Branch</label>
+                <select id="branchSelector">
+                  <option value="main">main</option>
+                  <option value="develop">develop</option>
+                  <option value="feature/auth">feature/auth</option>
+                </select>
+              </div>
+              <div class="grid-2">
+                <button class="btn small" data-action="git:pull">Pull</button>
+                <button class="btn small" data-action="git:fetch">Fetch</button>
+                <button class="btn small secondary" data-action="git:stash">Stash</button>
+                <button class="btn small secondary" data-action="git:create-branch">Branch</button>
+              </div>
+              <div class="input-group">
+                <label for="commitMessage">Commit Message</label>
+                <textarea class="db-query-editor" id="commitMessage" placeholder="Commit message..."></textarea>
+              </div>
+              <button class="btn success small" data-action="git:quick-commit-push">💫 Commit & Push</button>
+              <div class="repo-sublist">
+                <div class="sub-title">BRANCHES</div>
+                <div class="branch-list" id="branchList">
+                  <div class="branch-item current"><span>🌿 main</span><span>*</span></div>
+                  <div class="branch-item"><span>🌿 develop</span><span></span></div>
+                  <div class="branch-item"><span>🌿 feature/auth</span><span></span></div>
+                </div>
+              </div>
+              <div class="repo-sublist">
+                <div class="sub-title">RECENT COMMITS</div>
+                <div class="commit-list" id="commitList">
+                  <div class="commit-item">
+                    <div><span class="commit-hash">a1b2c3d</span> Add authentication</div>
+                    <div class="muted">2 hours ago - John Doe</div>
+                  </div>
+                  <div class="commit-item">
+                    <div><span class="commit-hash">e4f5g6h</span> Fix navbar styling</div>
+                    <div class="muted">1 day ago - Jane Smith</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+          <!-- Docker Section -->
+          <section class="repo-section">
+            <header class="repo-section-header" data-toggle-section="docker">
+              <span>🐳 Docker</span>
+              <span id="dockerToggle">▼</span>
+            </header>
+            <div class="repo-section-content" id="dockerSection">
+              <div class="grid-2">
+                <button class="btn small" data-action="docker:build">Build</button>
+                <button class="btn small success" data-action="docker:run">Run</button>
+                <button class="btn small secondary" data-action="docker:ps">List</button>
+                <button class="btn small danger" data-action="docker:stop">Stop All</button>
+              </div>
+              <div class="repo-sublist">
+                <div class="sub-title">CONTAINERS</div>
+                <div id="dockerContainers">
+                  <div class="docker-container">
+                    <div class="row">
+                      <div class="container-status running"></div>
+                      <span>frontend</span>
+                    </div>
+                    <span class="ok">Running</span>
+                  </div>
+                  <div class="docker-container">
+                    <div class="row">
+                      <div class="container-status running"></div>
+                      <span>backend</span>
+                    </div>
+                    <span class="ok">Running</span>
+                  </div>
+                  <div class="docker-container">
+                    <div class="row">
+                      <div class="container-status stopped"></div>
+                      <span>postgres</span>
+                    </div>
+                    <span class="err">Stopped</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+          <!-- Database Section -->
+          <section class="repo-section">
+            <header class="repo-section-header" data-toggle-section="database">
+              <span>🗄️ Database</span>
+              <span id="databaseToggle">▼</span>
+            </header>
+            <div class="repo-section-content" id="databaseSection">
+              <button class="btn small" data-action="database:open-add-modal">➕ Add Connection</button>
+              <div class="repo-sublist">
+                <div class="sub-title">CONNECTIONS</div>
+                <div id="databaseConnections">
+                  <div class="database-connection" data-action="database:connect" data-connection="postgres_dev">
+                    <div class="row"><div class="db-status connected"></div><span>PostgreSQL Dev</span></div>
+                    <span class="ok">●</span>
+                  </div>
+                  <div class="database-connection" data-action="database:connect" data-connection="mysql_prod">
+                    <div class="row"><div class="db-status disconnected"></div><span>MySQL Prod</span></div>
+                    <span class="err">●</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </aside>
+
+    <!-- File Explorer Sidebar -->
+    <aside class="left-sidebar">
+      <div class="sidebar-header">
+        <span>FILE EXPLORER</span>
+        <div class="row gap-4">
+          <button class="btn small secondary" data-action="files:refresh">↻</button>
+          <button class="btn small" data-action="files:new-file">📄</button>
+        </div>
+      </div>
+      <div class="sidebar-tabs">
+        <div class="sidebar-tab active" data-panel="explorer">📁</div>
+        <div class="sidebar-tab" data-panel="search">🔍</div>
+        <div class="sidebar-tab" data-panel="ssh">🔗</div>
+      </div>
+      <div class="sidebar-content">
+        <div id="explorer-panel" class="sidebar-panel">
+          <div class="workspace-indicator" id="workspaceIndicator">Local</div>
+          <div class="file-tree" id="fileTree">
+            <div class="placeholder">Loading files...</div>
+          </div>
+        </div>
+        <div id="search-panel" class="sidebar-panel hidden">
+          <div class="pad-12">
+            <input id="searchInput" type="text" class="text-input" placeholder="Search in files..." />
+            <div id="searchResults" class="scroll max-300"></div>
+          </div>
+        </div>
+        <div id="ssh-panel" class="sidebar-panel hidden">
+          <div class="connection-panel">
+            <div class="connection-status">
+              <div class="status-indicator" id="connectionStatus"></div>
+              <span id="connectionText">Disconnected</span>
+            </div>
+            <div class="input-group">
+              <label for="sshHost">Host</label>
+              <input type="text" id="sshHost" placeholder="dev-server.local" value="dev-server.local" />
+            </div>
+            <div class="input-group">
+              <label for="sshPort">Port</label>
+              <input type="number" id="sshPort" value="22" />
+            </div>
+            <div class="input-group">
+              <label for="sshUsername">Username</label>
+              <input type="text" id="sshUsername" value="developer" />
+            </div>
+            <div class="input-group">
+              <label for="authMethod">Authentication</label>
+              <select id="authMethod">
+                <option value="key">SSH Key</option>
+                <option value="password">Password</option>
+              </select>
+            </div>
+            <div class="input-group hidden" id="passwordGroup">
+              <label for="sshPassword">Password</label>
+              <input type="password" id="sshPassword" />
+            </div>
+            <div class="input-group">
+              <label for="remotePath">Remote Path</label>
+              <input type="text" id="remotePath" value="/var/www/html" />
+            </div>
+            <button id="connectBtn" class="btn" data-action="ssh:connect">🔗 Connect SSH</button>
+            <button id="disconnectBtn" class="btn danger hidden" data-action="ssh:disconnect">Disconnect</button>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      <div class="toolbar">
+        <div class="toolbar-group">
+          <button class="btn small" data-action="editor:save">💾</button>
+          <button class="btn small secondary" data-action="editor:save-all">💾*</button>
+          <button class="btn small secondary" data-action="editor:format">🎨</button>
+        </div>
+        <div class="toolbar-group">
+          <button class="btn small secondary" data-action="files:new-file">📄</button>
+          <button class="btn small secondary" data-action="files:new-folder">📁</button>
+          <button class="btn small secondary" data-action="files:upload">⬆</button>
+        </div>
+        <div class="toolbar-group">
+          <button class="btn small secondary" data-action="editor:show-diff">📋</button>
+          <button class="btn small secondary" data-action="editor:toggle-minimap">🗺</button>
+          <button class="btn small secondary" data-action="terminal:toggle">💻</button>
+        </div>
+        <div class="toolbar-group">
+          <button class="btn small" data-action="project:run">▶</button>
+          <button class="btn small secondary" data-action="project:build">🔨</button>
+          <button class="btn small secondary" data-action="project:deploy">🚀</button>
+        </div>
+      </div>
+      <div class="content-area">
+        <div class="tabs-container" id="tabsContainer"></div>
+        <div class="editor-container">
+          <div class="editor-area">
+            <div id="monaco-editor"></div>
+            <div id="monaco-diff" class="hidden"></div>
+          </div>
+        </div>
+        <div class="bottom-panel" id="bottomPanel">
+          <div class="bottom-tabs">
+            <div class="bottom-tab active" data-panel="terminal">Terminal</div>
+            <div class="bottom-tab" data-panel="problems">Problems (0)</div>
+            <div class="bottom-tab" data-panel="output">Output</div>
+            <div class="bottom-tab" data-panel="database">Database</div>
+            <div class="bottom-tab" data-panel="docker">Docker Logs</div>
+          </div>
+          <div class="bottom-content">
+            <div id="terminal-panel" class="bottom-content-panel">
+              <div class="terminal" id="terminal">
+                <div>🚀 Advanced Web IDE Pro - Terminal</div>
+                <div>Connected to: <span id="terminalHost">localhost</span></div>
+                <div>Type 'help' for available commands</div>
+                <div class="terminal-input">
+                  <span class="terminal-prompt">$</span>
+                  <input type="text" class="terminal-command" id="terminalInput" placeholder="Enter command..." />
+                </div>
+              </div>
+            </div>
+            <div id="problems-panel" class="bottom-content-panel hidden">
+              <div id="problemsList" class="pad-8 scroll">
+                <div class="placeholder">No problems found</div>
+              </div>
+            </div>
+            <div id="output-panel" class="bottom-content-panel hidden">
+              <div class="terminal" id="outputContent"><div>Build Output Console</div></div>
+            </div>
+            <div id="database-panel" class="bottom-content-panel hidden">
+              <div class="database-browser">
+                <div class="row gap-8">
+                  <select id="dbConnectionSelect">
+                    <option value="postgres_dev">PostgreSQL Dev</option>
+                    <option value="mysql_prod">MySQL Prod</option>
+                  </select>
+                  <button class="btn small" data-action="database:execute-query">▶ Execute</button>
+                  <button class="btn small secondary" data-action="database:clear-query">Clear</button>
+                </div>
+                <textarea class="db-query-editor" id="sqlQuery" placeholder="SELECT * FROM users LIMIT 10;">SELECT * FROM users WHERE created_at > '2024-01-01' ORDER BY id DESC LIMIT 50;</textarea>
+                <div class="db-results" id="queryResults">
+                  <table class="db-table">
+                    <thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Created</th></tr></thead>
+                    <tbody>
+                      <tr><td>1</td><td>John Doe</td><td>john@example.com</td><td>2024-01-15</td></tr>
+                      <tr><td>2</td><td>Jane Smith</td><td>jane@example.com</td><td>2024-01-14</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+            <div id="docker-panel" class="bottom-content-panel hidden">
+              <div class="terminal" id="dockerLogs">
+                <div>🐳 Docker Container Logs</div>
+                <div>[frontend] Starting development server...</div>
+                <div>[frontend] Server running on http://localhost:3000</div>
+                <div>[backend] API server started on port 3001</div>
+                <div>[postgres] Database ready for connections</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="status-bar">
+        <div class="status-left">
+          <span id="statusMessage">Ready</span>
+          <span id="connectionInfo">🔗 Local</span>
+          <span id="gitInfo">🌿 main</span>
+          <span id="dockerInfo">🐳 3 containers</span>
+        </div>
+        <div class="status-right">
+          <span id="cursorPosition">Line 1, Column 1</span>
+          <span id="languageMode">Markdown</span>
+          <span id="encodingInfo">UTF-8</span>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- GitHub Modal -->
+  <div id="githubModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="githubModalTitle">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="githubModalTitle">🐙 GitHub Integration</h3>
+        <span class="modal-close" data-action="modal:close" data-target="#githubModal">×</span>
+      </div>
+      <div class="input-group">
+        <label for="githubToken">GitHub Token</label>
+        <input type="password" id="githubToken" placeholder="ghp_..." />
+      </div>
+      <div class="input-group">
+        <label for="repoUrl">Repository URL</label>
+        <input type="text" id="repoUrl" placeholder="https://github.com/user/repo.git" />
+      </div>
+      <div class="input-group">
+        <label for="gitAction">Action</label>
+        <select id="gitAction">
+          <option value="clone">Clone Repository</option>
+          <option value="init">Initialize & Connect</option>
+          <option value="connect">Connect Existing</option>
+        </select>
+      </div>
+      <div class="row gap-8 top-16">
+        <button class="btn" data-action="github:execute">Execute</button>
+        <button class="btn secondary" data-action="modal:close" data-target="#githubModal">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Database Modal -->
+  <div id="databaseModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="databaseModalTitle">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="databaseModalTitle">🗄️ Add Database Connection</h3>
+        <span class="modal-close" data-action="modal:close" data-target="#databaseModal">×</span>
+      </div>
+      <div class="input-group">
+        <label for="dbType">Database Type</label>
+        <select id="dbType">
+          <option value="postgresql">PostgreSQL</option>
+          <option value="mysql">MySQL</option>
+          <option value="mongodb">MongoDB</option>
+          <option value="redis">Redis</option>
+          <option value="sqlite">SQLite</option>
+        </select>
+      </div>
+      <div class="input-group"><label for="dbName">Connection Name</label><input type="text" id="dbName" placeholder="My Database" /></div>
+      <div class="input-group"><label for="dbHost">Host</label><input type="text" id="dbHost" placeholder="localhost" /></div>
+      <div class="input-group"><label for="dbPort">Port</label><input type="number" id="dbPort" placeholder="5432" /></div>
+      <div class="input-group"><label for="dbDatabase">Database</label><input type="text" id="dbDatabase" placeholder="myapp" /></div>
+      <div class="input-group"><label for="dbUsername">Username</label><input type="text" id="dbUsername" placeholder="user" /></div>
+      <div class="input-group"><label for="dbPassword">Password</label><input type="password" id="dbPassword" placeholder="password" /></div>
+      <div class="row gap-8 top-16">
+        <button class="btn" data-action="database:test-connection">Test Connection</button>
+        <button class="btn success" data-action="database:save-connection">Save</button>
+        <button class="btn secondary" data-action="modal:close" data-target="#databaseModal">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Monaco Loader (AMD) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
+  <script>
+    // Configure Monaco path before main.js runs
+    window.require && window.require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' } });
+  </script>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

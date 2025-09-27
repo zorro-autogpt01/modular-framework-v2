@@ -1,0 +1,93 @@
+.ide-container{display:flex;height:100vh}
+.repo-sidebar{width:260px;background:#1e1e1e;border-right:1px solid #3e3e3e;display:flex;flex-direction:column;resize:horizontal;overflow:hidden}
+.left-sidebar{width:280px;background:#252526;border-right:1px solid #3e3e3e;display:flex;flex-direction:column;resize:horizontal;overflow:hidden}
+.sidebar-header{padding:10px;background:#2d2d30;border-bottom:1px solid #3e3e3e;font-weight:bold;text-transform:uppercase;font-size:11px;letter-spacing:.5px;display:flex;justify-content:space-between;align-items:center}
+.sidebar-tabs{display:flex;background:#2d2d30;border-bottom:1px solid #3e3e3e}
+.sidebar-tab{padding:8px 12px;cursor:pointer;font-size:11px;border-right:1px solid #3e3e3e;transition:background .2s;flex:1;text-align:center}
+.sidebar-tab.active{background:#252526;color:#fff}
+.sidebar-tab:hover:not(.active){background:#383838}
+.sidebar-content{flex:1;overflow-y:auto}
+.connection-panel{padding:12px}
+.connection-status{display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:8px;background:#1e1e1e;border-radius:4px}
+.status-indicator{width:8px;height:8px;border-radius:50%;background:#ff6b6b}
+.status-indicator.connected{background:#51cf66;animation:pulse 2s infinite}
+@keyframes pulse{0%{opacity:1}50%{opacity:.5}100%{opacity:1}}
+.input-group{margin-bottom:10px}
+.input-group label{display:block;margin-bottom:4px;font-size:11px;color:#9d9d9d}
+.input-group input,.input-group select,.input-group textarea{width:100%;padding:6px 8px;background:#3c3c3c;border:1px solid #5a5a5a;border-radius:2px;color:#ccc;font-size:12px}
+.btn{padding:6px 12px;background:#0e639c;color:#fff;border:none;border-radius:2px;cursor:pointer;font-size:11px;transition:background .2s;width:100%;margin-bottom:6px}
+.btn:hover{background:#1177bb}
+.btn.secondary{background:#5a5a5a}
+.btn.danger{background:#e74c3c}
+.btn.success{background:#27ae60}
+.btn.small{padding:4px 8px;font-size:10px;width:auto}
+.file-tree{padding:8px 0}
+.file-item,.folder-item{padding:4px 12px;cursor:pointer;display:flex;align-items:center;font-size:12px;transition:background .1s;position:relative;gap:6px}
+.file-item:hover,.folder-item:hover{background:#2a2d2e}
+.file-item.active{background:#094771;color:#fff}
+.file-item.modified::after{content:'●';position:absolute;right:8px;color:#ff9800}
+.folder-children{margin-left:16px}
+.folder-children.hidden{display:none}
+.repo-explorer{padding:12px}
+.repo-section{margin-bottom:16px;border:1px solid #3e3e3e;border-radius:4px;background:#252526}
+.repo-section-header{padding:8px 12px;background:#2d2d30;font-weight:bold;font-size:11px;display:flex;justify-content:space-between;align-items:center;cursor:pointer}
+.repo-section-content{padding:12px}
+.repo-section-content.collapsed{display:none}
+.repo-sublist{margin-top:12px}
+.sub-title{font-size:10px;color:#9d9d9d;margin-bottom:4px}
+.branch-list,.commit-list{max-height:150px;overflow-y:auto}
+.branch-item{display:flex;align-items:center;justify-content:space-between;padding:4px 8px;margin:2px 0;border-radius:2px;font-size:11px;cursor:pointer}
+.branch-item:hover{background:#2a2d2e}
+.branch-item.current{background:#094771;color:#fff}
+.commit-item{padding:6px 8px;margin:2px 0;border-left:3px solid #0e639c;font-size:11px;background:#1e1e1e;border-radius:2px;cursor:pointer}
+.commit-item:hover{background:#2a2d2e}
+.commit-hash{color:#ff9800;font-family:monospace}
+.docker-container{display:flex;align-items:center;justify-content:space-between;padding:6px 8px;margin:2px 0;background:#1e1e1e;border-radius:2px;font-size:11px}
+.container-status{width:6px;height:6px;border-radius:50%;margin-right:6px}
+.container-status.running{background:#27ae60}
+.container-status.stopped{background:#e74c3c}
+.database-connection{display:flex;align-items:center;justify-content:space-between;padding:6px 8px;margin:2px 0;background:#1e1e1e;border-radius:2px;font-size:11px;cursor:pointer}
+.database-connection:hover{background:#2a2d2e}
+.db-status{width:6px;height:6px;border-radius:50%;margin-right:6px}
+.db-status.connected{background:#27ae60}
+.db-status.disconnected{background:#e74c3c}
+.main-content{flex:1;display:flex;flex-direction:column}
+.toolbar{background:#2d2d30;padding:6px 12px;border-bottom:1px solid #3e3e3e;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.toolbar-group{display:flex;gap:4px;align-items:center;border-right:1px solid #5a5a5a;padding-right:8px;margin-right:8px}
+.toolbar-group:last-child{border-right:none;margin-right:0}
+.content-area{flex:1;display:flex;flex-direction:column}
+.tabs-container{background:#2d2d30;border-bottom:1px solid #3e3e3e;display:flex;overflow-x:auto;min-height:35px}
+.tab{padding:8px 16px;background:#2d2d30;border-right:1px solid #3e3e3e;cursor:pointer;display:flex;align-items:center;font-size:12px;white-space:nowrap;position:relative;min-width:120px}
+.tab.active{background:#1e1e1e;color:#fff}
+.tab-close{margin-left:8px;opacity:.6;cursor:pointer;width:16px;height:16px;display:flex;align-items:center;justify-content:center;border-radius:2px}
+.tab-close:hover{opacity:1;background:#e81123}
+.editor-container{flex:1;display:flex}
+.editor-area{flex:1;position:relative}
+.bottom-panel{height:200px;background:#252526;border-top:1px solid #3e3e3e;display:flex;flex-direction:column;resize:vertical;overflow:hidden}
+.bottom-panel.hidden{height:0;min-height:0}
+.bottom-tabs{display:flex;background:#2d2d30;border-bottom:1px solid #3e3e3e}
+.bottom-tab{padding:6px 12px;cursor:pointer;font-size:11px;border-right:1px solid #3e3e3e}
+.bottom-tab.active{background:#252526}
+.bottom-content{flex:1;overflow:hidden}
+.terminal{width:100%;height:100%;background:#1e1e1e;color:#0f0;font-family:'Courier New', monospace;padding:8px;overflow-y:auto;font-size:11px;line-height:1.4}
+.terminal-input{display:flex;align-items:center;margin-top:8px}
+.terminal-prompt{color:#0f0;margin-right:8px}
+.terminal-command{flex:1;background:transparent;border:none;color:#0f0;font-family:inherit;font-size:inherit;outline:none}
+.database-browser{padding:8px;height:100%;overflow-y:auto}
+.db-query-editor{width:100%;height:60px;background:#3c3c3c;border:1px solid #5a5a5a;color:#ccc;padding:8px;border-radius:2px;resize:vertical;font-family:'Courier New', monospace;font-size:11px;margin-bottom:8px}
+.db-results{background:#1e1e1e;border:1px solid #3e3e3e;border-radius:2px;overflow:auto;max-height:200px}
+.db-table{width:100%;border-collapse:collapse;font-size:11px}
+.db-table th,.db-table td{padding:4px 8px;text-align:left;border-bottom:1px solid #3e3e3e}
+.db-table th{background:#2d2d30;font-weight:bold}
+.status-bar{background:#007acc;color:#fff;padding:4px 12px;font-size:11px;display:flex;justify-content:space-between;align-items:center}
+.notification{position:fixed;top:20px;right:20px;background:#27ae60;color:#fff;padding:12px 16px;border-radius:4px;z-index:1001;box-shadow:0 4px 8px rgba(0,0,0,.3);max-width:300px;cursor:pointer}
+.notification.error{background:#e74c3c}
+.notification.warning{background:#f39c12}
+.notification.info{background:#3498db}
+#monaco-editor,#monaco-diff{height:100%;width:100%}
+.workspace-indicator{position:absolute;top:8px;right:8px;background:#094771;color:#fff;padding:2px 6px;border-radius:2px;font-size:10px}
+.modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:1000}
+.modal-content{background:#252526;border:1px solid #3e3e3e;border-radius:4px;padding:20px;max-width:600px;width:90%;max-height:80vh;overflow-y:auto}
+.modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;border-bottom:1px solid #3e3e3e;padding-bottom:8px}
+.modal-close{cursor:pointer;font-size:18px;opacity:.7}
+.modal-close:hover{opacity:1}
