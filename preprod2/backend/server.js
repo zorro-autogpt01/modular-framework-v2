@@ -12,8 +12,18 @@ app.use(express.json({ limit: '256kb' }));
 // --- HTTP API ---
 app.post('/ssh/connect', async (req, res) => {
   try {
-    const { host, port = 22, username, authMethod, password, privateKey, passphrase } = req.body || {};
-    if (!host || !username || !authMethod) return res.status(400).json({ ok: false, error: 'Missing required fields' });
+    const { host, port = 22, username, authMethod } = req.body || {};
+    if (!host || !username || !authMethod) {
+      return res.status(400).json({ ok: false, error: 'Missing required fields' });
+    }
+    console.log('[api] /ssh/connect', { host, port, username, authMethod }); // no secrets
+    const { sessionId } = await createSession(req.body);
+    return res.json({ ok: true, sessionId });
+  } catch (err) {
+    console.error('[api] connect failed', err?.message || err);
+    return res.status(500).json({ ok: false, error: err?.message || 'Connect failed' });
+  }
+});
 
 app.get('/ssh/list', async (req, res) => {
   try {
@@ -24,6 +34,7 @@ app.get('/ssh/list', async (req, res) => {
     const tree = await listRemote(sessionId, path, depth);
     return res.json({ ok: true, tree });
   } catch (err) {
+    console.error('[api] list failed', err?.message || err);
     return res.status(500).json({ ok: false, error: err?.message || 'List failed' });
   }
 });
@@ -36,15 +47,8 @@ app.get('/ssh/read', async (req, res) => {
     const content = await readRemote(sessionId, path);
     return res.json({ ok: true, content });
   } catch (err) {
+    console.error('[api] read failed', err?.message || err);
     return res.status(500).json({ ok: false, error: err?.message || 'Read failed' });
-  }
-});
-
-    // Never log secrets
-    const { sessionId } = await createSession({ host, port, username, authMethod, password, privateKey, passphrase });
-    return res.json({ ok: true, sessionId });
-  } catch (err) {
-    return res.status(500).json({ ok: false, error: err?.message || 'Connect failed' });
   }
 });
 

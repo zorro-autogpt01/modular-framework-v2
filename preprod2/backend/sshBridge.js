@@ -68,34 +68,136 @@ function readdirAsync(sftp, p) {
 }
 
 
+import { Client } from 'ssh2';
+
 export function connectSSH({ host, port = 22, username, authMethod, password, privateKey, passphrase }) {
   return new Promise((resolve, reject) => {
     const client = new Client();
+    const cfg = {
+      host, port, username,
+      // Let the server ask via keyboard-interactive if it wants to
+      tryKeyboard: authMethod === 'password',
+      readyTimeout: 30000,
+      debug: (msg) => console.log('[ssh2]', msg)
+    };
 
-    const cfg = { host, port, username, tryKeyboard: false, readyTimeout: 20000 };
-    if (authMethod === 'password') cfg.password = password;
-    else if (authMethod === 'key') {
+    if (authMethod === 'password') {
+      cfg.password = password;
+    } else if (authMethod === 'key') {
+      // Make sure the pasted key includes the full PEM block
       cfg.privateKey = Buffer.from(privateKey || '', 'utf8');
       if (passphrase) cfg.passphrase = passphrase;
-    } else return reject(new Error('Unsupported authMethod'));
+    } else {
+      return reject(new Error('Unsupported authMethod'));
+    }
 
+    client.on('keyboard-interactive', (name, instructions, lang, prompts, finish) => {
+      // If server insists on kbd-interactive, answer with the provided password once.
+      if (authMethod === 'password') {
+        console.log('[ssh2] keyboard-interactive requested:', name);
+        finish([password]);
+      } else {
+        finish([]);
+      }
+    });
+
+    client.on('banner', (msg) => console.log('[ssh2] banner:', msg));
     client.on('ready', () => {
+      console.log('[ssh2] ready: opening shell');
       client.shell({ term: 'xterm-256color', cols: 120, rows: 32 }, (err, stream) => {
         if (err) { client.end(); return reject(err); }
+        stream.on('close', () => console.log('[ssh2] stream closed'));
+        stream.on('exit', (code, signal) => console.log('[ssh2] stream exit', { code, signal }));
         resolve({ client, stream });
       });
     });
 
-    client.on('error', (e) => reject(new Error(e?.message || 'SSH error')));
+    client.on('error', (e) => {
+      console.error('[ssh2] client error:', e?.message || e);
+      reject(new Error(e?.message || 'SSH error'));
+    });
+    client.on('close', (hadErr) => console.log('[ssh2] client closed', { hadErr }));
+    client.on('end', () => console.log('[ssh2] client end'));
+
     client.connect(cfg);
   });
 }
 
 export function resizePty(stream, cols, rows) {
-  try { stream.setWindow(rows, cols, 600, 800); } catch {}
+  try { stream.setWindow(rows, cols, 600, 800); } catch (e) { console.log('[ssh2] resize error', e?.message); }
 }
 
 export function closeSession(client, stream) {
   try { stream.end(); } catch {}
   try { client.end(); } catch {}
+}
+
+
+// --- SFTP helpers ---
+function isDirFromMode(mode) {
+  // POSIX file type bits
+  const S_IFMT = 0o170000;
+  const S_IFDIR = 0o040000;
+  return ((mode & S_IFMT) === S_IFDIR);
+}
+
+export function getSftp(client) {
+  return new Promise((resolve, reject) => {
+    client.sftp((err, sftp) => err ? reject(err) : resolve(sftp));
+  });
+}
+
+export function sftpListRecursive(sftp, basePath, depth = 1) {
+  return new Promise((resolve, reject) => {
+    sftp.readdir(basePath, async (err, list) => {
+      if (err) return reject(err);
+      try {
+        const entries = await Promise.all(list.map(async (e) => {
+          const name = e.filename;
+          const full = basePath.endsWith('/') ? (basePath + name) : (basePath + '/' + name);
+          const isDir = e?.attrs?.mode ? isDirFromMode(e.attrs.mode) : (e.longname?.startsWith('d'));
+          if (isDir && depth > 0) {
+            const children = await sftpListRecursive(sftp, full, depth - 1);
+            return [name, { type: 'folder', children }];
+          }
+          return [name, { type: 'file', size: Number(e?.attrs?.size ?? 0) }];
+        }));
+        const obj = {};
+        for (const [k, v] of entries) obj[k] = v;
+        resolve(obj);
+      } catch (e2) {
+        reject(e2);
+      }
+    });
+  });
+}
+
+export function sftpReadFile(sftp, path, maxBytes = 1024 * 1024) {
+  return new Promise((resolve, reject) => {
+    sftp.open(path, 'r', (err, handle) => {
+      if (err) return reject(err);
+      const chunks = [];
+      const buf = Buffer.alloc(32768);
+      let pos = 0;
+
+      function readNext() {
+        sftp.read(handle, buf, 0, buf.length, pos, (err2, bytesRead, buffer) => {
+          if (err2) {
+            return sftp.close(handle, () => reject(err2));
+          }
+          if (bytesRead > 0) {
+            chunks.push(buffer.slice(0, bytesRead));
+            pos += bytesRead;
+            if (pos >= maxBytes) {
+              return sftp.close(handle, () => resolve(Buffer.concat(chunks).toString('utf8')));
+            }
+            return readNext();
+          }
+          sftp.close(handle, () => resolve(Buffer.concat(chunks).toString('utf8')));
+        });
+      }
+
+      readNext();
+    });
+  });
 }

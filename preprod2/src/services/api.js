@@ -70,13 +70,18 @@ export async function connectSSH(config){
       }
     };
 
+  
     activeSocket.onmessage = (ev) => {
       const text = typeof ev.data === 'string' ? ev.data : new TextDecoder().decode(new Uint8Array(ev.data));
       addToTerminal(text);
     };
 
-    activeSocket.onclose = () => {
-      // Socket closed; leave UI cleanup to disconnect or remote exit
+    activeSocket.onerror = (ev) => {
+      addToTerminal('[WS] error: check browser console / network tab');
+    };
+
+    activeSocket.onclose = (ev) => {
+      addToTerminal(`[WS] closed (${ev.code}${ev.reason ? ': ' + ev.reason : ''})`);
     };
 
     return { success: true, host: config.host };
