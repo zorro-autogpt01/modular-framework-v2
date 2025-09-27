@@ -23,133 +23,130 @@ Logger.info('Bootstrapping IDE...');
 
 // Ensure Monaco is ready, then initialize modules
 function bootstrap() {
-  if (!window.require) {
-    Logger.error('Monaco loader not found.');
-    showNotification('❌ Monaco loader not found', 'error');
-    return;
-  }
-  window.require(['vs/editor/editor.main'], () => {
-    Logger.info('Monaco loaded');
-    state.fileTree = localTree;
+ // Initialize core UI regardless of Monaco availability
+ state.fileTree = localTree;
 
-    initPanels();
-    initModals();
-    initTerminal();
+ initPanels();
+ initModals();
+ initTerminal();
+ initTabs();
+ initFileTree();
 
-    initEditor({
-      onCursorMove: (pos) => {
-        qs('#cursorPosition').textContent = `Line ${pos.lineNumber}, Column ${pos.column}`;
-      },
-      onContentChange: () => {
-        // Notify others about potential modifications
-        if (state.activeFile) bus.emit('file:modified', { path: state.activeFile });
-      }
-    });
+ // Render initial state (file tree + default file)
+ setTimeout(() => {
+ renderFileTree();
+ bus.emit('file:open', { path: 'README.md' });
+ updateGitStatus();
+ }, 200);
 
-    initTabs();
-    initFileTree();
+ // Event subscriptions
+ bus.on('file:open', ({ path }) => {
+ const file = getFileFromPath(path);
+ if (!file || file.type !== 'file') return;
+ if (!state.openFiles.has(path)) {
+ state.openFiles.set(path, { content: file.content, originalContent: file.content, modified: false });
+ }
+ state.activeFile = path;
+ updateTabs();
+ // Only load into Monaco if the editor is ready
+ if (state.editor) {
+ loadFileInEditor(path);
+ }
+ bus.emit('ui:fileTree:selection');
+ setStatus(`📖 Opened ${path}`);
+ const lang = (getLanguageFromPath(path) || 'plaintext').toUpperCase();
+ const lm = qs('#languageMode'); if (lm) lm.textContent = lang;
+ });
 
-    // Render initial state
-    setTimeout(() => {
-      renderFileTree();
-      bus.emit('file:open', { path: 'README.md' });
-      updateGitStatus();
-    }, 200);
+ bus.on('workspace:changed', ({ connected, host }) => {
+ const termHost = qs('#terminalHost');
+ if (termHost) termHost.textContent = connected ? host : 'localhost';
+ });
 
-    // Event subscriptions
-    bus.on('file:open', ({ path }) => {
-      const file = getFileFromPath(path);
-      if (!file || file.type !== 'file') return;
-      if (!state.openFiles.has(path)) {
-        state.openFiles.set(path, { content: file.content, originalContent: file.content, modified: false });
-      }
-      state.activeFile = path;
-      updateTabs();
-      loadFileInEditor(path);
-      bus.emit('ui:fileTree:selection');
-      setStatus(`📖 Opened ${path}`);
-      qs('#languageMode').textContent = (getLanguageFromPath(path) || 'plaintext').toUpperCase();
-    });
+ bus.on('fileTree:replace', ({ tree }) => {
+ state.fileTree = tree;
+ renderFileTree();
+ });
 
-    bus.on('workspace:changed', ({ connected, host }) => {
-      const termHost = qs('#terminalHost');
-      if (termHost) termHost.textContent = connected ? host : 'localhost';
-    });
+ bus.on('editor:save', () => saveCurrentFile());
 
-    bus.on('fileTree:replace', ({ tree }) => {
-      state.fileTree = tree;
-      renderFileTree();
-    });
+ // Keyboard shortcuts (work even if editor isn't ready; guarded inside handlers)
+ document.addEventListener('keydown', (e) => {
+ if (e.ctrlKey || e.metaKey) {
+ switch (e.key) {
+ case 's':
+ e.preventDefault();
+ if (e.shiftKey) saveAllFiles(); else saveCurrentFile();
+ break;
+ case 'n':
+ e.preventDefault();
+ newFile();
+ break;
+ case '`':
+ e.preventDefault();
+ toggleTerminalPanel();
+ break;
+ }
+ }
+ });
 
-    bus.on('editor:save', () => saveCurrentFile());
+ // Event delegation for all [data-action] buttons (fixes 'buttons don't respond')
+ document.body.addEventListener('click', onActionClick);
 
-    // Keyboard shortcuts
-    document.addEventListener('keydown', (e) => {
-      if (e.ctrlKey || e.metaKey) {
-        switch (e.key) {
-          case 's':
-            e.preventDefault();
-            if (e.shiftKey) saveAllFiles(); else saveCurrentFile();
-            break;
-          case 'n':
-            e.preventDefault();
-            newFile();
-            break;
-          case '`':
-            e.preventDefault();
-            toggleTerminalPanel();
-            break;
-        }
-      }
-    });
+ // Search input
+ qs('#searchInput')?.addEventListener('input', (e) => Search.searchInFiles(e.target.value));
 
-    // Event delegation
-    document.body.addEventListener('click', onActionClick);
+ // Auth method change
+ qs('#authMethod')?.addEventListener('change', (e) => {
+ const group = qs('#passwordGroup');
+ if (!group) return;
+ group.classList.toggle('hidden', e.target.value !== 'password');
+ });
 
-    // Search input
-    qs('#searchInput')?.addEventListener('input', (e) => Search.searchInFiles(e.target.value));
+ Logger.info('UI initialized');
+ console.log('Use window.AdvancedCodeEditorAPI for external control');
 
-    // Auth method change
-    qs('#authMethod')?.addEventListener('change', (e) => {
-      const v = e.target.value;
-      const pass = qs('#passwordGroup');
-      const keyg = qs('#keyGroup');
-      pass?.classList.toggle('hidden', v !== 'password');
-      keyg?.classList.toggle('hidden', v !== 'key');
-    });
+ // Expose limited external API
+ window.AdvancedCodeEditorAPI = {
+ openFile: (path, content) => {
+ state.fileTree[path] = { type: 'file', content };
+ renderFileTree();
+ bus.emit('file:open', { path });
+ },
+ connectToRemote: (config) => API.connectSSH(config),
+ getCurrentFile: () => state.activeFile,
+ getCurrentContent: () => getEditorValue(),
+ showNotification: (message, type) => showNotification(message, type),
+ API
+ };
 
-
-    Logger.info('IDE initialized');
-
-    // Key upload → populate textarea, keep in memory only
-    const keyFileInput = qs('#sshPrivateKeyFile');
-    const keyTextArea = qs('#sshPrivateKey');
-    keyFileInput?.addEventListener('change', async (e) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      const text = await file.text();
-      if (keyTextArea) keyTextArea.value = text;
-    });
-
-    console.log('Use window.AdvancedCodeEditorAPI for external control');
-
-    // Expose limited external API
-    window.AdvancedCodeEditorAPI = {
-      openFile: (path, content) => {
-        state.fileTree[path] = { type: 'file', content };
-        renderFileTree();
-        bus.emit('file:open', { path });
-      },
-      connectToRemote: (config) => API.connectSSH(config),
-      getCurrentFile: () => state.activeFile,
-      getCurrentContent: () => getEditorValue(),
-      showNotification: (message, type) => showNotification(message, type),
-      API
-    };
-  });
+ // Try to load Monaco editor if the AMD loader is available; otherwise keep the UI usable
+ if (window.require) {
+ window.require(['vs/editor/editor.main'], () => {
+ Logger.info('Monaco loaded');
+ initEditor({
+ onCursorMove: (pos) => {
+ const cp = qs('#cursorPosition');
+ if (cp) cp.textContent = `Line ${pos.lineNumber}, Column ${pos.column}`;
+ },
+ onContentChange: () => {
+ if (state.activeFile) bus.emit('file:modified', { path: state.activeFile });
+ }
+ });
+ // If a file was opened before Monaco was ready, load it now
+ if (state.activeFile) {
+ loadFileInEditor(state.activeFile);
+ }
+ Logger.info('IDE initialized');
+ });
+ } else {
+ Logger.error('Monaco loader not found. Proceeding without editor.');
+ showNotification('⚠️ Monaco loader not found. Editor features disabled, UI still works.', 'warning');
+ }
 }
 
 function onActionClick(e) {
+
   const btn = e.target.closest('[data-action]');
   if (!btn) return;
   const action = btn.getAttribute('data-action');
