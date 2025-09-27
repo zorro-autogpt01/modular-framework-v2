@@ -1,56 +1,38 @@
 {
-  "$schema": "https://json-schema.org/d/2020-12/schema",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://example.com/code-change-plan.schema.json",
   "title": "CodeChangePlan",
   "type": "object",
+  "required": ["version", "changes"],
   "version": "1.0",
-  "project_root": "preprod2",
-  "dry_run": false,
   "backup": true,
   "changes": [
     {
+      "id": "fix-file-open-handler-reference-error",
+      "description": "Prevent ReferenceError by renaming 'file' variable and adding robust null/type checks when opening files. Improves logging and user feedback.",
       "op": "patch_text",
-      "id": "main_add_auth_toggle_and_tooltips_call",
-      "description": "Improve auth method toggling to show/hide password vs key fields; add button hover tooltips and call after UI init.",
       "path": "src/main.js",
       "patches": [
         {
           "type": "replace_regex",
-          "match": "\\/\\/ Auth method change[\\s\\S]*?\\n\\s*\\}\\);",
-          "replacement": "// Auth method change (toggle password/key fields)\n  function updateAuthGroups(val){\n    const isPassword = val === 'password';\n    const pw = qs('#passwordGroup');\n    const pk = qs('#privateKeyGroup');\n    const pp = qs('#passphraseGroup');\n    if (pw) pw.classList.toggle('hidden', !isPassword);\n    if (pk) pk.classList.toggle('hidden', isPassword);\n    if (pp) pp.classList.toggle('hidden', isPassword);\n  }\n  const authSel = qs('#authMethod');\n  authSel?.addEventListener('change', (e)=> updateAuthGroups(e.target.value));\n  if (authSel) updateAuthGroups(authSel.value);"
-        },
-        {
-          "type": "insert_after",
-          "anchor": " initFileTree();",
-          "replacement": "\n \n // Add helpful hover tooltips on common buttons\n applyTooltips();"
-        },
-        {
-          "type": "insert_before",
-          "anchor": " Logger.info('UI initialized');",
-          "replacement": "\n// Provide simple hover tooltips on key controls\nfunction applyTooltips(){\n  const map = [\n    ['[data-action=\"modal:open\"][data-target=\"#githubModal\"]', 'Open GitHub integration'],\n    ['[data-action=\"git:pull\"]', 'Pull latest changes from origin/main'],\n    ['[data-action=\"git:fetch\"]', 'Fetch remote updates without merging'],\n    ['[data-action=\"git:stash\"]', 'Stash local changes'],\n    ['[data-action=\"git:create-branch\"]', 'Create and switch to a new branch'],\n    ['[data-action=\"git:quick-commit-push\"]', 'Commit all staged changes and push to origin'],\n    ['[data-action=\"docker:build\"]', 'Build Docker image(s)'],\n    ['[data-action=\"docker:run\"]', 'Run Docker containers'],\n    ['[data-action=\"docker:ps\"]', 'List containers'],\n    ['[data-action=\"docker:stop\"]', 'Stop all running containers'],\n    ['.sidebar-tab[data-panel=\"explorer\"]', 'Explorer'],\n    ['.sidebar-tab[data-panel=\"search\"]', 'Search in files'],\n    ['.sidebar-tab[data-panel=\"ssh\"]', 'SSH connections'],\n    ['[data-action=\"files:refresh\"]', 'Refresh file tree'],\n    ['[data-action=\"files:new-file\"]', 'Create new file'],\n    ['[data-action=\"files:new-folder\"]', 'Create new folder'],\n    ['[data-action=\"files:upload\"]', 'Upload files'],\n    ['[data-action=\"editor:save\"]', 'Save (Ctrl/Cmd+S)'],\n    ['[data-action=\"editor:save-all\"]', 'Save all (Ctrl/Cmd+Shift+S)'],\n    ['[data-action=\"editor:format\"]', 'Format document'],\n    ['[data-action=\"editor:show-diff\"]', 'Show changes vs original'],\n    ['[data-action=\"editor:toggle-minimap\"]', 'Toggle minimap'],\n    ['[data-action=\"terminal:toggle\"]', 'Show/Hide terminal panel'],\n    ['[data-action=\"project:run\"]', 'Run project'],\n    ['[data-action=\"project:build\"]', 'Build project'],\n    ['[data-action=\"project:deploy\"]', 'Deploy project'],\n    ['#connectBtn', 'Open an SSH session using the provided credentials'],\n    ['#disconnectBtn', 'Close the current SSH session']\n  ];\n  for (const [sel, title] of map){\n    const el = qs(sel);\n    if (el && !el.getAttribute('title')) el.setAttribute('title', title);\n  }\n}\n"
+          "match": "bus\\.on\\('file:open',\\s*\\(\\{\\s*path\\s*\\}\\)\\s*=>\\s*\\{[\\s\\S]*?\\}\\);",
+          "replacement": "bus.on('file:open', ({ path }) => {\n  try {\n    const fileNode = getFileFromPath(path);\n    if (!fileNode || fileNode.type !== 'file') {\n      Logger.warn('file:open: not a file or not found', { path, node: fileNode });\n      showNotification(`⚠️ File not found: ${path}`, 'warning');\n      return;\n    }\n    if (!state.openFiles.has(path)) {\n      const content = fileNode.content ?? '';\n      state.openFiles.set(path, { content, originalContent: content, modified: false });\n    }\n    state.activeFile = path;\n    updateTabs();\n    if (state.editor) {\n      loadFileInEditor(path);\n    }\n    bus.emit('ui:fileTree:selection');\n    setStatus(`📖 Opened ${path}`);\n    const lang = (getLanguageFromPath(path) || 'plaintext').toUpperCase();\n    const lm = qs('#languageMode'); if (lm) lm.textContent = lang;\n  } catch (e) {\n    Logger.error('file:open handler error', e);\n    showNotification('❌ Failed to open file', 'error');\n  }\n});"
         }
       ]
     },
     {
+      "id": "init-auth-password-visibility",
+      "description": "Initialize password field visibility based on current auth method at startup for better UX.",
       "op": "patch_text",
-      "id": "api_enhance_github_action",
-      "description": "Enhance GitHub action to build masked git commands and optionally run them in the remote terminal without exposing the token.",
-      "path": "src/services/api.js",
+      "path": "src/main.js",
       "patches": [
         {
-          "type": "replace_regex",
-          "match": "export function executeGitHubAction\\(\\)\\{[\\s\\S]*?\\n\\}",
-          "replacement": "export function executeGitHubAction(){\n  const token = document.getElementById('githubToken')?.value?.trim();\n  const repoUrlRaw = document.getElementById('repoUrl')?.value?.trim();\n  const action = document.getElementById('gitAction')?.value || 'clone';\n  if (!repoUrlRaw){ showNotification('⚠️ Repository URL is required', 'warning'); return; }\n\n  const repoUrl = repoUrlRaw;\n  const isSSH = /^git@/.test(repoUrl);\n  const isHTTPS = /^https:\\/\\//.test(repoUrl);\n  const needsToken = isHTTPS && !isSSH;\n\n  const urlWithToken = (needsToken && token) ? injectToken(repoUrl, token) : repoUrl;\n  const sanitized = needsToken ? injectToken(repoUrl, '***') : repoUrl;\n\n  const buildCmd = () => {\n    switch (action) {\n      case 'clone': return `git clone ${urlWithToken}`;\n      case 'init': return `git init && git remote add origin ${urlWithToken}`;\n      case 'connect': return `git remote set-url origin ${urlWithToken}`;\n      default: return `git clone ${urlWithToken}`;\n    }\n  };\n\n  const cmd = buildCmd();\n  const displayCmd = cmd.replace(urlWithToken, sanitized);\n\n  // Show masked command locally\n  addToTerminal(`$ ${displayCmd}`);\n\n  if (needsToken && !token){\n    showNotification('⚠️ HTTPS URL detected. Provide a GitHub Token or use SSH URL (git@github.com:owner/repo.git).', 'warning');\n  }\n\n  // Execute in remote session if available (send only the real command over WS)\n  if (activeSocket && activeSocket.readyState === WebSocket.OPEN){\n    activeSocket.send(JSON.stringify({ type:'data', data: cmd + '\\n' }));\n    showNotification('🐙 Running Git command in remote terminal', 'info');\n    document.querySelector('#githubModal')?.classList.add('hidden');\n  } else {\n    showNotification('ℹ️ Not connected to SSH. Run the above command locally or connect first.', 'info');\n  }\n}\n\nfunction injectToken(repoUrl, token){\n  try {\n    const m = repoUrl.match(/^https:\\/\\/([^\\/]+)\\/(.+)$/);\n    if (!m) return repoUrl;\n    return `https://x-access-token:${encodeURIComponent(token)}@${m[1]}/${m[2]}`;\n  } catch { return repoUrl; }\n}"
+          "type": "insert_after",
+          "anchor": "qs('#authMethod')?.addEventListener('change', (e) => {",
+          "replacement": "  // Initialize visibility immediately on load as well\n  { const sel = qs('#authMethod'); const group = qs('#passwordGroup'); if (sel && group) group.classList.toggle('hidden', sel.value !== 'password'); }",
+          "newline": true
         }
       ]
-    },
-    {
-      "op": "write_file",
-      "id": "root_readme",
-      "description": "Create a comprehensive README with documentation, including answers about password usage and GitHub connection.",
-      "path": "README.md",
-      "mode": "overwrite",
-      "content": "# Advanced Web IDE Pro\n\nA web-based IDE with SSH terminal bridging, file explorer, Git helpers, Docker panel, and a simple GitHub integration helper.\n\n## Table of Contents\n- Overview\n- Architecture\n- Quick Start\n- SSH Connection (Password vs Key)\n- GitHub Repository Connection\n- UI Tips and Tooltips\n- Configuration\n- Security Notes\n- FAQ\n\n## Overview\nThis project serves a static frontend (the IDE) and an optional backend SSH bridge that opens a shell on a remote server and streams it to the browser via WebSocket.\n\n## Architecture\n- Frontend (static): Served by any static server or via the provided Dockerfile (port 3020).\n- Backend SSH Bridge (Node.js): Simple Express + WebSocket server using ssh2 to open a real shell on a remote host (port 3021).\n\nPaths:\n- Frontend: index.html, src/*\n- SSH Bridge: backend/*\n\n## Quick Start\n1) Start SSH Bridge backend locally:\n   - cd backend && npm i && npm run dev\n   - It listens on http://localhost:3021\n\n2) Open the IDE:\n   - Serve preprod2/ with any static server (or use the provided Dockerfile at the project root which exposes 3020).\n   - Open http://localhost:3020 in a browser.\n\n3) Configure the backend URL (optional):\n   - The IDE defaults to http://localhost:3021. You can override by setting window.__BACKEND_URL before src/main.js is loaded:\n     <script>window.__BACKEND_URL = 'https://your-bridge.example.com';</script>\n\n## SSH Connection (Password vs Key)\n- Where do I put my password?\n  - In the left sidebar, open the SSH tab (🔗). Change Authentication to \"Password\" and a Password field appears. Enter your password there, then click Connect.\n- SSH key method:\n  - With Authentication set to \"SSH Key\", paste your private key (PEM/OpenSSH) into the Private Key field. If your key has a passphrase, enter it in the Passphrase field.\n- What happens to my credentials?\n  - Passwords and keys are used in-memory in your browser tab and sent only to the local SSH bridge to establish the session. They are not stored or logged by the frontend. The backend also avoids logging secrets.\n- Switching methods:\n  - Changing the Authentication selector will show/hide the appropriate fields.\n\n## GitHub Repository Connection\nYou have two recommended options:\n\n1) Using SSH (recommended if you have keys on GitHub):\n   - Ensure your public key is added to GitHub (Settings → SSH and GPG keys).\n   - In the IDE, connect to your remote server via SSH.\n   - In the terminal, run: git clone git@github.com:owner/repo.git\n\n2) Using HTTPS + Personal Access Token (PAT):\n   - Click the 🔗 button in the Repository sidebar to open the GitHub modal.\n   - Paste your PAT (scopes: repo) and the repository URL (https://github.com/owner/repo.git).\n   - Choose Clone (or Initialize & Connect, or Connect Existing).\n   - The IDE will show a masked command and, if connected to SSH, run the real command in the remote terminal. Tokens are not stored and are masked in UI logs.\n\nNotes:\n- If you are not connected to SSH, the IDE will show the masked command so you can run it locally.\n- For HTTPS, the IDE constructs an URL like: https://x-access-token:***@github.com/owner/repo.git and sends the unmasked form only to the shell over a local WS connection.\n\n## UI Tips and Tooltips\n- Hover over buttons to see usage hints (Save, Build, Pull, Connect SSH, etc.).\n- In the SSH panel, you will see explanatory text beneath the credential fields.\n\n## Configuration\n- Backend URL: window.__BACKEND_URL (default http://localhost:3021)\n- Backend port (bridge): env PORT (default 3021)\n\n## Security Notes\n- Credentials are never persisted client-side by this app.\n- The backend avoids logging secrets (see comments in backend/server.js) but you should still run it on trusted infrastructure and secure the deployment (TLS/Reverse proxy, auth).\n- When using HTTPS tokens for Git, the token is masked in the UI and only sent to the shell over a local WS connection.\n\n## FAQ\nQ: When trying to connect via password, I don't have to put my password anywhere?\nA: You do. In the SSH panel, change Authentication to \"Password\" and the Password field appears. Enter it there. It is used only to establish the session and is not stored.\n\nQ: How do I connect to a GitHub repository?\nA: Either:\n   - Use SSH URLs (git@github.com:owner/repo.git) if your SSH key is set up on GitHub, or\n   - Use HTTPS with a PAT via the GitHub modal. The IDE builds the git command and, if connected to SSH, runs it remotely; the token is masked in logs and not stored.\n\nQ: Can I use the IDE without the backend?\nA: Yes, the UI will still load. The terminal then simulates outputs. For real remote shell IO, run the backend.\n\nQ: How do I change the backend endpoint?\nA: Set window.__BACKEND_URL before loading src/main.js.\n\nQ: Are git actions real?\nA: Git buttons in the sidebar print outputs to the terminal for now. Use the terminal for actual git commands (the GitHub modal helps you construct and run them)."
     }
   ]
 }
