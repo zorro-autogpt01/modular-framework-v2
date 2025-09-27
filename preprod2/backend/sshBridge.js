@@ -1,3 +1,4 @@
+
 import { Client } from 'ssh2';
 // Simple POSIX join to avoid pulling in 'path'
 const joinPosix = (a, b) => (a.endsWith('/') ? a.slice(0, -1) : a) + '/' + b;
@@ -6,6 +7,33 @@ function getSftp(client) {
   return new Promise((resolve, reject) => {
     client.sftp((err, sftp) => (err ? reject(err) : resolve(sftp)));
   });
+}
+
+export function connectSSH({ host, port = 22, username, authMethod, password, privateKey, passphrase }) {
+  return new Promise((resolve, reject) => {
+    const client = new Client();
+
+    const cfg = { host, port, username, tryKeyboard: false, readyTimeout: 20000 };
+    if (authMethod === 'password') cfg.password = password;
+    else if (authMethod === 'key') {
+      cfg.privateKey = Buffer.from(privateKey || '', 'utf8');
+      if (passphrase) cfg.passphrase = passphrase;
+    } else return reject(new Error('Unsupported authMethod'));
+
+    client.on('ready', () => {
+      client.shell({ term: 'xterm-256color', cols: 120, rows: 32 }, (err, stream) => {
+        if (err) { client.end(); return reject(err); }
+        resolve({ client, stream });
+      });
+    });
+
+    client.on('error', (e) => reject(new Error(e?.message || 'SSH error')));
+    client.connect(cfg);
+  });
+}
+
+export function resizePty(stream, cols, rows) {
+  try { stream.setWindow(rows, cols, 600, 800); } catch {}
 }
 
 export async function listTree(client, rootPath, depth = 2) {
@@ -67,66 +95,6 @@ function readdirAsync(sftp, p) {
   });
 }
 
-
-import { Client } from 'ssh2';
-
-export function connectSSH({ host, port = 22, username, authMethod, password, privateKey, passphrase }) {
-  return new Promise((resolve, reject) => {
-    const client = new Client();
-    const cfg = {
-      host, port, username,
-      // Let the server ask via keyboard-interactive if it wants to
-      tryKeyboard: authMethod === 'password',
-      readyTimeout: 30000,
-      debug: (msg) => console.log('[ssh2]', msg)
-    };
-
-    if (authMethod === 'password') {
-      cfg.password = password;
-    } else if (authMethod === 'key') {
-      // Make sure the pasted key includes the full PEM block
-      cfg.privateKey = Buffer.from(privateKey || '', 'utf8');
-      if (passphrase) cfg.passphrase = passphrase;
-    } else {
-      return reject(new Error('Unsupported authMethod'));
-    }
-
-    client.on('keyboard-interactive', (name, instructions, lang, prompts, finish) => {
-      // If server insists on kbd-interactive, answer with the provided password once.
-      if (authMethod === 'password') {
-        console.log('[ssh2] keyboard-interactive requested:', name);
-        finish([password]);
-      } else {
-        finish([]);
-      }
-    });
-
-    client.on('banner', (msg) => console.log('[ssh2] banner:', msg));
-    client.on('ready', () => {
-      console.log('[ssh2] ready: opening shell');
-      client.shell({ term: 'xterm-256color', cols: 120, rows: 32 }, (err, stream) => {
-        if (err) { client.end(); return reject(err); }
-        stream.on('close', () => console.log('[ssh2] stream closed'));
-        stream.on('exit', (code, signal) => console.log('[ssh2] stream exit', { code, signal }));
-        resolve({ client, stream });
-      });
-    });
-
-    client.on('error', (e) => {
-      console.error('[ssh2] client error:', e?.message || e);
-      reject(new Error(e?.message || 'SSH error'));
-    });
-    client.on('close', (hadErr) => console.log('[ssh2] client closed', { hadErr }));
-    client.on('end', () => console.log('[ssh2] client end'));
-
-    client.connect(cfg);
-  });
-}
-
-export function resizePty(stream, cols, rows) {
-  try { stream.setWindow(rows, cols, 600, 800); } catch (e) { console.log('[ssh2] resize error', e?.message); }
-}
-
 export function closeSession(client, stream) {
   try { stream.end(); } catch {}
   try { client.end(); } catch {}
@@ -139,12 +107,6 @@ function isDirFromMode(mode) {
   const S_IFMT = 0o170000;
   const S_IFDIR = 0o040000;
   return ((mode & S_IFMT) === S_IFDIR);
-}
-
-export function getSftp(client) {
-  return new Promise((resolve, reject) => {
-    client.sftp((err, sftp) => err ? reject(err) : resolve(sftp));
-  });
 }
 
 export function sftpListRecursive(sftp, basePath, depth = 1) {
@@ -201,3 +163,4 @@ export function sftpReadFile(sftp, path, maxBytes = 1024 * 1024) {
     });
   });
 }
+  

@@ -1,0 +1,25 @@
+version: '3.8'
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3020:3020"
+    depends_on:
+      - backend
+    networks:
+      - ide-net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "3021:3021"
+    networks:
+      - ide-net
+
+networks:
+  ide-net:
+    driver: bridge
