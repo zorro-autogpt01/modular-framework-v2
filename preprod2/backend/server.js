@@ -2,7 +2,7 @@ import express from 'express';
 import http from 'http';
 import cors from 'cors';
 import { WebSocketServer } from 'ws';
-import { createSession, attachWebSocket, disconnect } from './sshManager.js';
+import { createSession, attachWebSocket, disconnect, listRemote, readRemote } from './sshManager.js';
 
 const PORT = process.env.PORT || 3021;
 const app = express();
@@ -14,6 +14,31 @@ app.post('/ssh/connect', async (req, res) => {
   try {
     const { host, port = 22, username, authMethod, password, privateKey, passphrase } = req.body || {};
     if (!host || !username || !authMethod) return res.status(400).json({ ok: false, error: 'Missing required fields' });
+
+app.get('/ssh/list', async (req, res) => {
+  try {
+    const sessionId = req.query.sessionId;
+    const path = req.query.path;
+    const depth = Math.max(0, Math.min(5, parseInt(req.query.depth || '2', 10)));
+    if (!sessionId || !path) return res.status(400).json({ ok: false, error: 'Missing sessionId or path' });
+    const tree = await listRemote(sessionId, path, depth);
+    return res.json({ ok: true, tree });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err?.message || 'List failed' });
+  }
+});
+
+app.get('/ssh/read', async (req, res) => {
+  try {
+    const sessionId = req.query.sessionId;
+    const path = req.query.path;
+    if (!sessionId || !path) return res.status(400).json({ ok: false, error: 'Missing sessionId or path' });
+    const content = await readRemote(sessionId, path);
+    return res.json({ ok: true, content });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err?.message || 'Read failed' });
+  }
+});
 
     // Never log secrets
     const { sessionId } = await createSession({ host, port, username, authMethod, password, privateKey, passphrase });

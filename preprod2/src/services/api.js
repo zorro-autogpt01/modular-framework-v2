@@ -2,7 +2,6 @@ import { state } from '../core/state.js';
 import { bus } from '../core/eventBus.js';
 import { showNotification } from '../ui/notifications.js';
 import { updateConnectionStatus, updateWorkspaceIndicator } from '../ui/panels.js';
-import { remoteTree } from '../data/sampleFileTree.js';
 import { addToTerminal } from '../terminal/index.js';
 
 const BACKEND_HTTP = window.__BACKEND_URL || 'http://localhost:3021';
@@ -10,6 +9,26 @@ const BACKEND_WS = (BACKEND_HTTP.startsWith('https') ? 'wss' : 'ws') + '://' + B
 
 let activeSessionId = null;
 let activeSocket = null;
+export async function fetchRemoteTree(remotePath, depth = 3) {
+  if (!activeSessionId) throw new Error('No active session');
+  const url = `${BACKEND_HTTP}/ssh/list?sessionId=${encodeURIComponent(activeSessionId)}&path=${encodeURIComponent(remotePath)}&depth=${depth}`;
+  const res = await fetch(url);
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error || 'List failed');
+  return data.tree || {};
+}
+
+export async function readRemoteFile(relPath) {
+  if (!activeSessionId) throw new Error('No active session');
+  const base = (state.remoteRoot || '').replace(/\/$/, '');
+  const fullPath = base + (relPath.startsWith('/') ? relPath : '/' + relPath);
+  const url = `${BACKEND_HTTP}/ssh/read?sessionId=${encodeURIComponent(activeSessionId)}&path=${encodeURIComponent(fullPath)}`;
+  const res = await fetch(url);
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error || 'Read failed');
+  return data.content ?? '';
+}
+
 
 export function getActiveSocket(){ return activeSocket; }
 export function getActiveSession(){ return activeSessionId; }
@@ -30,17 +49,25 @@ export async function connectSSH(config){
     activeSocket = new WebSocket(`${BACKEND_WS}?sessionId=${encodeURIComponent(activeSessionId)}`);
 
     activeSocket.binaryType = 'arraybuffer';
-    activeSocket.onopen = () => {
+    activeSocket.onopen = async () => {
       state.isConnected = true; state.currentWorkspace = 'remote';
+      state.remoteRoot = config.remotePath || '/';
       updateConnectionStatus(true, config.host);
       updateWorkspaceIndicator('Remote: ' + config.host);
-      bus.emit('fileTree:replace', { tree: remoteTree });
       document.getElementById('connectBtn')?.classList.add('hidden');
       document.getElementById('disconnectBtn')?.classList.remove('hidden');
       document.getElementById('terminalHost').textContent = config.host;
       addToTerminal(`Connected to ${config.host}`);
       showNotification(`✅ Connected to ${config.host}`, 'success');
       bus.emit('workspace:changed', { connected: true, host: config.host });
+      // Load remote file tree
+      try {
+        const tree = await fetchRemoteTree(state.remoteRoot, 3);
+        bus.emit('fileTree:replace', { tree });
+      } catch (err) {
+        showNotification('⚠️ Failed to load remote file tree: ' + (err?.message || err), 'warning');
+        bus.emit('fileTree:replace', { tree: {} });
+      }
     };
 
     activeSocket.onmessage = (ev) => {
@@ -71,7 +98,7 @@ export async function disconnectSSH(){
   try { activeSocket?.close(); } catch {}
   activeSocket = null; activeSessionId = null;
 
-  state.isConnected = false; state.currentWorkspace = 'local';
+  state.isConnected = false; state.currentWorkspace = 'local'; state.remoteRoot = null;
   updateConnectionStatus(false);
   updateWorkspaceIndicator('Local');
   bus.emit('fileTree:replace', { tree: {} });

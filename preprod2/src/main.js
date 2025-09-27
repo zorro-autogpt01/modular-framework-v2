@@ -17,14 +17,12 @@ import * as DB from './services/db.js';
 import * as SSH from './services/ssh.js';
 import * as Search from './services/search.js';
 import { getFileFromPath, getLanguageFromPath } from './utils/path.js';
-import { localTree } from './data/sampleFileTree.js';
-
 Logger.info('Bootstrapping IDE...');
 
 // Ensure Monaco is ready, then initialize modules
 function bootstrap() {
  // Initialize core UI regardless of Monaco availability
- state.fileTree = localTree;
+ state.fileTree = {};
 
  initPanels();
  initModals();
@@ -35,13 +33,48 @@ function bootstrap() {
  // Render initial state (file tree + default file)
  setTimeout(() => {
  renderFileTree();
- bus.emit('file:open', { path: 'README.md' });
  updateGitStatus();
  }, 200);
 
  // Event subscriptions
  bus.on('file:open', ({ path }) => {
  const file = getFileFromPath(path);
+ if (!file || file.type !== 'file') return;
+ if (!state.openFiles.has(path)) {
+   state.openFiles.set(path, { content: file.content ?? '', originalContent: file.content ?? '', modified: false });
+
+ // Initialize password field visibility based on default selection
+ const authSel = qs('#authMethod');
+ if (authSel) {
+   const group = qs('#passwordGroup');
+   if (group) group.classList.toggle('hidden', authSel.value !== 'password');
+ }
+ }
+ state.activeFile = path;
+ updateTabs();
+ if (state.editor) { loadFileInEditor(path); }
+ bus.emit('ui:fileTree:selection');
+ setStatus(`📖 Opened ${path}`);
+ const lang = (getLanguageFromPath(path) || 'plaintext').toUpperCase();
+ const lm = qs('#languageMode'); if (lm) lm.textContent = lang;
+ // Lazy-load content from remote if missing
+ if (file.content == null && state.isConnected) {
+   API.readRemoteFile(path)
+     .then((content) => {
+       file.content = content;
+       const entry = state.openFiles.get(path);
+       if (entry) {
+         entry.content = content;
+         entry.originalContent = content;
+         entry.modified = false;
+       }
+       if (state.activeFile === path && state.editor) { loadFileInEditor(path); }
+       updateTabs();
+       bus.emit('ui:fileTree:selection');
+     })
+     .catch((e) => console.warn('Failed to load remote file', path, e));
+ }
+});
  if (!file || file.type !== 'file') return;
  if (!state.openFiles.has(path)) {
  state.openFiles.set(path, { content: file.content, originalContent: file.content, modified: false });
@@ -52,11 +85,6 @@ function bootstrap() {
  if (state.editor) {
  loadFileInEditor(path);
  }
- bus.emit('ui:fileTree:selection');
- setStatus(`📖 Opened ${path}`);
- const lang = (getLanguageFromPath(path) || 'plaintext').toUpperCase();
- const lm = qs('#languageMode'); if (lm) lm.textContent = lang;
- });
 
  bus.on('workspace:changed', ({ connected, host }) => {
  const termHost = qs('#terminalHost');

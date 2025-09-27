@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { connectSSH, resizePty, closeSession } from './sshBridge.js';
+import { connectSSH, resizePty, closeSession, listTree, readFileContent } from './sshBridge.js';
 
 const sessions = new Map();
 
@@ -17,6 +17,18 @@ export async function createSession(config) {
   client.on('close', () => { cleanup(sessionId); });
   client.on('error', () => { cleanup(sessionId); });
   return { sessionId };
+}
+
+export async function listRemote(sessionId, path, depth = 2) {
+  const s = sessions.get(sessionId);
+  if (!s) throw new Error('Invalid session');
+  return await listTree(s.client, path, depth);
+}
+
+export async function readRemote(sessionId, path) {
+  const s = sessions.get(sessionId);
+  if (!s) throw new Error('Invalid session');
+  return await readFileContent(s.client, path);
 }
 
 export function attachWebSocket(sessionId, ws) {
