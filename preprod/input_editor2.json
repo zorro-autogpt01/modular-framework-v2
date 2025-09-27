@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/code-change-plan.schema.json",
+  "title": "CodeChangePlan",
+  "type": "object",
+  "version": "1.0",
+  "project_root": ".",
+  "dry_run": false,
+  "backup": true,
+  "changes": [
+    {
+      "id": "write-dockerfile",
+      "description": "Create a Dockerfile that serves the project on 0.0.0.0:3020 using the lightweight 'serve' static server",
+      "op": "write_file",
+      "path": "Dockerfile",
+      "mode": "overwrite",
+      "content": "FROM node:18-alpine\n\n# Create app directory\nWORKDIR /app\n\n# Copy all project files\nCOPY . .\n\n# Install global lightweight static server 'serve'\nRUN npm install -g serve@14.1.2\n\n# Expose the port the app will run on\nEXPOSE 3020\n\n# Serve the current directory as a static site on 0.0.0.0:3020\n# Using tcp://0.0.0.0:3020 ensures binding to all interfaces inside the container\nCMD [\"serve\", \"-s\", \".\", \"-l\", \"tcp://0.0.0.0:3020\"]\n"
+    },
+    {
+      "id": "write-dockerignore",
+      "description": "Create a .dockerignore to avoid copying unnecessary files into the image",
+      "op": "write_file",
+      "path": ".dockerignore",
+      "mode": "overwrite",
+      "content": "node_modules\nnpm-debug.log\n.DS_Store\n.git\n.gitignore\n.env\nbuild\ndist\n"
+    }
+  ]
+}

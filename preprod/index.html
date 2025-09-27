@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Web Code Editor</title>
+    <title>Advanced Web IDE Pro</title>
     <style>
         * {
             margin: 0;
@@ -19,17 +19,29 @@
             overflow: hidden;
         }
 
-        .editor-container {
+        .ide-container {
             display: flex;
             height: 100vh;
         }
 
-        .sidebar {
-            width: 250px;
+        .repo-sidebar {
+            width: 260px;
+            background: #1e1e1e;
+            border-right: 1px solid #3e3e3e;
+            display: flex;
+            flex-direction: column;
+            resize: horizontal;
+            overflow: hidden;
+        }
+
+        .left-sidebar {
+            width: 280px;
             background: #252526;
             border-right: 1px solid #3e3e3e;
             display: flex;
             flex-direction: column;
+            resize: horizontal;
+            overflow: hidden;
         }
 
         .sidebar-header {
@@ -40,11 +52,129 @@
             text-transform: uppercase;
             font-size: 11px;
             letter-spacing: 0.5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .sidebar-tabs {
+            display: flex;
+            background: #2d2d30;
+            border-bottom: 1px solid #3e3e3e;
+        }
+
+        .sidebar-tab {
+            padding: 8px 12px;
+            cursor: pointer;
+            font-size: 11px;
+            border-right: 1px solid #3e3e3e;
+            transition: background 0.2s;
+            flex: 1;
+            text-align: center;
+        }
+
+        .sidebar-tab.active {
+            background: #252526;
+            color: #ffffff;
+        }
+
+        .sidebar-tab:hover:not(.active) {
+            background: #383838;
+        }
+
+        .sidebar-content {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .connection-panel {
+            padding: 12px;
+        }
+
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+            padding: 8px;
+            background: #1e1e1e;
+            border-radius: 4px;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #ff6b6b;
+        }
+
+        .status-indicator.connected {
+            background: #51cf66;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .input-group {
+            margin-bottom: 10px;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 4px;
+            font-size: 11px;
+            color: #9d9d9d;
+        }
+
+        .input-group input, .input-group select {
+            width: 100%;
+            padding: 6px 8px;
+            background: #3c3c3c;
+            border: 1px solid #5a5a5a;
+            border-radius: 2px;
+            color: #cccccc;
+            font-size: 12px;
+        }
+
+        .btn {
+            padding: 6px 12px;
+            background: #0e639c;
+            color: white;
+            border: none;
+            border-radius: 2px;
+            cursor: pointer;
+            font-size: 11px;
+            transition: background 0.2s;
+            width: 100%;
+            margin-bottom: 6px;
+        }
+
+        .btn:hover {
+            background: #1177bb;
+        }
+
+        .btn.secondary {
+            background: #5a5a5a;
+        }
+
+        .btn.danger {
+            background: #e74c3c;
+        }
+
+        .btn.success {
+            background: #27ae60;
+        }
+
+        .btn.small {
+            padding: 4px 8px;
+            font-size: 10px;
         }
 
         .file-tree {
-            flex: 1;
-            overflow-y: auto;
             padding: 8px 0;
         }
 
@@ -53,8 +183,9 @@
             cursor: pointer;
             display: flex;
             align-items: center;
-            font-size: 13px;
+            font-size: 12px;
             transition: background 0.1s;
+            position: relative;
         }
 
         .file-item:hover, .folder-item:hover {
@@ -66,27 +197,11 @@
             color: #ffffff;
         }
 
-        .folder-item {
-            font-weight: 500;
-        }
-
-        .folder-item.expanded > .folder-icon::before {
-            content: '📂';
-        }
-
-        .folder-item.collapsed > .folder-icon::before {
-            content: '📁';
-        }
-
-        .file-icon::before {
-            content: '📄';
-            margin-right: 6px;
-            font-size: 12px;
-        }
-
-        .folder-icon::before {
-            margin-right: 6px;
-            font-size: 12px;
+        .file-item.modified::after {
+            content: '●';
+            position: absolute;
+            right: 8px;
+            color: #ff9800;
         }
 
         .folder-children {
@@ -97,7 +212,173 @@
             display: none;
         }
 
+        .repo-explorer {
+            padding: 12px;
+        }
+
+        .repo-section {
+            margin-bottom: 16px;
+            border: 1px solid #3e3e3e;
+            border-radius: 4px;
+            background: #252526;
+        }
+
+        .repo-section-header {
+            padding: 8px 12px;
+            background: #2d2d30;
+            font-weight: bold;
+            font-size: 11px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .repo-section-content {
+            padding: 12px;
+        }
+
+        .repo-section-content.collapsed {
+            display: none;
+        }
+
+        .branch-list {
+            max-height: 120px;
+            overflow-y: auto;
+        }
+
+        .branch-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 4px 8px;
+            margin: 2px 0;
+            border-radius: 2px;
+            font-size: 11px;
+            cursor: pointer;
+        }
+
+        .branch-item:hover {
+            background: #2a2d2e;
+        }
+
+        .branch-item.current {
+            background: #094771;
+            color: #ffffff;
+        }
+
+        .commit-list {
+            max-height: 150px;
+            overflow-y: auto;
+        }
+
+        .commit-item {
+            padding: 6px 8px;
+            margin: 2px 0;
+            border-left: 3px solid #0e639c;
+            font-size: 11px;
+            background: #1e1e1e;
+            border-radius: 2px;
+            cursor: pointer;
+        }
+
+        .commit-item:hover {
+            background: #2a2d2e;
+        }
+
+        .commit-hash {
+            color: #ff9800;
+            font-family: monospace;
+        }
+
+        .docker-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 8px;
+            margin: 2px 0;
+            background: #1e1e1e;
+            border-radius: 2px;
+            font-size: 11px;
+        }
+
+        .container-status {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            margin-right: 6px;
+        }
+
+        .container-status.running {
+            background: #27ae60;
+        }
+
+        .container-status.stopped {
+            background: #e74c3c;
+        }
+
+        .database-connection {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 8px;
+            margin: 2px 0;
+            background: #1e1e1e;
+            border-radius: 2px;
+            font-size: 11px;
+            cursor: pointer;
+        }
+
+        .database-connection:hover {
+            background: #2a2d2e;
+        }
+
+        .db-status {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            margin-right: 6px;
+        }
+
+        .db-status.connected {
+            background: #27ae60;
+        }
+
+        .db-status.disconnected {
+            background: #e74c3c;
+        }
+
         .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .toolbar {
+            background: #2d2d30;
+            padding: 6px 12px;
+            border-bottom: 1px solid #3e3e3e;
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .toolbar-group {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+            border-right: 1px solid #5a5a5a;
+            padding-right: 8px;
+            margin-right: 8px;
+        }
+
+        .toolbar-group:last-child {
+            border-right: none;
+            margin-right: 0;
+        }
+
+        .content-area {
             flex: 1;
             display: flex;
             flex-direction: column;
@@ -118,18 +399,15 @@
             cursor: pointer;
             display: flex;
             align-items: center;
-            font-size: 13px;
+            font-size: 12px;
             white-space: nowrap;
             position: relative;
+            min-width: 120px;
         }
 
         .tab.active {
             background: #1e1e1e;
             color: #ffffff;
-        }
-
-        .tab:hover:not(.active) {
-            background: #383838;
         }
 
         .tab-close {
@@ -149,165 +427,725 @@
             background: #e81123;
         }
 
+        .editor-container {
+            flex: 1;
+            display: flex;
+        }
+
         .editor-area {
             flex: 1;
             position: relative;
         }
 
-        .toolbar {
-            background: #2d2d30;
-            padding: 8px 12px;
-            border-bottom: 1px solid #3e3e3e;
-            display: flex;
-            gap: 8px;
-            align-items: center;
-        }
-
-        .btn {
-            padding: 6px 12px;
-            background: #0e639c;
-            color: white;
-            border: none;
-            border-radius: 2px;
-            cursor: pointer;
-            font-size: 12px;
-            transition: background 0.2s;
-        }
-
-        .btn:hover {
-            background: #1177bb;
-        }
-
-        .btn.secondary {
-            background: #5a5a5a;
-        }
-
-        .btn.secondary:hover {
-            background: #6e6e6e;
-        }
-
-        .api-panel {
-            position: fixed;
-            top: 10px;
-            right: 10px;
+        .bottom-panel {
+            height: 200px;
             background: #252526;
-            border: 1px solid #3e3e3e;
-            border-radius: 4px;
-            padding: 16px;
-            max-width: 300px;
-            z-index: 1000;
+            border-top: 1px solid #3e3e3e;
+            display: flex;
+            flex-direction: column;
+            resize: vertical;
+            overflow: hidden;
         }
 
-        .api-panel h3 {
-            margin-bottom: 12px;
-            font-size: 14px;
-            color: #ffffff;
+        .bottom-panel.hidden {
+            height: 0;
+            min-height: 0;
         }
 
-        .api-endpoint {
-            margin-bottom: 8px;
-            padding: 8px;
+        .bottom-tabs {
+            display: flex;
+            background: #2d2d30;
+            border-bottom: 1px solid #3e3e3e;
+        }
+
+        .bottom-tab {
+            padding: 6px 12px;
+            cursor: pointer;
+            font-size: 11px;
+            border-right: 1px solid #3e3e3e;
+        }
+
+        .bottom-tab.active {
+            background: #252526;
+        }
+
+        .bottom-content {
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .terminal {
+            width: 100%;
+            height: 100%;
             background: #1e1e1e;
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+            padding: 8px;
+            overflow-y: auto;
+            font-size: 11px;
+            line-height: 1.4;
+        }
+
+        .terminal-input {
+            display: flex;
+            align-items: center;
+            margin-top: 8px;
+        }
+
+        .terminal-prompt {
+            color: #00ff00;
+            margin-right: 8px;
+        }
+
+        .terminal-command {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: #00ff00;
+            font-family: inherit;
+            font-size: inherit;
+            outline: none;
+        }
+
+        .database-browser {
+            padding: 8px;
+            height: 100%;
+            overflow-y: auto;
+        }
+
+        .db-query-editor {
+            width: 100%;
+            height: 60px;
+            background: #3c3c3c;
+            border: 1px solid #5a5a5a;
+            color: #cccccc;
+            padding: 8px;
             border-radius: 2px;
+            resize: vertical;
             font-family: 'Courier New', monospace;
             font-size: 11px;
-            border-left: 3px solid #0e639c;
+            margin-bottom: 8px;
+        }
+
+        .db-results {
+            background: #1e1e1e;
+            border: 1px solid #3e3e3e;
+            border-radius: 2px;
+            overflow: auto;
+            max-height: 200px;
+        }
+
+        .db-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11px;
+        }
+
+        .db-table th, .db-table td {
+            padding: 4px 8px;
+            text-align: left;
+            border-bottom: 1px solid #3e3e3e;
+        }
+
+        .db-table th {
+            background: #2d2d30;
+            font-weight: bold;
         }
 
         .status-bar {
             background: #007acc;
             color: white;
             padding: 4px 12px;
-            font-size: 12px;
+            font-size: 11px;
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
 
-        .diff-container {
-            height: 100%;
-            width: 100%;
+        .status-left, .status-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
         }
+
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background: #252526;
+            border: 1px solid #3e3e3e;
+            border-radius: 4px;
+            padding: 20px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            border-bottom: 1px solid #3e3e3e;
+            padding-bottom: 8px;
+        }
+
+        .modal-close {
+            cursor: pointer;
+            font-size: 18px;
+            opacity: 0.7;
+        }
+
+        .modal-close:hover {
+            opacity: 1;
+        }
+
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #27ae60;
+            color: white;
+            padding: 12px 16px;
+            border-radius: 4px;
+            z-index: 1001;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            max-width: 300px;
+            cursor: pointer;
+        }
+
+        .notification.error {
+            background: #e74c3c;
+        }
+
+        .notification.warning {
+            background: #f39c12;
+        }
+
+        .notification.info {
+            background: #3498db;
+        }
+
+        .hidden { display: none !important; }
 
         #monaco-editor, #monaco-diff {
             height: 100%;
             width: 100%;
         }
 
-        .context-menu {
-            position: fixed;
-            background: #383838;
-            border: 1px solid #5a5a5a;
-            border-radius: 3px;
-            padding: 4px 0;
-            z-index: 1001;
-            font-size: 13px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
-        }
-
-        .context-menu-item {
-            padding: 6px 16px;
-            cursor: pointer;
-        }
-
-        .context-menu-item:hover {
+        .workspace-indicator {
+            position: absolute;
+            top: 8px;
+            right: 8px;
             background: #094771;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 2px;
+            font-size: 10px;
         }
-
-        .hidden { display: none !important; }
     </style>
 </head>
 <body>
-    <div class="editor-container">
-        <div class="sidebar">
-            <div class="sidebar-header">Explorer</div>
-            <div class="file-tree" id="fileTree">
-                <!-- File tree will be populated by JavaScript -->
+    <div class="ide-container">
+        <!-- Repository Sidebar -->
+        <div class="repo-sidebar">
+            <div class="sidebar-header">
+                <span>REPOSITORY</span>
+                <button class="btn small" onclick="openGitHubModal()">🔗</button>
+            </div>
+
+            <div class="sidebar-content">
+                <div class="repo-explorer">
+                    <!-- Git Section -->
+                    <div class="repo-section">
+                        <div class="repo-section-header" onclick="toggleRepoSection('git')">
+                            <span>🌿 Git Repository</span>
+                            <span id="gitToggle">▼</span>
+                        </div>
+                        <div class="repo-section-content" id="gitSection">
+                            <div class="input-group">
+                                <label>Current Branch</label>
+                                <select id="branchSelector" style="font-size: 11px;">
+                                    <option value="main">main</option>
+                                    <option value="develop">develop</option>
+                                    <option value="feature/auth">feature/auth</option>
+                                </select>
+                            </div>
+
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 8px;">
+                                <button class="btn small" onclick="gitPull()">Pull</button>
+                                <button class="btn small" onclick="gitFetch()">Fetch</button>
+                                <button class="btn small secondary" onclick="gitStash()">Stash</button>
+                                <button class="btn small secondary" onclick="createBranch()">Branch</button>
+                            </div>
+
+                            <div class="input-group">
+                                <textarea class="db-query-editor" id="commitMessage" placeholder="Commit message..." style="height: 40px; font-size: 11px;"></textarea>
+                            </div>
+
+                            <button class="btn success small" onclick="quickCommitPush()">💫 Commit & Push</button>
+
+                            <div style="margin-top: 12px;">
+                                <div style="font-size: 10px; color: #9d9d9d; margin-bottom: 4px;">BRANCHES</div>
+                                <div class="branch-list" id="branchList">
+                                    <div class="branch-item current">
+                                        <span>🌿 main</span>
+                                        <span>*</span>
+                                    </div>
+                                    <div class="branch-item">
+                                        <span>🌿 develop</span>
+                                        <span></span>
+                                    </div>
+                                    <div class="branch-item">
+                                        <span>🌿 feature/auth</span>
+                                        <span></span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div style="margin-top: 12px;">
+                                <div style="font-size: 10px; color: #9d9d9d; margin-bottom: 4px;">RECENT COMMITS</div>
+                                <div class="commit-list" id="commitList">
+                                    <div class="commit-item">
+                                        <div><span class="commit-hash">a1b2c3d</span> Add authentication</div>
+                                        <div style="font-size: 10px; color: #9d9d9d;">2 hours ago - John Doe</div>
+                                    </div>
+                                    <div class="commit-item">
+                                        <div><span class="commit-hash">e4f5g6h</span> Fix navbar styling</div>
+                                        <div style="font-size: 10px; color: #9d9d9d;">1 day ago - Jane Smith</div>
+                                    </div>
+                                    <div class="commit-item">
+                                        <div><span class="commit-hash">i7j8k9l</span> Initial commit</div>
+                                        <div style="font-size: 10px; color: #9d9d9d;">3 days ago - John Doe</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Docker Section -->
+                    <div class="repo-section">
+                        <div class="repo-section-header" onclick="toggleRepoSection('docker')">
+                            <span>🐳 Docker</span>
+                            <span id="dockerToggle">▼</span>
+                        </div>
+                        <div class="repo-section-content" id="dockerSection">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 8px;">
+                                <button class="btn small" onclick="dockerBuild()">Build</button>
+                                <button class="btn small success" onclick="dockerRun()">Run</button>
+                                <button class="btn small secondary" onclick="dockerPs()">List</button>
+                                <button class="btn small danger" onclick="dockerStop()">Stop All</button>
+                            </div>
+
+                            <div style="margin-top: 8px;">
+                                <div style="font-size: 10px; color: #9d9d9d; margin-bottom: 4px;">CONTAINERS</div>
+                                <div id="dockerContainers">
+                                    <div class="docker-container">
+                                        <div style="display: flex; align-items: center;">
+                                            <div class="container-status running"></div>
+                                            <span>frontend</span>
+                                        </div>
+                                        <span style="color: #27ae60;">Running</span>
+                                    </div>
+                                    <div class="docker-container">
+                                        <div style="display: flex; align-items: center;">
+                                            <div class="container-status running"></div>
+                                            <span>backend</span>
+                                        </div>
+                                        <span style="color: #27ae60;">Running</span>
+                                    </div>
+                                    <div class="docker-container">
+                                        <div style="display: flex; align-items: center;">
+                                            <div class="container-status stopped"></div>
+                                            <span>postgres</span>
+                                        </div>
+                                        <span style="color: #e74c3c;">Stopped</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Database Section -->
+                    <div class="repo-section">
+                        <div class="repo-section-header" onclick="toggleRepoSection('database')">
+                            <span>🗄️ Database</span>
+                            <span id="databaseToggle">▼</span>
+                        </div>
+                        <div class="repo-section-content" id="databaseSection">
+                            <button class="btn small" onclick="addDatabaseConnection()">➕ Add Connection</button>
+                            
+                            <div style="margin-top: 8px;">
+                                <div style="font-size: 10px; color: #9d9d9d; margin-bottom: 4px;">CONNECTIONS</div>
+                                <div id="databaseConnections">
+                                    <div class="database-connection" onclick="connectDatabase('postgres_dev')">
+                                        <div style="display: flex; align-items: center;">
+                                            <div class="db-status connected"></div>
+                                            <span>PostgreSQL Dev</span>
+                                        </div>
+                                        <span style="color: #27ae60;">●</span>
+                                    </div>
+                                    <div class="database-connection" onclick="connectDatabase('mysql_prod')">
+                                        <div style="display: flex; align-items: center;">
+                                            <div class="db-status disconnected"></div>
+                                            <span>MySQL Prod</span>
+                                        </div>
+                                        <span style="color: #e74c3c;">●</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
+        <!-- File Explorer Sidebar -->
+        <div class="left-sidebar">
+            <div class="sidebar-header">
+                <span>FILE EXPLORER</span>
+                <div style="display: flex; gap: 4px;">
+                    <button class="btn small secondary" onclick="refreshFileTree()">↻</button>
+                    <button class="btn small" onclick="newFile()">📄</button>
+                </div>
+            </div>
+
+            <div class="sidebar-tabs">
+                <div class="sidebar-tab active" data-panel="explorer">📁</div>
+                <div class="sidebar-tab" data-panel="search">🔍</div>
+                <div class="sidebar-tab" data-panel="ssh">🔗</div>
+            </div>
+
+            <div class="sidebar-content">
+                <!-- File Explorer -->
+                <div id="explorer-panel" class="sidebar-panel">
+                    <div class="workspace-indicator" id="workspaceIndicator">Local</div>
+                    <div class="file-tree" id="fileTree">
+                        <div style="padding: 20px; text-align: center; color: #9d9d9d;">
+                            Loading files...
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Search Panel -->
+                <div id="search-panel" class="sidebar-panel hidden">
+                    <div style="padding: 12px;">
+                        <input type="text" style="width: 100%; padding: 6px; background: #3c3c3c; border: 1px solid #5a5a5a; color: #cccccc; border-radius: 2px; font-size: 12px;" placeholder="Search in files..." id="searchInput">
+                        <div style="margin-top: 8px; max-height: 300px; overflow-y: auto;" id="searchResults"></div>
+                    </div>
+                </div>
+
+                <!-- SSH Connection Panel -->
+                <div id="ssh-panel" class="sidebar-panel hidden">
+                    <div class="connection-panel">
+                        <div class="connection-status">
+                            <div class="status-indicator" id="connectionStatus"></div>
+                            <span id="connectionText">Disconnected</span>
+                        </div>
+
+                        <div class="input-group">
+                            <label>Host</label>
+                            <input type="text" id="sshHost" placeholder="192.168.1.100" value="dev-server.local">
+                        </div>
+
+                        <div class="input-group">
+                            <label>Port</label>
+                            <input type="number" id="sshPort" value="22">
+                        </div>
+
+                        <div class="input-group">
+                            <label>Username</label>
+                            <input type="text" id="sshUsername" placeholder="user" value="developer">
+                        </div>
+
+                        <div class="input-group">
+                            <label>Authentication</label>
+                            <select id="authMethod">
+                                <option value="key">SSH Key</option>
+                                <option value="password">Password</option>
+                            </select>
+                        </div>
+
+                        <div class="input-group hidden" id="passwordGroup">
+                            <label>Password</label>
+                            <input type="password" id="sshPassword">
+                        </div>
+
+                        <div class="input-group">
+                            <label>Remote Path</label>
+                            <input type="text" id="remotePath" placeholder="/home/user/projects" value="/var/www/html">
+                        </div>
+
+                        <button class="btn" onclick="connectSSH()" id="connectBtn">🔗 Connect SSH</button>
+                        <button class="btn danger hidden" onclick="disconnectSSH()" id="disconnectBtn">Disconnect</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content Area -->
         <div class="main-content">
+            <!-- Toolbar -->
             <div class="toolbar">
-                <button class="btn" onclick="saveCurrentFile()">Save</button>
-                <button class="btn secondary" onclick="saveAllFiles()">Save All</button>
-                <button class="btn secondary" onclick="showDiff()">Show Diff</button>
-                <button class="btn secondary" onclick="formatDocument()">Format</button>
-                <button class="btn secondary" onclick="newFile()">New File</button>
-            </div>
-            
-            <div class="tabs-container" id="tabsContainer">
-                <!-- Tabs will be populated by JavaScript -->
+                <div class="toolbar-group">
+                    <button class="btn small" onclick="saveCurrentFile()">💾</button>
+                    <button class="btn small secondary" onclick="saveAllFiles()">💾*</button>
+                    <button class="btn small secondary" onclick="formatDocument()">🎨</button>
+                </div>
+
+                <div class="toolbar-group">
+                    <button class="btn small secondary" onclick="newFile()">📄</button>
+                    <button class="btn small secondary" onclick="newFolder()">📁</button>
+                    <button class="btn small secondary" onclick="uploadFile()">⬆</button>
+                </div>
+
+                <div class="toolbar-group">
+                    <button class="btn small secondary" onclick="showDiff()">📋</button>
+                    <button class="btn small secondary" onclick="toggleMinimap()">🗺</button>
+                    <button class="btn small secondary" onclick="toggleTerminal()">💻</button>
+                </div>
+
+                <div class="toolbar-group">
+                    <button class="btn small" onclick="runProject()">▶</button>
+                    <button class="btn small secondary" onclick="buildProject()">🔨</button>
+                    <button class="btn small secondary" onclick="deployProject()">🚀</button>
+                </div>
             </div>
 
-            <div class="editor-area">
-                <div id="monaco-editor"></div>
-                <div id="monaco-diff" class="hidden"></div>
+            <div class="content-area">
+                <!-- Tabs -->
+                <div class="tabs-container" id="tabsContainer">
+                    <!-- Tabs will be populated by JavaScript -->
+                </div>
+
+                <!-- Editor Area -->
+                <div class="editor-container">
+                    <div class="editor-area">
+                        <div id="monaco-editor"></div>
+                        <div id="monaco-diff" class="hidden"></div>
+                    </div>
+                </div>
+
+                <!-- Bottom Panel -->
+                <div class="bottom-panel" id="bottomPanel">
+                    <div class="bottom-tabs">
+                        <div class="bottom-tab active" data-panel="terminal">Terminal</div>
+                        <div class="bottom-tab" data-panel="problems">Problems (0)</div>
+                        <div class="bottom-tab" data-panel="output">Output</div>
+                        <div class="bottom-tab" data-panel="database">Database</div>
+                        <div class="bottom-tab" data-panel="docker">Docker Logs</div>
+                    </div>
+
+                    <div class="bottom-content">
+                        <div id="terminal-panel" class="bottom-content-panel">
+                            <div class="terminal" id="terminal">
+                                <div>🚀 Advanced Web IDE Pro - Terminal</div>
+                                <div>Connected to: <span id="terminalHost">localhost</span></div>
+                                <div>Type 'help' for available commands</div>
+                                <div class="terminal-input">
+                                    <span class="terminal-prompt">$</span>
+                                    <input type="text" class="terminal-command" id="terminalInput" placeholder="Enter command...">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="problems-panel" class="bottom-content-panel hidden">
+                            <div style="padding: 8px; height: 100%; overflow-y: auto;" id="problemsList">
+                                <div style="padding: 16px; text-align: center; color: #9d9d9d; font-size: 12px;">No problems found</div>
+                            </div>
+                        </div>
+
+                        <div id="output-panel" class="bottom-content-panel hidden">
+                            <div class="terminal" id="outputContent">
+                                <div>Build Output Console</div>
+                            </div>
+                        </div>
+
+                        <div id="database-panel" class="bottom-content-panel hidden">
+                            <div class="database-browser">
+                                <div style="margin-bottom: 8px;">
+                                    <select id="dbConnectionSelect" style="width: 150px; margin-right: 8px;">
+                                        <option value="postgres_dev">PostgreSQL Dev</option>
+                                        <option value="mysql_prod">MySQL Prod</option>
+                                    </select>
+                                    <button class="btn small" onclick="executeQuery()">▶ Execute</button>
+                                    <button class="btn small secondary" onclick="clearQuery()">Clear</button>
+                                </div>
+                                <textarea class="db-query-editor" id="sqlQuery" placeholder="SELECT * FROM users LIMIT 10;">SELECT * FROM users WHERE created_at > '2024-01-01' ORDER BY id DESC LIMIT 50;</textarea>
+                                <div class="db-results" id="queryResults">
+                                    <table class="db-table">
+                                        <thead>
+                                            <tr>
+                                                <th>ID</th>
+                                                <th>Name</th>
+                                                <th>Email</th>
+                                                <th>Created</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td>1</td>
+                                                <td>John Doe</td>
+                                                <td>john@example.com</td>
+                                                <td>2024-01-15</td>
+                                            </tr>
+                                            <tr>
+                                                <td>2</td>
+                                                <td>Jane Smith</td>
+                                                <td>jane@example.com</td>
+                                                <td>2024-01-14</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="docker-panel" class="bottom-content-panel hidden">
+                            <div class="terminal" id="dockerLogs">
+                                <div>🐳 Docker Container Logs</div>
+                                <div>[frontend] Starting development server...</div>
+                                <div>[frontend] Server running on http://localhost:3000</div>
+                                <div>[backend] API server started on port 3001</div>
+                                <div>[postgres] Database ready for connections</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
+            <!-- Status Bar -->
             <div class="status-bar">
-                <span id="statusLeft">Ready</span>
-                <span id="statusRight">Line 1, Column 1</span>
+                <div class="status-left">
+                    <span id="statusMessage">Ready</span>
+                    <span id="connectionInfo">🔗 Local</span>
+                    <span id="gitInfo">🌿 main</span>
+                    <span id="dockerInfo">🐳 3 containers</span>
+                </div>
+                <div class="status-right">
+                    <span id="cursorPosition">Line 1, Column 1</span>
+                    <span id="languageMode">Markdown</span>
+                    <span id="encodingInfo">UTF-8</span>
+                </div>
             </div>
         </div>
     </div>
 
-    <div class="api-panel">
-        <h3>API Endpoints</h3>
-        <div class="api-endpoint">POST /api/files/content<br>Send content to editor</div>
-        <div class="api-endpoint">GET /api/files/{path}<br>Get file content</div>
-        <div class="api-endpoint">PUT /api/files/{path}<br>Save file content</div>
-        <div class="api-endpoint">DELETE /api/files/{path}<br>Delete file</div>
-        <div class="api-endpoint">GET /api/files/tree<br>Get file tree</div>
+    <!-- Modals -->
+    <div id="githubModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>🐙 GitHub Integration</h3>
+                <span class="modal-close" onclick="closeGitHubModal()">×</span>
+            </div>
+            
+            <div class="input-group">
+                <label>GitHub Token</label>
+                <input type="password" id="githubToken" placeholder="ghp_...">
+            </div>
+
+            <div class="input-group">
+                <label>Repository URL</label>
+                <input type="text" id="repoUrl" placeholder="https://github.com/user/repo.git">
+            </div>
+
+            <div class="input-group">
+                <label>Action</label>
+                <select id="gitAction">
+                    <option value="clone">Clone Repository</option>
+                    <option value="init">Initialize & Connect</option>
+                    <option value="connect">Connect Existing</option>
+                </select>
+            </div>
+
+            <div style="display: flex; gap: 8px; margin-top: 16px;">
+                <button class="btn" onclick="executeGitHubAction()">Execute</button>
+                <button class="btn secondary" onclick="closeGitHubModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="databaseModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>🗄️ Add Database Connection</h3>
+                <span class="modal-close" onclick="closeDatabaseModal()">×</span>
+            </div>
+            
+            <div class="input-group">
+                <label>Database Type</label>
+                <select id="dbType">
+                    <option value="postgresql">PostgreSQL</option>
+                    <option value="mysql">MySQL</option>
+                    <option value="mongodb">MongoDB</option>
+                    <option value="redis">Redis</option>
+                    <option value="sqlite">SQLite</option>
+                </select>
+            </div>
+
+            <div class="input-group">
+                <label>Connection Name</label>
+                <input type="text" id="dbName" placeholder="My Database">
+            </div>
+
+            <div class="input-group">
+                <label>Host</label>
+                <input type="text" id="dbHost" placeholder="localhost">
+            </div>
+
+            <div class="input-group">
+                <label>Port</label>
+                <input type="number" id="dbPort" placeholder="5432">
+            </div>
+
+            <div class="input-group">
+                <label>Database</label>
+                <input type="text" id="dbDatabase" placeholder="myapp">
+            </div>
+
+            <div class="input-group">
+                <label>Username</label>
+                <input type="text" id="dbUsername" placeholder="user">
+            </div>
+
+            <div class="input-group">
+                <label>Password</label>
+                <input type="password" id="dbPassword" placeholder="password">
+            </div>
+
+            <div style="display: flex; gap: 8px; margin-top: 16px;">
+                <button class="btn" onclick="testDatabaseConnection()">Test Connection</button>
+                <button class="btn success" onclick="saveDatabaseConnection()">Save</button>
+                <button class="btn secondary" onclick="closeDatabaseModal()">Cancel</button>
+            </div>
+        </div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
     <script>
         require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' } });
 
+        // Global State
         let editor = null;
         let diffEditor = null;
         let openFiles = new Map();
         let activeFile = null;
+        let isConnected = false;
+        let currentWorkspace = 'local';
+        let gitRepository = { branch: 'main', url: 'https://github.com/user/repo.git' };
+
+        // Sample file tree
         let fileTree = {
             'src': {
                 type: 'folder',
@@ -315,148 +1153,441 @@
                     'components': {
                         type: 'folder',
                         children: {
-                            'App.js': { type: 'file', content: '// React App Component\nimport React from \'react\';\n\nfunction App() {\n  return (\n    <div className=\"App\">\n      <h1>Hello World</h1>\n    </div>\n  );\n}\n\nexport default App;' },
-                            'Header.js': { type: 'file', content: '// Header Component\nimport React from \'react\';\n\nconst Header = () => {\n  return (\n    <header>\n      <h1>My App</h1>\n    </header>\n  );\n};\n\nexport default Header;' }
+                            'App.tsx': { type: 'file', content: 'import React from \'react\';\n\nfunction App() {\n  return (\n    <div className="App">\n      <h1>Advanced Web IDE Pro</h1>\n      <p>A comprehensive development environment</p>\n    </div>\n  );\n}\n\nexport default App;' },
+                            'Header.tsx': { type: 'file', content: 'import React from \'react\';\n\nconst Header: React.FC = () => {\n  return (\n    <header className="header">\n      <h1>My Application</h1>\n      <nav>\n        <a href="/">Home</a>\n        <a href="/about">About</a>\n      </nav>\n    </header>\n  );\n};\n\nexport default Header;' }
                         }
                     },
                     'utils': {
                         type: 'folder',
                         children: {
-                            'helpers.js': { type: 'file', content: '// Utility functions\nexport const formatDate = (date) => {\n  return new Intl.DateTimeFormat(\'en-US\').format(date);\n};\n\nexport const debounce = (func, wait) => {\n  let timeout;\n  return function executedFunction(...args) {\n    const later = () => {\n      clearTimeout(timeout);\n      func(...args);\n    };\n    clearTimeout(timeout);\n    timeout = setTimeout(later, wait);\n  };\n};' }
+                            'helpers.ts': { type: 'file', content: 'export const formatDate = (date: Date): string => {\n  return new Intl.DateTimeFormat(\'en-US\').format(date);\n};\n\nexport const debounce = <T extends (...args: any[]) => any>(\n  func: T,\n  wait: number\n): ((...args: Parameters<T>) => void) => {\n  let timeout: NodeJS.Timeout;\n  return (...args: Parameters<T>) => {\n    clearTimeout(timeout);\n    timeout = setTimeout(() => func(...args), wait);\n  };\n};' }
                         }
                     },
-                    'index.js': { type: 'file', content: '// Entry point\nimport React from \'react\';\nimport ReactDOM from \'react-dom\';\nimport App from \'./components/App\';\nimport \'./styles.css\';\n\nReactDOM.render(<App />, document.getElementById(\'root\'));' },
-                    'styles.css': { type: 'file', content: '/* Global styles */\nbody {\n  margin: 0;\n  font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', \'Roboto\', sans-serif;\n  background-color: #f5f5f5;\n}\n\n.App {\n  text-align: center;\n  padding: 20px;\n}\n\nh1 {\n  color: #333;\n  margin-bottom: 20px;\n}' }
+                    'index.tsx': { type: 'file', content: 'import React from \'react\';\nimport ReactDOM from \'react-dom/client\';\nimport App from \'./components/App\';\nimport \'./styles.css\';\n\nconst root = ReactDOM.createRoot(\n  document.getElementById(\'root\') as HTMLElement\n);\n\nroot.render(\n  <React.StrictMode>\n    <App />\n  </React.StrictMode>\n);' },
+                    'styles.css': { type: 'file', content: '/* Global styles */\nbody {\n  margin: 0;\n  font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', \'Roboto\', sans-serif;\n  background-color: #f5f5f5;\n}\n\n.App {\n  text-align: center;\n  padding: 40px 20px;\n}\n\nh1 {\n  color: #333;\n  margin-bottom: 20px;\n}' }
                 }
             },
-            'package.json': { type: 'file', content: '{\n  "name": "web-code-editor-demo",\n  "version": "1.0.0",\n  "description": "Demo project for web code editor",\n  "main": "src/index.js",\n  "dependencies": {\n    "react": "^18.0.0",\n    "react-dom": "^18.0.0"\n  },\n  "scripts": {\n    "start": "react-scripts start",\n    "build": "react-scripts build",\n    "test": "react-scripts test"\n  }\n}' },
-            'README.md': { type: 'file', content: '# Web Code Editor Demo\n\nThis is a demonstration of a web-based code editor with the following features:\n\n## Features\n\n- File tree navigation\n- Multiple file tabs\n- Monaco Editor with IntelliSense\n- API integration for file operations\n- Diff view capabilities\n- Save functionality\n- Syntax highlighting\n- Auto-completion\n\n## API Endpoints\n\nThe editor supports various API operations for remote file management and content manipulation.\n\n## Usage\n\n1. Navigate files using the tree on the left\n2. Open multiple files in tabs\n3. Edit with full IDE features\n4. Save individual files or all at once\n5. View diffs between files\n\nEnjoy coding!' }
+            'package.json': { type: 'file', content: '{\n  "name": "advanced-web-ide-demo",\n  "version": "1.0.0",\n  "description": "Demo project for Advanced Web IDE Pro",\n  "main": "src/index.tsx",\n  "dependencies": {\n    "react": "^18.2.0",\n    "react-dom": "^18.2.0",\n    "typescript": "^4.9.0"\n  },\n  "scripts": {\n    "start": "react-scripts start",\n    "build": "react-scripts build",\n    "test": "react-scripts test"\n  }\n}' },
+            'README.md': { type: 'file', content: '# Advanced Web IDE Pro\n\nA comprehensive, cloud-based integrated development environment with advanced features for modern web development.\n\n## Features\n\n- **Multi-file Editor**: Monaco Editor with IntelliSense\n- **SSH Connectivity**: Connect to remote servers\n- **Git Integration**: Complete version control\n- **Docker Support**: Container management\n- **Database Browser**: Multi-database support\n- **Built-in Terminal**: Execute commands\n\n## Quick Start\n\n1. Connect to a remote server via SSH\n2. Clone a repository from GitHub\n3. Start editing files with full IDE features\n4. Build and deploy your application\n\n## Keyboard Shortcuts\n\n- `Ctrl+S` - Save file\n- `Ctrl+N` - New file\n- `Ctrl+`` - Toggle terminal\n- `Ctrl+Shift+F` - Global search\n\nEnjoy coding! 🚀' }
         };
 
         require(['vs/editor/editor.main'], function () {
-            // Initialize Monaco Editor
+            initializeEditor();
+            initializePanels();
+            setTimeout(() => {
+                renderFileTree();
+                openFile('README.md');
+                updateGitStatus();
+            }, 500);
+        });
+
+        function initializeEditor() {
             editor = monaco.editor.create(document.getElementById('monaco-editor'), {
                 value: '',
-                language: 'javascript',
+                language: 'markdown',
                 theme: 'vs-dark',
                 automaticLayout: true,
                 minimap: { enabled: true },
                 scrollBeyondLastLine: false,
                 fontSize: 14,
                 lineNumbers: 'on',
-                roundedSelection: false,
-                scrollbar: {
-                    alwaysConsumeMouseWheel: false
-                },
+                wordWrap: 'on',
                 cursorBlinking: 'blink',
-                cursorSmoothCaretAnimation: true,
-                contextmenu: true,
                 quickSuggestions: true,
-                suggestOnTriggerCharacters: true
+                suggestOnTriggerCharacters: true,
+                formatOnPaste: true,
+                formatOnType: true
             });
 
-            // Initialize Diff Editor
             diffEditor = monaco.editor.createDiffEditor(document.getElementById('monaco-diff'), {
                 theme: 'vs-dark',
                 automaticLayout: true,
-                readOnly: true
+                readOnly: false
             });
 
-            // Update status bar on cursor position change
             editor.onDidChangeCursorPosition((e) => {
-                document.getElementById('statusRight').textContent = 
+                document.getElementById('cursorPosition').textContent = 
                     `Line ${e.position.lineNumber}, Column ${e.position.column}`;
             });
 
-            // Track content changes
             editor.onDidChangeModelContent(() => {
                 if (activeFile) {
                     markFileAsModified(activeFile);
-                    updateStatus('Modified');
+                }
+            });
+        }
+
+        function initializePanels() {
+            // Initialize sidebar tabs
+            document.querySelectorAll('.sidebar-tab').forEach(tab => {
+                tab.addEventListener('click', () => switchSidebarPanel(tab.dataset.panel));
+            });
+
+            // Initialize bottom panel tabs
+            document.querySelectorAll('.bottom-tab').forEach(tab => {
+                tab.addEventListener('click', () => switchBottomPanel(tab.dataset.panel));
+            });
+
+            // Terminal input handler
+            document.getElementById('terminalInput').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    executeTerminalCommand(e.target.value);
+                    e.target.value = '';
                 }
             });
 
-            // Initialize file tree and open a default file
-            renderFileTree();
-            openFile('README.md');
-        });
+            // Search input handler
+            document.getElementById('searchInput').addEventListener('input', (e) => {
+                searchInFiles(e.target.value);
+            });
 
-        // API Simulation Functions
-        const API = {
-            async sendContent(filePath, content) {
-                console.log(`API: Sending content to ${filePath}`, content);
-                // Simulate API call
+            // Auth method change
+            document.getElementById('authMethod').addEventListener('change', (e) => {
+                const passwordGroup = document.getElementById('passwordGroup');
+                passwordGroup.style.display = e.target.value === 'password' ? 'block' : 'none';
+            });
+        }
+
+        // API Functions
+        const AdvancedAPI = {
+            async connectSSH(config) {
+                showNotification('🔗 Connecting to SSH...', 'info');
+                
                 return new Promise(resolve => {
                     setTimeout(() => {
-                        updateStatus(`Content sent to ${filePath}`);
+                        isConnected = true;
+                        currentWorkspace = 'remote';
+                        
+                        updateConnectionStatus(true, config.host);
+                        updateWorkspaceIndicator('Remote: ' + config.host);
+                        
+                        // Load remote file tree
+                        loadRemoteFileTree();
+                        
+                        document.getElementById('terminalHost').textContent = config.host;
+                        addToTerminal(`Connected to ${config.host}`);
+                        
+                        showNotification(`✅ Connected to ${config.host}`, 'success');
+                        resolve({ success: true, host: config.host });
+                    }, 2000);
+                });
+            },
+
+            async disconnectSSH() {
+                return new Promise(resolve => {
+                    setTimeout(() => {
+                        isConnected = false;
+                        currentWorkspace = 'local';
+                        
+                        updateConnectionStatus(false);
+                        updateWorkspaceIndicator('Local');
+                        
+                        // Restore local file tree
+                        renderFileTree();
+                        
+                        document.getElementById('terminalHost').textContent = 'localhost';
+                        addToTerminal('Disconnected from remote server');
+                        
+                        showNotification('🔌 Disconnected from SSH', 'info');
                         resolve({ success: true });
-                    }, 300);
+                    }, 500);
                 });
             },
 
-            async getFile(filePath) {
-                console.log(`API: Getting file ${filePath}`);
-                const file = getFileFromPath(filePath);
+            async executeGitCommand(command) {
                 return new Promise(resolve => {
                     setTimeout(() => {
-                        resolve({ content: file ? file.content : '' });
-                    }, 200);
+                        addToTerminal(`$ ${command}`);
+                        const output = simulateGitOutput(command);
+                        addToTerminal(output);
+                        resolve({ output, success: true });
+                    }, 1000);
                 });
             },
 
-            async saveFile(filePath, content) {
-                console.log(`API: Saving file ${filePath}`, content);
+            async executeRemoteCommand(command) {
                 return new Promise(resolve => {
                     setTimeout(() => {
-                        const file = getFileFromPath(filePath);
-                        if (file) {
-                            file.content = content;
-                        }
-                        updateStatus(`Saved ${filePath}`);
-                        resolve({ success: true });
-                    }, 400);
-                });
-            },
-
-            async deleteFile(filePath) {
-                console.log(`API: Deleting file ${filePath}`);
-                return new Promise(resolve => {
-                    setTimeout(() => {
-                        // Implementation would delete from tree
-                        updateStatus(`Deleted ${filePath}`);
-                        resolve({ success: true });
-                    }, 300);
-                });
-            },
-
-            async getFileTree() {
-                console.log('API: Getting file tree');
-                return new Promise(resolve => {
-                    setTimeout(() => {
-                        resolve(fileTree);
-                    }, 200);
+                        const output = simulateCommandOutput(command);
+                        resolve({ output, exitCode: 0 });
+                    }, 500);
                 });
             }
         };
 
-        function getFileFromPath(path) {
-            const parts = path.split('/').filter(p => p);
-            let current = fileTree;
-            
-            for (const part of parts) {
-                if (current[part]) {
-                    if (current[part].type === 'folder') {
-                        current = current[part].children;
-                    } else {
-                        return current[part];
-                    }
-                } else {
-                    return null;
-                }
-            }
-            return current;
+        // UI Functions
+        function switchSidebarPanel(panelName) {
+            document.querySelectorAll('.sidebar-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.sidebar-panel').forEach(panel => {
+                panel.classList.add('hidden');
+            });
+
+            document.querySelector(`[data-panel="${panelName}"]`).classList.add('active');
+            document.getElementById(`${panelName}-panel`).classList.remove('hidden');
         }
 
+        function switchBottomPanel(panelName) {
+            document.querySelectorAll('.bottom-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.bottom-content-panel').forEach(panel => {
+                panel.classList.add('hidden');
+            });
+
+            document.querySelector(`[data-panel="${panelName}"]`).classList.add('active');
+            document.getElementById(`${panelName}-panel`).classList.remove('hidden');
+        }
+
+        function updateWorkspaceIndicator(text) {
+            document.getElementById('workspaceIndicator').textContent = text;
+        }
+
+        function loadRemoteFileTree() {
+            // Simulate remote file structure
+            fileTree = {
+                'var': {
+                    type: 'folder',
+                    children: {
+                        'www': {
+                            type: 'folder',
+                            children: {
+                                'html': {
+                                    type: 'folder',
+                                    children: {
+                                        'index.php': { type: 'file', content: '<?php\necho "Hello from remote server!";\nphpinfo();\n?>' },
+                                        'config.php': { type: 'file', content: '<?php\ndefine(\'DB_HOST\', \'localhost\');\ndefine(\'DB_NAME\', \'production_db\');\n?>' }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                'home': {
+                    type: 'folder',
+                    children: {
+                        'developer': {
+                            type: 'folder',
+                            children: {
+                                'projects': {
+                                    type: 'folder',
+                                    children: {
+                                        'my-app': {
+                                            type: 'folder',
+                                            children: {
+                                                'app.js': { type: 'file', content: 'const express = require(\'express\');\nconst app = express();\n\napp.get(\'/\', (req, res) => {\n  res.send(\'Hello from remote server!\');\n});\n\napp.listen(3000);' }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+            renderFileTree();
+            showNotification('📂 Remote files loaded', 'success');
+        }
+
+        // SSH Functions
+        async function connectSSH() {
+            const config = {
+                host: document.getElementById('sshHost').value,
+                port: document.getElementById('sshPort').value,
+                username: document.getElementById('sshUsername').value,
+                authMethod: document.getElementById('authMethod').value,
+                password: document.getElementById('sshPassword').value,
+                remotePath: document.getElementById('remotePath').value
+            };
+
+            if (!config.host || !config.username) {
+                showNotification('❌ Please fill in required fields', 'error');
+                return;
+            }
+
+            try {
+                await AdvancedAPI.connectSSH(config);
+                document.getElementById('connectBtn').classList.add('hidden');
+                document.getElementById('disconnectBtn').classList.remove('hidden');
+            } catch (error) {
+                showNotification('❌ Connection failed: ' + error.message, 'error');
+            }
+        }
+
+        async function disconnectSSH() {
+            await AdvancedAPI.disconnectSSH();
+            document.getElementById('connectBtn').classList.remove('hidden');
+            document.getElementById('disconnectBtn').classList.add('hidden');
+        }
+
+        function updateConnectionStatus(connected, host = '') {
+            const indicator = document.getElementById('connectionStatus');
+            const text = document.getElementById('connectionText');
+            const info = document.getElementById('connectionInfo');
+
+            if (connected) {
+                indicator.classList.add('connected');
+                text.textContent = `Connected to ${host}`;
+                info.textContent = `🔗 ${host}`;
+            } else {
+                indicator.classList.remove('connected');
+                text.textContent = 'Disconnected';
+                info.textContent = '🔗 Local';
+            }
+        }
+
+        function refreshFileTree() {
+            renderFileTree();
+            showNotification('📂 File tree refreshed', 'info');
+        }
+
+        // Repository Functions
+        function toggleRepoSection(sectionName) {
+            const content = document.getElementById(`${sectionName}Section`);
+            const toggle = document.getElementById(`${sectionName}Toggle`);
+            
+            content.classList.toggle('collapsed');
+            toggle.textContent = content.classList.contains('collapsed') ? '▶' : '▼';
+        }
+
+        // Git Functions
+        async function gitPull() {
+            await AdvancedAPI.executeGitCommand('git pull origin main');
+            updateGitStatus();
+        }
+
+        async function gitFetch() {
+            await AdvancedAPI.executeGitCommand('git fetch');
+            updateGitStatus();
+        }
+
+        async function gitStash() {
+            await AdvancedAPI.executeGitCommand('git stash');
+            updateGitStatus();
+        }
+
+        async function createBranch() {
+            const branchName = prompt('Enter new branch name:');
+            if (branchName) {
+                await AdvancedAPI.executeGitCommand(`git checkout -b ${branchName}`);
+                updateGitStatus();
+            }
+        }
+
+        async function quickCommitPush() {
+            const message = document.getElementById('commitMessage').value;
+            if (!message) {
+                showNotification('⚠️ Please enter a commit message', 'warning');
+                return;
+            }
+            
+            showNotification('💫 Executing quick commit & push...', 'info');
+            await AdvancedAPI.executeGitCommand('git add .');
+            await AdvancedAPI.executeGitCommand(`git commit -m "${message}"`);
+            await AdvancedAPI.executeGitCommand('git push origin main');
+            document.getElementById('commitMessage').value = '';
+            updateGitStatus();
+        }
+
+        function updateGitStatus() {
+            const gitInfo = document.getElementById('gitInfo');
+            gitInfo.textContent = '🌿 main';
+        }
+
+        // Docker Functions
+        async function dockerBuild() {
+            switchBottomPanel('docker');
+            document.getElementById('bottomPanel').classList.remove('hidden');
+            addToDockerLogs('🐳 Building Docker image...');
+        }
+
+        async function dockerRun() {
+            switchBottomPanel('docker');
+            document.getElementById('bottomPanel').classList.remove('hidden');
+            addToDockerLogs('🐳 Starting containers...');
+        }
+
+        async function dockerPs() {
+            addToDockerLogs('📋 Listing containers...');
+        }
+
+        async function dockerStop() {
+            addToDockerLogs('🛑 Stopping containers...');
+        }
+
+        function addToDockerLogs(text) {
+            const logs = document.getElementById('dockerLogs');
+            const div = document.createElement('div');
+            div.textContent = `[${new Date().toLocaleTimeString()}] ${text}`;
+            logs.appendChild(div);
+            logs.scrollTop = logs.scrollHeight;
+        }
+
+        // Database Functions
+        function addDatabaseConnection() {
+            document.getElementById('databaseModal').classList.remove('hidden');
+        }
+
+        function closeDatabaseModal() {
+            document.getElementById('databaseModal').classList.add('hidden');
+        }
+
+        async function testDatabaseConnection() {
+            showNotification('🔗 Testing database connection...', 'info');
+            setTimeout(() => {
+                showNotification('✅ Connection successful', 'success');
+            }, 2000);
+        }
+
+        function saveDatabaseConnection() {
+            showNotification('✅ Database connection saved', 'success');
+            closeDatabaseModal();
+        }
+
+        function connectDatabase(connectionName) {
+            showNotification(`🔗 Connecting to ${connectionName}...`, 'info');
+        }
+
+        async function executeQuery() {
+            const query = document.getElementById('sqlQuery').value;
+            if (!query.trim()) {
+                showNotification('⚠️ Please enter a SQL query', 'warning');
+                return;
+            }
+            showNotification('⚡ Executing query...', 'info');
+        }
+
+        function clearQuery() {
+            document.getElementById('sqlQuery').value = '';
+        }
+
+        // GitHub Functions
+        function openGitHubModal() {
+            document.getElementById('githubModal').classList.remove('hidden');
+        }
+
+        function closeGitHubModal() {
+            document.getElementById('githubModal').classList.add('hidden');
+        }
+
+        async function executeGitHubAction() {
+            const token = document.getElementById('githubToken').value;
+            const repoUrl = document.getElementById('repoUrl').value;
+
+            if (!token || !repoUrl) {
+                showNotification('⚠️ Please fill in all fields', 'warning');
+                return;
+            }
+
+            showNotification('🐙 Executing GitHub action...', 'info');
+            setTimeout(() => {
+                showNotification('✅ GitHub integration successful', 'success');
+                closeGitHubModal();
+            }, 2000);
+        }
+
+        // File Operations
         function renderFileTree() {
             const container = document.getElementById('fileTree');
             container.innerHTML = '';
@@ -470,7 +1601,7 @@
                 if (item.type === 'folder') {
                     const folderDiv = document.createElement('div');
                     folderDiv.className = 'folder-item expanded';
-                    folderDiv.innerHTML = `<span class="folder-icon"></span>${name}`;
+                    folderDiv.innerHTML = `<span>📁</span>${name}`;
                     
                     const childrenDiv = document.createElement('div');
                     childrenDiv.className = 'folder-children';
@@ -489,25 +1620,27 @@
                 } else {
                     const fileDiv = document.createElement('div');
                     fileDiv.className = 'file-item';
-                    fileDiv.innerHTML = `<span class="file-icon"></span>${name}`;
+                    fileDiv.innerHTML = `<span>${getFileIcon(name)}</span>${name}`;
                     fileDiv.addEventListener('click', () => openFile(fullPath));
-                    
-                    // Add context menu
-                    fileDiv.addEventListener('contextmenu', (e) => {
-                        e.preventDefault();
-                        showContextMenu(e, fullPath);
-                    });
-                    
                     container.appendChild(fileDiv);
                 }
             }
+        }
+
+        function getFileIcon(fileName) {
+            const ext = fileName.split('.').pop()?.toLowerCase();
+            const iconMap = {
+                'js': '📄', 'jsx': '⚛️', 'ts': '📘', 'tsx': '⚛️',
+                'html': '🌐', 'css': '🎨', 'json': '📋', 'md': '📝',
+                'php': '🐘', 'py': '🐍'
+            };
+            return iconMap[ext] || '📄';
         }
 
         function openFile(filePath) {
             const file = getFileFromPath(filePath);
             if (!file || file.type !== 'file') return;
 
-            // Add to open files if not already open
             if (!openFiles.has(filePath)) {
                 openFiles.set(filePath, {
                     content: file.content,
@@ -528,37 +1661,44 @@
 
             const language = getLanguageFromPath(filePath);
             
-            // Hide diff editor and show main editor
             document.getElementById('monaco-diff').classList.add('hidden');
             document.getElementById('monaco-editor').classList.remove('hidden');
 
             const model = monaco.editor.createModel(fileData.content, language);
             editor.setModel(model);
             
-            updateStatus(`Opened ${filePath}`);
+            document.getElementById('languageMode').textContent = language.toUpperCase();
+            updateStatus(`📖 Opened ${filePath}`);
         }
 
         function getLanguageFromPath(filePath) {
-            const ext = filePath.split('.').pop().toLowerCase();
+            const ext = filePath.split('.').pop()?.toLowerCase();
             const languageMap = {
-                'js': 'javascript',
-                'jsx': 'javascript',
-                'ts': 'typescript',
-                'tsx': 'typescript',
-                'html': 'html',
-                'css': 'css',
-                'scss': 'scss',
-                'json': 'json',
-                'md': 'markdown',
-                'py': 'python',
-                'java': 'java',
-                'cpp': 'cpp',
-                'c': 'c',
-                'xml': 'xml',
-                'yml': 'yaml',
-                'yaml': 'yaml'
+                'js': 'javascript', 'jsx': 'javascript',
+                'ts': 'typescript', 'tsx': 'typescript',
+                'html': 'html', 'css': 'css',
+                'json': 'json', 'md': 'markdown',
+                'php': 'php', 'py': 'python'
             };
             return languageMap[ext] || 'plaintext';
+        }
+
+        function getFileFromPath(path) {
+            const parts = path.split('/').filter(p => p);
+            let current = fileTree;
+            
+            for (const part of parts) {
+                if (current[part]) {
+                    if (current[part].type === 'folder') {
+                        current = current[part].children;
+                    } else {
+                        return current[part];
+                    }
+                } else {
+                    return null;
+                }
+            }
+            return current;
         }
 
         function updateTabs() {
@@ -573,7 +1713,7 @@
                 const modifiedIndicator = fileData.modified ? ' ●' : '';
                 
                 tab.innerHTML = `
-                    <span>${fileName}${modifiedIndicator}</span>
+                    <span>${getFileIcon(fileName)} ${fileName}${modifiedIndicator}</span>
                     <span class="tab-close">×</span>
                 `;
                 
@@ -627,42 +1767,100 @@
                 fileData.content = currentContent;
                 fileData.modified = currentContent !== fileData.originalContent;
                 updateTabs();
+                updateFileTreeSelection();
             }
         }
 
         function updateFileTreeSelection() {
             document.querySelectorAll('.file-item').forEach(item => {
-                item.classList.remove('active');
-                if (activeFile && item.textContent.trim().endsWith(activeFile.split('/').pop())) {
+                item.classList.remove('active', 'modified');
+                const fileName = item.textContent.trim().split(' ').pop();
+                
+                if (activeFile && activeFile.endsWith(fileName)) {
                     item.classList.add('active');
+                }
+                
+                for (const [filePath, fileData] of openFiles) {
+                    if (filePath.endsWith(fileName) && fileData.modified) {
+                        item.classList.add('modified');
+                    }
                 }
             });
         }
 
+        // Enhanced Functions
         async function saveCurrentFile() {
             if (!activeFile) return;
             
             const content = editor.getValue();
-            await API.saveFile(activeFile, content);
-            
             const fileData = openFiles.get(activeFile);
+            
             if (fileData) {
                 fileData.originalContent = content;
                 fileData.modified = false;
+                
+                const file = getFileFromPath(activeFile);
+                if (file) file.content = content;
+                
                 updateTabs();
+                updateFileTreeSelection();
+                updateStatus(`💾 Saved ${activeFile}`);
+                showNotification(`✅ File saved: ${activeFile.split('/').pop()}`, 'success');
             }
         }
 
         async function saveAllFiles() {
+            let savedCount = 0;
             for (const [filePath, fileData] of openFiles) {
                 if (fileData.modified) {
-                    await API.saveFile(filePath, fileData.content);
                     fileData.originalContent = fileData.content;
                     fileData.modified = false;
+                    
+                    const file = getFileFromPath(filePath);
+                    if (file) file.content = fileData.content;
+                    savedCount++;
                 }
             }
             updateTabs();
-            updateStatus('All files saved');
+            updateFileTreeSelection();
+            showNotification(`✅ Saved ${savedCount} files`, 'success');
+        }
+
+        function formatDocument() {
+            if (editor && activeFile) {
+                editor.getAction('editor.action.formatDocument').run();
+                updateStatus('🎨 Document formatted');
+            }
+        }
+
+        function newFile() {
+            const fileName = prompt('Enter file name:', 'newfile.js');
+            if (!fileName) return;
+
+            const content = `// New file: ${fileName}\n// Created: ${new Date().toISOString()}\n\n`;
+            
+            fileTree[fileName] = { type: 'file', content: content };
+            
+            openFiles.set(fileName, {
+                content: content,
+                originalContent: '',
+                modified: true
+            });
+
+            activeFile = fileName;
+            renderFileTree();
+            updateTabs();
+            loadFileInEditor(fileName);
+            updateStatus(`📄 Created ${fileName}`);
+        }
+
+        function newFolder() {
+            const folderName = prompt('Enter folder name:', 'new-folder');
+            if (!folderName) return;
+
+            fileTree[folderName] = { type: 'folder', children: {} };
+            renderFileTree();
+            updateStatus(`📁 Created folder ${folderName}`);
         }
 
         function showDiff() {
@@ -683,93 +1881,192 @@
                 modified: modifiedModel
             });
 
-            updateStatus('Showing diff view');
+            updateStatus('📋 Showing diff view');
         }
 
-        function formatDocument() {
-            if (editor && activeFile) {
-                editor.getAction('editor.action.formatDocument').run();
-                updateStatus('Document formatted');
-            }
-        }
-
-        function newFile() {
-            const fileName = prompt('Enter file name:', 'newfile.js');
-            if (!fileName) return;
-
-            const content = `// New file: ${fileName}\n\n`;
-            
-            // Add to file tree (simplified - in real app would use API)
-            fileTree[fileName] = { type: 'file', content: content };
-            
-            openFiles.set(fileName, {
-                content: content,
-                originalContent: '',
-                modified: true
+        function toggleMinimap() {
+            const minimap = editor.getOption(monaco.editor.EditorOption.minimap);
+            editor.updateOptions({
+                minimap: { enabled: !minimap.enabled }
             });
-
-            activeFile = fileName;
-            renderFileTree();
-            updateTabs();
-            loadFileInEditor(fileName);
-            updateStatus(`Created ${fileName}`);
+            updateStatus(`🗺 Minimap ${minimap.enabled ? 'disabled' : 'enabled'}`);
         }
 
-        function showContextMenu(event, filePath) {
-            const menu = document.createElement('div');
-            menu.className = 'context-menu';
-            menu.style.left = event.pageX + 'px';
-            menu.style.top = event.pageY + 'px';
+        function toggleTerminal() {
+            const panel = document.getElementById('bottomPanel');
+            panel.classList.toggle('hidden');
+        }
 
-            menu.innerHTML = `
-                <div class="context-menu-item" onclick="openFile('${filePath}')">Open</div>
-                <div class="context-menu-item" onclick="renameFile('${filePath}')">Rename</div>
-                <div class="context-menu-item" onclick="deleteFileFromTree('${filePath}')">Delete</div>
-                <div class="context-menu-item" onclick="copyFilePath('${filePath}')">Copy Path</div>
-            `;
-
-            document.body.appendChild(menu);
-
-            // Remove menu on click outside
-            setTimeout(() => {
-                document.addEventListener('click', function removeMenu() {
-                    menu.remove();
-                    document.removeEventListener('click', removeMenu);
+        function uploadFile() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.multiple = true;
+            input.onchange = (e) => {
+                Array.from(e.target.files).forEach(file => {
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        fileTree[file.name] = {
+                            type: 'file',
+                            content: event.target.result
+                        };
+                        renderFileTree();
+                        showNotification(`⬆️ Uploaded ${file.name}`, 'success');
+                    };
+                    reader.readAsText(file);
                 });
-            }, 10);
+            };
+            input.click();
         }
 
-        function renameFile(filePath) {
-            const newName = prompt('Enter new name:', filePath.split('/').pop());
-            if (newName && newName !== filePath.split('/').pop()) {
-                // Implementation would handle renaming
-                updateStatus(`Renamed to ${newName}`);
-            }
-        }
-
-        function deleteFileFromTree(filePath) {
-            if (confirm(`Delete ${filePath}?`)) {
-                API.deleteFile(filePath);
-                // Remove from tree and close if open
-                if (openFiles.has(filePath)) {
-                    closeFile(filePath);
-                }
-            }
-        }
-
-        function copyFilePath(filePath) {
-            navigator.clipboard.writeText(filePath);
-            updateStatus(`Copied path: ${filePath}`);
-        }
-
-        function updateStatus(message) {
-            document.getElementById('statusLeft').textContent = message;
+        // Build and Run Functions
+        async function buildProject() {
+            switchBottomPanel('output');
+            document.getElementById('bottomPanel').classList.remove('hidden');
+            
+            addToOutput('🔨 Building project...');
             setTimeout(() => {
-                document.getElementById('statusLeft').textContent = 'Ready';
+                addToOutput('✅ Build completed successfully!');
             }, 3000);
         }
 
-        // Keyboard shortcuts
+        async function runProject() {
+            switchBottomPanel('output');
+            document.getElementById('bottomPanel').classList.remove('hidden');
+            
+            addToOutput('▶️ Starting project...');
+            setTimeout(() => {
+                addToOutput('🚀 Server running on http://localhost:3000');
+            }, 2000);
+        }
+
+        async function deployProject() {
+            addToOutput('🚀 Deploying project...');
+            setTimeout(() => {
+                addToOutput('✅ Deployment successful!');
+                showNotification('🚀 Project deployed!', 'success');
+            }, 2000);
+        }
+
+        // Terminal Functions
+        function executeTerminalCommand(command) {
+            addToTerminal(`$ ${command}`);
+            
+            if (command === 'help') {
+                addToTerminal('Available commands: ls, pwd, git, docker, npm, help, clear');
+                return;
+            }
+            
+            if (command === 'clear') {
+                document.getElementById('terminal').innerHTML = `
+                    <div>🚀 Advanced Web IDE Pro - Terminal</div>
+                    <div>Connected to: <span id="terminalHost">${document.getElementById('terminalHost').textContent}</span></div>
+                    <div>Type 'help' for available commands</div>
+                `;
+                return;
+            }
+            
+            if (command.startsWith('git ')) {
+                AdvancedAPI.executeGitCommand(command);
+            } else {
+                AdvancedAPI.executeRemoteCommand(command).then(result => {
+                    addToTerminal(result.output);
+                });
+            }
+        }
+
+        function addToTerminal(text) {
+            const terminal = document.getElementById('terminal');
+            const div = document.createElement('div');
+            div.textContent = text;
+            terminal.appendChild(div);
+            terminal.scrollTop = terminal.scrollHeight;
+        }
+
+        function addToOutput(text) {
+            const output = document.getElementById('outputContent');
+            const div = document.createElement('div');
+            div.textContent = `[${new Date().toLocaleTimeString()}] ${text}`;
+            output.appendChild(div);
+            output.scrollTop = output.scrollHeight;
+        }
+
+        function simulateCommandOutput(command) {
+            const outputs = {
+                'ls': 'total 8\ndrwxr-xr-x  3 user user 4096 Sep 27 10:15 projects\n-rw-r--r--  1 user user  220 Sep 27 08:15 .bashrc',
+                'pwd': currentWorkspace === 'remote' ? '/home/developer' : '/Users/developer',
+                'whoami': 'developer',
+                'node --version': 'v18.17.1',
+                'npm --version': '9.8.1'
+            };
+            return outputs[command] || `Command executed: ${command}`;
+        }
+
+        function simulateGitOutput(command) {
+            const outputs = {
+                'git status': 'On branch main\nYour branch is up to date with \'origin/main\'.\nnothing to commit, working tree clean',
+                'git pull origin main': 'Already up to date.',
+                'git push origin main': 'Everything up-to-date',
+                'git add .': 'Files staged for commit',
+                'git fetch': 'Already up to date.'
+            };
+            
+            for (const [key, value] of Object.entries(outputs)) {
+                if (command.startsWith(key)) {
+                    return value;
+                }
+            }
+            
+            return 'Git command executed successfully';
+        }
+
+        // Search Functions
+        function searchInFiles(query) {
+            const results = document.getElementById('searchResults');
+            if (!query) {
+                results.innerHTML = '';
+                return;
+            }
+
+            results.innerHTML = `<div style="padding: 8px; color: #9d9d9d; font-size: 11px;">Searching for "${query}"...</div>`;
+            
+            setTimeout(() => {
+                results.innerHTML = `
+                    <div style="padding: 6px 8px; cursor: pointer; font-size: 11px;" onclick="openFile('README.md')">
+                        <div style="font-weight: bold;">README.md:5</div>
+                        <div style="color: #9d9d9d;">Advanced Web IDE Pro</div>
+                    </div>
+                `;
+            }, 500);
+        }
+
+        // Utility Functions
+        function updateStatus(message) {
+            document.getElementById('statusMessage').textContent = message;
+            setTimeout(() => {
+                document.getElementById('statusMessage').textContent = 'Ready';
+            }, 3000);
+        }
+
+        function showNotification(message, type = 'info') {
+            document.querySelectorAll('.notification').forEach(notif => notif.remove());
+            
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.textContent = message;
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.remove();
+                }
+            }, 4000);
+            
+            notification.addEventListener('click', () => {
+                notification.remove();
+            });
+        }
+
+        // Keyboard Shortcuts
         document.addEventListener('keydown', (e) => {
             if (e.ctrlKey || e.metaKey) {
                 switch (e.key) {
@@ -785,32 +2082,30 @@
                         e.preventDefault();
                         newFile();
                         break;
-                    case 'w':
+                    case '`':
                         e.preventDefault();
-                        if (activeFile) {
-                            closeFile(activeFile);
-                        }
+                        toggleTerminal();
                         break;
                 }
             }
         });
 
-        // Expose API for external use
-        window.CodeEditorAPI = {
+        // Expose API
+        window.AdvancedCodeEditorAPI = {
             openFile: (path, content) => {
                 fileTree[path] = { type: 'file', content: content };
                 renderFileTree();
                 openFile(path);
             },
-            getOpenFiles: () => Array.from(openFiles.keys()),
+            connectToRemote: (config) => AdvancedAPI.connectSSH(config),
             getCurrentFile: () => activeFile,
             getCurrentContent: () => editor ? editor.getValue() : '',
-            saveFile: saveCurrentFile,
-            saveAllFiles: saveAllFiles,
-            API: API
+            showNotification: (message, type) => showNotification(message, type),
+            API: AdvancedAPI
         };
 
-        console.log('Code Editor initialized. Use window.CodeEditorAPI for external control.');
+        console.log('🚀 Advanced Web IDE Pro initialized!');
+        console.log('Use window.AdvancedCodeEditorAPI for external control');
     </script>
 </body>
 </html>
