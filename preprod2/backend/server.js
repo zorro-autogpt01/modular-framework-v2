@@ -2,7 +2,7 @@ import express from 'express';
 import http from 'http';
 import cors from 'cors';
 import { WebSocketServer } from 'ws';
-import { createSession, attachWebSocket, disconnect, listRemote, readRemote } from './sshManager.js';
+import { createSession, attachWebSocket, disconnect, listRemote, readRemote, writeRemote, mkdirRemote } from './sshManager.js';
 
 const PORT = process.env.PORT || 3021;
 const app = express();
@@ -49,6 +49,31 @@ app.get('/ssh/read', async (req, res) => {
   } catch (err) {
     console.error('[api] read failed', err?.message || err);
     return res.status(500).json({ ok: false, error: err?.message || 'Read failed' });
+  }
+});
+
+
+app.post('/ssh/write', async (req, res) => {
+  try {
+    const { sessionId, path, content } = req.body || {};
+    if (!sessionId || !path) return res.status(400).json({ ok: false, error: 'Missing sessionId or path' });
+    await writeRemote(sessionId, path, content ?? '');
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('[api] write failed', err?.message || err);
+    return res.status(500).json({ ok: false, error: err?.message || 'Write failed' });
+  }
+});
+
+app.post('/ssh/mkdir', async (req, res) => {
+  try {
+    const { sessionId, path, recursive = true } = req.body || {};
+    if (!sessionId || !path) return res.status(400).json({ ok: false, error: 'Missing sessionId or path' });
+    await mkdirRemote(sessionId, path, { recursive: !!recursive });
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('[api] mkdir failed', err?.message || err);
+    return res.status(500).json({ ok: false, error: err?.message || 'Mkdir failed' });
   }
 });
 

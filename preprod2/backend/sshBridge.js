@@ -89,6 +89,39 @@ export async function readFileContent(client, remotePath) {
   });
 }
 
+
+export async function writeFileContent(client, remotePath, content = '') {
+  const sftp = await getSftp(client);
+  return new Promise((resolve, reject) => {
+    try {
+      const ws = sftp.createWriteStream(remotePath, { encoding: 'utf8' });
+      ws.on('error', (e) => reject(new Error(e?.message || 'SFTP write error')));
+      ws.on('finish', () => resolve(true));
+      ws.end(content ?? '');
+    } catch (e) {
+      reject(new Error(e?.message || 'SFTP write error'));
+    }
+  });
+}
+
+export async function makeDirectory(client, remotePath, { recursive = true } = {}) {
+  const sftp = await getSftp(client);
+  const parts = remotePath.split('/').filter(Boolean);
+  const roots = remotePath.startsWith('/') ? [''] : [];
+  let cur = roots.length ? '/' : '';
+  for (const part of parts) {
+    cur = cur.endsWith('/') ? cur + part : cur + '/' + part;
+    try {
+      /* eslint-disable no-await-in-loop */
+      await new Promise((resolve, reject) => sftp.mkdir(cur, (err) => (err ? reject(err) : resolve())));
+    } catch (e) {
+      if (!/Failure|exist|EEXIST/i.test(String(e?.message || e))) {
+        if (!recursive) throw e;
+      }
+    }
+  }
+  return true;
+}
 function readdirAsync(sftp, p) {
   return new Promise((resolve, reject) => {
     sftp.readdir(p, (err, list) => (err ? reject(err) : resolve(list || [])));

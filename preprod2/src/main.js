@@ -158,6 +158,29 @@ function bootstrap() {
   authSel?.addEventListener('change', (e) => updateAuthGroups(e.target.value));
   if (authSel) updateAuthGroups(authSel.value);
 
+  // SSH key file → textarea helper
+  const keyInput = qs('#sshKeyFile');
+  const keyBtn = qs('#sshKeyFileLoadBtn');
+  const keyText = qs('#sshPrivateKey');
+  const loadKeyToTextarea = (file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      if (keyText) keyText.value = String(e.target.result || '');
+      showNotification(`🔐 Loaded key: ${file.name}`, 'success');
+    };
+    reader.readAsText(file);
+  };
+  keyInput?.addEventListener('change', (e) => {
+    const f = e.target.files?.[0];
+    if (f) loadKeyToTextarea(f);
+  });
+  keyBtn?.addEventListener('click', () => {
+    if (keyInput?.files?.length) loadKeyToTextarea(keyInput.files[0]);
+    else keyInput?.click();
+  });
+
+
   Logger.info('UI initialized');
   console.log('Use window.AdvancedCodeEditorAPI for external control');
 
@@ -292,6 +315,14 @@ function newFile() {
   updateTabs();
   loadFileInEditor(fileName);
   setStatus(`📄 Created ${fileName}`);
+
+  // If connected, immediately write to remote so it truly exists
+  if (state.isConnected) {
+    API.writeRemoteFile(fileName, content)
+      .then(() => showNotification(`✅ Created remote file ${fileName}`, 'success'))
+      .catch((e) => showNotification(`⚠️ Remote create failed: ${e?.message || e}`, 'warning'));
+  }
+
 }
 
 function newFolder() {
@@ -300,6 +331,13 @@ function newFolder() {
   state.fileTree[folderName] = { type: 'folder', children: {} };
   renderFileTree();
   setStatus(`📁 Created folder ${folderName}`);
+
+  if (state.isConnected) {
+    API.makeRemoteDir(folderName, { recursive: true })
+      .then(() => showNotification(`✅ Created remote folder ${folderName}`, 'success'))
+      .catch((e) => showNotification(`⚠️ Remote mkdir failed: ${e?.message || e}`, 'warning'));
+  }
+
 }
 
 function uploadFile() {
@@ -310,10 +348,19 @@ function uploadFile() {
     Array.from(e.target.files).forEach((file) => {
       const reader = new FileReader();
       reader.onload = (ev) => {
-        state.fileTree[file.name] = { type: 'file', content: ev.target.result };
-        renderFileTree();
-        showNotification(`⬆️ Uploaded ${file.name}`, 'success');
-      };
+  const text = String(ev.target.result || '');
+  // Update UI tree
+  state.fileTree[file.name] = { type: 'file', content: text };
+  renderFileTree();
+  // If connected, push to remote
+  if (state.isConnected) {
+    API.writeRemoteFile(file.name, text)
+      .then(() => showNotification(`⬆️ Uploaded to remote: ${file.name}`, 'success'))
+      .catch((err) => showNotification(`⚠️ Remote upload failed: ${err?.message || err}`, 'warning'));
+  } else {
+    showNotification(`⬆️ Uploaded locally: ${file.name}`, 'success');
+  }
+};
       reader.readAsText(file);
     });
   };
@@ -335,10 +382,17 @@ function saveCurrentFile() {
   updateTabs();
   bus.emit('ui:fileTree:selection');
   setStatus(`💾 Saved ${state.activeFile}`);
-  showNotification(`✅ File saved: ${state.activeFile.split('/').pop()}`, 'success');
+  if (state.isConnected) {
+    API.writeRemoteFile(state.activeFile, content)
+      .then(() => showNotification(`✅ Remote saved: ${state.activeFile}`, 'success'))
+      .catch((e) => showNotification(`⚠️ Remote save failed: ${e?.message || e}`, 'warning'));
+  } else {
+    showNotification(`✅ File saved: ${state.activeFile.split('/').pop()}`, 'success');
+  }
 }
 
 function saveAllFiles() {
+
   let saved = 0;
   for (const [path, fileData] of state.openFiles) {
     if (fileData.modified) {

@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { connectSSH, resizePty, closeSession, listTree, readFileContent } from './sshBridge.js';
+import { connectSSH, resizePty, closeSession, listTree, readFileContent, writeFileContent, makeDirectory } from './sshBridge.js';
 
 const sessions = new Map();
 
@@ -66,6 +66,19 @@ export async function readRemote(sessionId, path) {
   return await readFileContent(s.client, path);
 }
 
+
+
+export async function writeRemote(sessionId, path, content) {
+  const s = sessions.get(sessionId);
+  if (!s) throw new Error('Invalid session');
+  return await writeFileContent(s.client, path, content);
+}
+
+export async function mkdirRemote(sessionId, path, options) {
+  const s = sessions.get(sessionId);
+  if (!s) throw new Error('Invalid session');
+  return await makeDirectory(s.client, path, options);
+}
 
 export function disconnect(sessionId) {
   cleanup(sessionId);

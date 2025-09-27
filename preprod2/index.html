@@ -41,6 +41,11 @@
               <div class="input-group">
                 <label for="commitMessage">Commit Message</label>
                 <textarea class="db-query-editor" id="commitMessage" placeholder="Commit message..."></textarea>
+              <div class="row gap-8 top-16">
+                <input type="file" id="sshKeyFile" accept=".pem,.key,.txt" />
+                <button class="btn small secondary" id="sshKeyFileLoadBtn" type="button">Load Key File</button>
+              </div>
+
               </div>
               <button class="btn success small" data-action="git:quick-commit-push">💫 Commit & Push</button>
               <div class="repo-sublist">

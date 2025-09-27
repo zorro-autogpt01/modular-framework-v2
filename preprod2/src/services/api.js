@@ -4,7 +4,7 @@ import { showNotification } from '../ui/notifications.js';
 import { updateConnectionStatus, updateWorkspaceIndicator } from '../ui/panels.js';
 import { addToTerminal } from '../terminal/index.js';
 
-const BACKEND_HTTP = window.__BACKEND_URL || 'http://localhost:3021';
+const BACKEND_HTTP = window.__BACKEND_URL || 'http://192.168.0.10:3021';
 const BACKEND_WS = (BACKEND_HTTP.startsWith('https') ? 'wss' : 'ws') + '://' + BACKEND_HTTP.replace(/^https?:\/\//, '') + '/ssh';
 
 let activeSessionId = null;
@@ -28,6 +28,35 @@ export async function readRemoteFile(relPath) {
   if (!data.ok) throw new Error(data.error || 'Read failed');
   return data.content ?? '';
 }
+
+export async function writeRemoteFile(relPath, content) {
+  if (!activeSessionId) throw new Error('No active session');
+  const base = (state.remoteRoot || '').replace(/\/$/, '');
+  const fullPath = base + (relPath.startsWith('/') ? relPath : '/' + relPath);
+  const res = await fetch(`${BACKEND_HTTP}/ssh/write`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId: activeSessionId, path: fullPath, content })
+  });
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error || 'Write failed');
+  return true;
+}
+
+export async function makeRemoteDir(relPath, { recursive = true } = {}) {
+  if (!activeSessionId) throw new Error('No active session');
+  const base = (state.remoteRoot || '').replace(/\/$/, '');
+  const fullPath = base + (relPath.startsWith('/') ? relPath : '/' + relPath);
+  const res = await fetch(`${BACKEND_HTTP}/ssh/mkdir`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId: activeSessionId, path: fullPath, recursive })
+  });
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error || 'Mkdir failed');
+  return true;
+}
+
 
 
 export function getActiveSocket(){ return activeSocket; }
@@ -62,7 +91,7 @@ export async function connectSSH(config){
       bus.emit('workspace:changed', { connected: true, host: config.host });
       // Load remote file tree
       try {
-        const tree = await fetchRemoteTree(state.remoteRoot, 3);
+        const tree = await fetchRemoteTree(state.remoteRoot, 1);
         bus.emit('fileTree:replace', { tree });
       } catch (err) {
         showNotification('⚠️ Failed to load remote file tree: ' + (err?.message || err), 'warning');
