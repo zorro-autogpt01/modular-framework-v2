@@ -189,8 +189,20 @@
             <div class="input-group hidden" id="passwordGroup">
               <label for="sshPassword">Password</label>
               <input type="password" id="sshPassword" />
+              <div class="muted">Your password is used once to establish the SSH session via the local bridge and is not persisted or logged.</div>
+
             </div>
-            <div class="input-group">
+                        <div class="input-group" id="privateKeyGroup">
+              <label for="sshPrivateKey">Private Key (PEM)</label>
+              <textarea id="sshPrivateKey" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----"></textarea>
+              <div class="muted">Your key is kept in-memory in this browser tab and only sent to the local SSH bridge to start the session. It is not stored or logged.</div>
+            </div>
+            <div class="input-group" id="passphraseGroup">
+              <label for="sshPassphrase">Key Passphrase (optional)</label>
+              <input type="password" id="sshPassphrase" />
+            </div>
+            <div class="muted">Tip: Switch Authentication to "Password" if you prefer entering a password. Passwords and keys are used only for the active session and are not stored.</div>
+<div class="input-group">
               <label for="remotePath">Remote Path</label>
               <input type="text" id="remotePath" value="/var/www/html" />
             </div>
@@ -321,14 +333,20 @@
       <div class="input-group">
         <label for="githubToken">GitHub Token</label>
         <input type="password" id="githubToken" placeholder="ghp_..." />
+      <div class="muted">We never send or store this token on the server. It is only used to construct a Git command that you execute.</div>
+
       </div>
       <div class="input-group">
         <label for="repoUrl">Repository URL</label>
         <input type="text" id="repoUrl" placeholder="https://github.com/user/repo.git" />
+      <div class="muted">Use HTTPS (https://github.com/owner/repo.git) with a token, or SSH (git@github.com:owner/repo.git) if your SSH key is configured on GitHub.</div>
+
       </div>
       <div class="input-group">
         <label for="gitAction">Action</label>
         <select id="gitAction">
+          <div class="muted" style="margin-top:8px;">Clone: download a repository. Initialize & Connect: run git init and add origin. Connect Existing: set or update origin URL of the current repo.</div>
+
           <option value="clone">Clone Repository</option>
           <option value="init">Initialize & Connect</option>
           <option value="connect">Connect Existing</option>

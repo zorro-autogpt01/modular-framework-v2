@@ -135,11 +135,54 @@ export async function executeRemoteCommand(command){
 }
 
 export function executeGitHubAction(){
-  const token = document.getElementById('githubToken')?.value;
-  const repoUrl = document.getElementById('repoUrl')?.value;
-  if (!token || !repoUrl){ showNotification('⚠️ Please fill in all fields', 'warning'); return; }
-  showNotification('🐙 Executing GitHub action...', 'info');
-  setTimeout(()=>{ showNotification('✅ GitHub integration successful', 'success'); document.querySelector('#githubModal')?.classList.add('hidden'); }, 800);
+  const token = document.getElementById('githubToken')?.value?.trim();
+  const repoUrlRaw = document.getElementById('repoUrl')?.value?.trim();
+  const action = document.getElementById('gitAction')?.value || 'clone';
+  if (!repoUrlRaw){ showNotification('⚠️ Repository URL is required', 'warning'); return; }
+
+  const repoUrl = repoUrlRaw;
+  const isSSH = /^git@/.test(repoUrl);
+  const isHTTPS = /^https:\/\//.test(repoUrl);
+  const needsToken = isHTTPS && !isSSH;
+
+  const urlWithToken = (needsToken && token) ? injectToken(repoUrl, token) : repoUrl;
+  const sanitized = needsToken ? injectToken(repoUrl, '***') : repoUrl;
+
+  const buildCmd = () => {
+    switch (action) {
+      case 'clone': return `git clone ${urlWithToken}`;
+      case 'init': return `git init && git remote add origin ${urlWithToken}`;
+      case 'connect': return `git remote set-url origin ${urlWithToken}`;
+      default: return `git clone ${urlWithToken}`;
+    }
+  };
+
+  const cmd = buildCmd();
+  const displayCmd = cmd.replace(urlWithToken, sanitized);
+
+  // Show masked command locally
+  addToTerminal(`$ ${displayCmd}`);
+
+  if (needsToken && !token){
+    showNotification('⚠️ HTTPS URL detected. Provide a GitHub Token or use SSH URL (git@github.com:owner/repo.git).', 'warning');
+  }
+
+  // Execute in remote session if available (send only the real command over WS)
+  if (activeSocket && activeSocket.readyState === WebSocket.OPEN){
+    activeSocket.send(JSON.stringify({ type:'data', data: cmd + '' }));
+    showNotification('🐙 Running Git command in remote terminal', 'info');
+    document.querySelector('#githubModal')?.classList.add('hidden');
+  } else {
+    showNotification('ℹ️ Not connected to SSH. Run the above command locally or connect first.', 'info');
+  }
+}
+
+function injectToken(repoUrl, token){
+  try {
+    const m = repoUrl.match(/^https:\/\/([^\/]+)\/(.+)$/);
+    if (!m) return repoUrl;
+    return `https://x-access-token:${encodeURIComponent(token)}@${m[1]}/${m[2]}`;
+  } catch { return repoUrl; }
 }
 
 function simulateCommandOutput(cmd){

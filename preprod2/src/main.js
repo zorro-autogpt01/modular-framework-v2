@@ -29,6 +29,10 @@ function bootstrap() {
  initTerminal();
  initTabs();
  initFileTree();
+ 
+ // Add helpful hover tooltips on common buttons
+ applyTooltips();
+
 
  // Render initial state (file tree + default file)
  setTimeout(() => {
@@ -124,13 +128,58 @@ function bootstrap() {
  // Search input
  qs('#searchInput')?.addEventListener('input', (e) => Search.searchInFiles(e.target.value));
 
- // Auth method change
- qs('#authMethod')?.addEventListener('change', (e) => {
- const group = qs('#passwordGroup');
- if (!group) return;
- group.classList.toggle('hidden', e.target.value !== 'password');
- });
+ // Auth method change (toggle password/key fields)
+  function updateAuthGroups(val){
+    const isPassword = val === 'password';
+    const pw = qs('#passwordGroup');
+    const pk = qs('#privateKeyGroup');
+    const pp = qs('#passphraseGroup');
+    if (pw) pw.classList.toggle('hidden', !isPassword);
+    if (pk) pk.classList.toggle('hidden', isPassword);
+    if (pp) pp.classList.toggle('hidden', isPassword);
+  }
+  const authSel = qs('#authMethod');
+  authSel?.addEventListener('change', (e)=> updateAuthGroups(e.target.value));
+  if (authSel) updateAuthGroups(authSel.value);
 
+
+// Provide simple hover tooltips on key controls
+function applyTooltips(){
+  const map = [
+    ['[data-action="modal:open"][data-target="#githubModal"]', 'Open GitHub integration'],
+    ['[data-action="git:pull"]', 'Pull latest changes from origin/main'],
+    ['[data-action="git:fetch"]', 'Fetch remote updates without merging'],
+    ['[data-action="git:stash"]', 'Stash local changes'],
+    ['[data-action="git:create-branch"]', 'Create and switch to a new branch'],
+    ['[data-action="git:quick-commit-push"]', 'Commit all staged changes and push to origin'],
+    ['[data-action="docker:build"]', 'Build Docker image(s)'],
+    ['[data-action="docker:run"]', 'Run Docker containers'],
+    ['[data-action="docker:ps"]', 'List containers'],
+    ['[data-action="docker:stop"]', 'Stop all running containers'],
+    ['.sidebar-tab[data-panel="explorer"]', 'Explorer'],
+    ['.sidebar-tab[data-panel="search"]', 'Search in files'],
+    ['.sidebar-tab[data-panel="ssh"]', 'SSH connections'],
+    ['[data-action="files:refresh"]', 'Refresh file tree'],
+    ['[data-action="files:new-file"]', 'Create new file'],
+    ['[data-action="files:new-folder"]', 'Create new folder'],
+    ['[data-action="files:upload"]', 'Upload files'],
+    ['[data-action="editor:save"]', 'Save (Ctrl/Cmd+S)'],
+    ['[data-action="editor:save-all"]', 'Save all (Ctrl/Cmd+Shift+S)'],
+    ['[data-action="editor:format"]', 'Format document'],
+    ['[data-action="editor:show-diff"]', 'Show changes vs original'],
+    ['[data-action="editor:toggle-minimap"]', 'Toggle minimap'],
+    ['[data-action="terminal:toggle"]', 'Show/Hide terminal panel'],
+    ['[data-action="project:run"]', 'Run project'],
+    ['[data-action="project:build"]', 'Build project'],
+    ['[data-action="project:deploy"]', 'Deploy project'],
+    ['#connectBtn', 'Open an SSH session using the provided credentials'],
+    ['#disconnectBtn', 'Close the current SSH session']
+  ];
+  for (const [sel, title] of map){
+    const el = qs(sel);
+    if (el && !el.getAttribute('title')) el.setAttribute('title', title);
+  }
+}
  Logger.info('UI initialized');
  console.log('Use window.AdvancedCodeEditorAPI for external control');
 

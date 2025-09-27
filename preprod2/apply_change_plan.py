@@ -136,7 +136,38 @@ def patch_once(text: str, p: Dict[str, Any]) -> Tuple[str, int]:
         pattern = p.get("match", "")
         replacement = p.get("replacement", "")
         count = p.get("count", 0) or 0
-        new_text, n = re.subn(pattern, replacement, text, count=count, flags=re.MULTILINE | re.DOTALL)
+        flags = re.MULTILINE | re.DOTALL
+
+        # Compile first to surface compile-time errors clearly
+        try:
+            prog = re.compile(pattern, flags=flags)
+        except re.error as e:
+            pos = getattr(e, "pos", None)
+            if pos is not None:
+                span = 40
+                start = max(0, pos - span // 2)
+                end = min(len(pattern), pos + span // 2)
+                snippet = pattern[start:end]
+                caret = " " * (pos - start) + "^"
+                raise RuntimeError(
+                    "Regex compile error:\n"
+                    f"  {e}\n"
+                    "  Pattern snippet:\n"
+                    f"    ...{snippet}...\n"
+                    f"    ...{caret}\n"
+                )
+            else:
+                raise RuntimeError(f"Regex compile error: {e}\n  Pattern: {pattern}")
+
+        try:
+            new_text, n = prog.subn(replacement, text, count=count)
+        except re.error as e:
+            raise RuntimeError(
+                "Regex substitution error:\n"
+                f"  {e}\n"
+                f"  Pattern: {pattern}\n"
+                f"  Replacement: {replacement}"
+            )
         return new_text, n
 
     if t == "insert_after":
@@ -231,6 +262,10 @@ def op_delete_path(root: Path, change: Dict[str, Any], dry: bool, assume_yes: bo
     else:
         info(f"Skipped deleting {path}")
 
+def debug(enabled: bool, msg: str):
+    if enabled:
+        print(f"[DEBUG] {msg}")
+
 def op_rename_path(root: Path, change: Dict[str, Any], dry: bool, assume_yes: bool):
     src = relsafe(root, Path(change["from_path"]))
     dst = relsafe(root, Path(change["to_path"]))
@@ -256,7 +291,7 @@ def op_rename_path(root: Path, change: Dict[str, Any], dry: bool, assume_yes: bo
     else:
         info(f"Skipped renaming {src}")
 
-def op_patch_text(root: Path, change: Dict[str, Any], dry: bool, backup: bool, assume_yes: bool):
+def op_patch_text(root: Path, change: Dict[str, Any], dry: bool, backup: bool, assume_yes: bool, verbose: bool=False, show_trace: bool=False):
     path = relsafe(root, Path(change["path"]))
     if not path.exists():
         raise FileNotFoundError(f"{path} not found for patch_text")
@@ -264,9 +299,30 @@ def op_patch_text(root: Path, change: Dict[str, Any], dry: bool, backup: bool, a
 
     working = before
     total_applied = 0
-    for p in change.get("patches", []):
-        working, n = patch_once(working, p)
-        total_applied += n
+    patches = change.get("patches", [])
+    for idx, p in enumerate(patches, 1):
+        try:
+            # Optional preview
+            if verbose and p.get("type") == "replace_regex":
+                debug(verbose, f"[{change.get('id','?')}] #{idx} regex match: {p.get('match')}")
+            working, n = patch_once(working, p)
+            total_applied += n
+            if verbose:
+                debug(verbose, f"[{change.get('id','?')}] #{idx} {p.get('type')} applied={n}")
+            if p.get("type") == "replace_regex" and n == 0:
+                info(f"patch_text: {path} [{change.get('id','?')}] pattern matched 0 times (#{idx})")
+        except Exception as e:
+            msg = (
+                f"While applying patch_text:\n"
+                f"  file: {path}\n"
+                f"  change id: {change.get('id','?')}\n"
+                f"  patch #{idx} type: {p.get('type')}\n"
+                f"  details: {e}"
+            )
+            if show_trace:
+                raise RuntimeError(msg) from e
+            else:
+                raise RuntimeError(msg)
 
     if total_applied == 0:
         info(f"patch_text: {path} no changes applied")
@@ -321,7 +377,7 @@ def op_ensure_block(root: Path, change: Dict[str, Any], dry: bool, backup: bool,
 
 # ---------- driver ----------
 
-def apply_change(root: Path, change: Dict[str, Any], global_dry: bool, global_backup: bool, assume_yes: bool):
+def apply_change(root: Path, change: Dict[str, Any], global_dry: bool, global_backup: bool, assume_yes: bool, verbose: bool=False, show_trace: bool=False):
     dry = bool(change.get("dry_run", global_dry))
     backup = bool(change.get("backup", global_backup))
     op = change["op"]
@@ -334,7 +390,7 @@ def apply_change(root: Path, change: Dict[str, Any], global_dry: bool, global_ba
         elif op == "rename_path":
             op_rename_path(root, change, dry, assume_yes)
         elif op == "patch_text":
-            op_patch_text(root, change, dry, backup, assume_yes)
+            op_patch_text(root, change, dry, backup, assume_yes, verbose=verbose, show_trace=show_trace)
         elif op == "ensure_block":
             op_ensure_block(root, change, dry, backup, assume_yes)
         else:
@@ -352,6 +408,8 @@ def main():
     ap.add_argument("--dry-run", action="store_true", help="Show diffs, do not modify files")
     ap.add_argument("--no-backup", action="store_true", help="Do not create backups")
     ap.add_argument("--assume-yes", action="store_true", help="Apply without prompting (CI mode)")
+    ap.add_argument("--verbose", action="store_true", help="Verbose logging (show patterns, counts)")
+    ap.add_argument("--trace", action="store_true", help="Show full stack traces on errors")
     args = ap.parse_args()
 
     with open(args.plan, "r", encoding="utf-8") as f:
@@ -370,6 +428,8 @@ def main():
     dry = args.dry_run or plan.get("dry_run", False)
     backup = (not args.no_backup) and plan.get("backup", True)
     assume_yes = args.assume_yes
+    verbose = args.verbose
+    show_trace = args.trace
 
     info(f"Project root: {root}")
     info(f"Dry-run: {dry} | Backup: {backup} | Assume-yes: {assume_yes}")
@@ -382,7 +442,7 @@ def main():
     for i, change in enumerate(changes, 1):
         title = change.get("id", f"change-{i}")
         info(f"==> {i}/{len(changes)} {title} ({change.get('op')})")
-        apply_change(root, change, dry, backup, assume_yes)
+        apply_change(root, change, dry, backup, assume_yes, verbose=verbose, show_trace=show_trace)
 
     info("Done.")
 
