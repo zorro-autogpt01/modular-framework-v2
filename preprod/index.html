@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Code Editor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #1e1e1e;
+            color: #cccccc;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .editor-container {
+            display: flex;
+            height: 100vh;
+        }
+
+        .sidebar {
+            width: 250px;
+            background: #252526;
+            border-right: 1px solid #3e3e3e;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar-header {
+            padding: 10px;
+            background: #2d2d30;
+            border-bottom: 1px solid #3e3e3e;
+            font-weight: bold;
+            text-transform: uppercase;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+        }
+
+        .file-tree {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px 0;
+        }
+
+        .file-item, .folder-item {
+            padding: 4px 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            font-size: 13px;
+            transition: background 0.1s;
+        }
+
+        .file-item:hover, .folder-item:hover {
+            background: #2a2d2e;
+        }
+
+        .file-item.active {
+            background: #094771;
+            color: #ffffff;
+        }
+
+        .folder-item {
+            font-weight: 500;
+        }
+
+        .folder-item.expanded > .folder-icon::before {
+            content: '📂';
+        }
+
+        .folder-item.collapsed > .folder-icon::before {
+            content: '📁';
+        }
+
+        .file-icon::before {
+            content: '📄';
+            margin-right: 6px;
+            font-size: 12px;
+        }
+
+        .folder-icon::before {
+            margin-right: 6px;
+            font-size: 12px;
+        }
+
+        .folder-children {
+            margin-left: 16px;
+        }
+
+        .folder-children.hidden {
+            display: none;
+        }
+
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .tabs-container {
+            background: #2d2d30;
+            border-bottom: 1px solid #3e3e3e;
+            display: flex;
+            overflow-x: auto;
+            min-height: 35px;
+        }
+
+        .tab {
+            padding: 8px 16px;
+            background: #2d2d30;
+            border-right: 1px solid #3e3e3e;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            font-size: 13px;
+            white-space: nowrap;
+            position: relative;
+        }
+
+        .tab.active {
+            background: #1e1e1e;
+            color: #ffffff;
+        }
+
+        .tab:hover:not(.active) {
+            background: #383838;
+        }
+
+        .tab-close {
+            margin-left: 8px;
+            opacity: 0.6;
+            cursor: pointer;
+            width: 16px;
+            height: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 2px;
+        }
+
+        .tab-close:hover {
+            opacity: 1;
+            background: #e81123;
+        }
+
+        .editor-area {
+            flex: 1;
+            position: relative;
+        }
+
+        .toolbar {
+            background: #2d2d30;
+            padding: 8px 12px;
+            border-bottom: 1px solid #3e3e3e;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .btn {
+            padding: 6px 12px;
+            background: #0e639c;
+            color: white;
+            border: none;
+            border-radius: 2px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.2s;
+        }
+
+        .btn:hover {
+            background: #1177bb;
+        }
+
+        .btn.secondary {
+            background: #5a5a5a;
+        }
+
+        .btn.secondary:hover {
+            background: #6e6e6e;
+        }
+
+        .api-panel {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: #252526;
+            border: 1px solid #3e3e3e;
+            border-radius: 4px;
+            padding: 16px;
+            max-width: 300px;
+            z-index: 1000;
+        }
+
+        .api-panel h3 {
+            margin-bottom: 12px;
+            font-size: 14px;
+            color: #ffffff;
+        }
+
+        .api-endpoint {
+            margin-bottom: 8px;
+            padding: 8px;
+            background: #1e1e1e;
+            border-radius: 2px;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            border-left: 3px solid #0e639c;
+        }
+
+        .status-bar {
+            background: #007acc;
+            color: white;
+            padding: 4px 12px;
+            font-size: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .diff-container {
+            height: 100%;
+            width: 100%;
+        }
+
+        #monaco-editor, #monaco-diff {
+            height: 100%;
+            width: 100%;
+        }
+
+        .context-menu {
+            position: fixed;
+            background: #383838;
+            border: 1px solid #5a5a5a;
+            border-radius: 3px;
+            padding: 4px 0;
+            z-index: 1001;
+            font-size: 13px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+
+        .context-menu-item {
+            padding: 6px 16px;
+            cursor: pointer;
+        }
+
+        .context-menu-item:hover {
+            background: #094771;
+        }
+
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+    <div class="editor-container">
+        <div class="sidebar">
+            <div class="sidebar-header">Explorer</div>
+            <div class="file-tree" id="fileTree">
+                <!-- File tree will be populated by JavaScript -->
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="toolbar">
+                <button class="btn" onclick="saveCurrentFile()">Save</button>
+                <button class="btn secondary" onclick="saveAllFiles()">Save All</button>
+                <button class="btn secondary" onclick="showDiff()">Show Diff</button>
+                <button class="btn secondary" onclick="formatDocument()">Format</button>
+                <button class="btn secondary" onclick="newFile()">New File</button>
+            </div>
+            
+            <div class="tabs-container" id="tabsContainer">
+                <!-- Tabs will be populated by JavaScript -->
+            </div>
+
+            <div class="editor-area">
+                <div id="monaco-editor"></div>
+                <div id="monaco-diff" class="hidden"></div>
+            </div>
+
+            <div class="status-bar">
+                <span id="statusLeft">Ready</span>
+                <span id="statusRight">Line 1, Column 1</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="api-panel">
+        <h3>API Endpoints</h3>
+        <div class="api-endpoint">POST /api/files/content<br>Send content to editor</div>
+        <div class="api-endpoint">GET /api/files/{path}<br>Get file content</div>
+        <div class="api-endpoint">PUT /api/files/{path}<br>Save file content</div>
+        <div class="api-endpoint">DELETE /api/files/{path}<br>Delete file</div>
+        <div class="api-endpoint">GET /api/files/tree<br>Get file tree</div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
+    <script>
+        require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' } });
+
+        let editor = null;
+        let diffEditor = null;
+        let openFiles = new Map();
+        let activeFile = null;
+        let fileTree = {
+            'src': {
+                type: 'folder',
+                children: {
+                    'components': {
+                        type: 'folder',
+                        children: {
+                            'App.js': { type: 'file', content: '// React App Component\nimport React from \'react\';\n\nfunction App() {\n  return (\n    <div className=\"App\">\n      <h1>Hello World</h1>\n    </div>\n  );\n}\n\nexport default App;' },
+                            'Header.js': { type: 'file', content: '// Header Component\nimport React from \'react\';\n\nconst Header = () => {\n  return (\n    <header>\n      <h1>My App</h1>\n    </header>\n  );\n};\n\nexport default Header;' }
+                        }
+                    },
+                    'utils': {
+                        type: 'folder',
+                        children: {
+                            'helpers.js': { type: 'file', content: '// Utility functions\nexport const formatDate = (date) => {\n  return new Intl.DateTimeFormat(\'en-US\').format(date);\n};\n\nexport const debounce = (func, wait) => {\n  let timeout;\n  return function executedFunction(...args) {\n    const later = () => {\n      clearTimeout(timeout);\n      func(...args);\n    };\n    clearTimeout(timeout);\n    timeout = setTimeout(later, wait);\n  };\n};' }
+                        }
+                    },
+                    'index.js': { type: 'file', content: '// Entry point\nimport React from \'react\';\nimport ReactDOM from \'react-dom\';\nimport App from \'./components/App\';\nimport \'./styles.css\';\n\nReactDOM.render(<App />, document.getElementById(\'root\'));' },
+                    'styles.css': { type: 'file', content: '/* Global styles */\nbody {\n  margin: 0;\n  font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', \'Roboto\', sans-serif;\n  background-color: #f5f5f5;\n}\n\n.App {\n  text-align: center;\n  padding: 20px;\n}\n\nh1 {\n  color: #333;\n  margin-bottom: 20px;\n}' }
+                }
+            },
+            'package.json': { type: 'file', content: '{\n  "name": "web-code-editor-demo",\n  "version": "1.0.0",\n  "description": "Demo project for web code editor",\n  "main": "src/index.js",\n  "dependencies": {\n    "react": "^18.0.0",\n    "react-dom": "^18.0.0"\n  },\n  "scripts": {\n    "start": "react-scripts start",\n    "build": "react-scripts build",\n    "test": "react-scripts test"\n  }\n}' },
+            'README.md': { type: 'file', content: '# Web Code Editor Demo\n\nThis is a demonstration of a web-based code editor with the following features:\n\n## Features\n\n- File tree navigation\n- Multiple file tabs\n- Monaco Editor with IntelliSense\n- API integration for file operations\n- Diff view capabilities\n- Save functionality\n- Syntax highlighting\n- Auto-completion\n\n## API Endpoints\n\nThe editor supports various API operations for remote file management and content manipulation.\n\n## Usage\n\n1. Navigate files using the tree on the left\n2. Open multiple files in tabs\n3. Edit with full IDE features\n4. Save individual files or all at once\n5. View diffs between files\n\nEnjoy coding!' }
+        };
+
+        require(['vs/editor/editor.main'], function () {
+            // Initialize Monaco Editor
+            editor = monaco.editor.create(document.getElementById('monaco-editor'), {
+                value: '',
+                language: 'javascript',
+                theme: 'vs-dark',
+                automaticLayout: true,
+                minimap: { enabled: true },
+                scrollBeyondLastLine: false,
+                fontSize: 14,
+                lineNumbers: 'on',
+                roundedSelection: false,
+                scrollbar: {
+                    alwaysConsumeMouseWheel: false
+                },
+                cursorBlinking: 'blink',
+                cursorSmoothCaretAnimation: true,
+                contextmenu: true,
+                quickSuggestions: true,
+                suggestOnTriggerCharacters: true
+            });
+
+            // Initialize Diff Editor
+            diffEditor = monaco.editor.createDiffEditor(document.getElementById('monaco-diff'), {
+                theme: 'vs-dark',
+                automaticLayout: true,
+                readOnly: true
+            });
+
+            // Update status bar on cursor position change
+            editor.onDidChangeCursorPosition((e) => {
+                document.getElementById('statusRight').textContent = 
+                    `Line ${e.position.lineNumber}, Column ${e.position.column}`;
+            });
+
+            // Track content changes
+            editor.onDidChangeModelContent(() => {
+                if (activeFile) {
+                    markFileAsModified(activeFile);
+                    updateStatus('Modified');
+                }
+            });
+
+            // Initialize file tree and open a default file
+            renderFileTree();
+            openFile('README.md');
+        });
+
+        // API Simulation Functions
+        const API = {
+            async sendContent(filePath, content) {
+                console.log(`API: Sending content to ${filePath}`, content);
+                // Simulate API call
+                return new Promise(resolve => {
+                    setTimeout(() => {
+                        updateStatus(`Content sent to ${filePath}`);
+                        resolve({ success: true });
+                    }, 300);
+                });
+            },
+
+            async getFile(filePath) {
+                console.log(`API: Getting file ${filePath}`);
+                const file = getFileFromPath(filePath);
+                return new Promise(resolve => {
+                    setTimeout(() => {
+                        resolve({ content: file ? file.content : '' });
+                    }, 200);
+                });
+            },
+
+            async saveFile(filePath, content) {
+                console.log(`API: Saving file ${filePath}`, content);
+                return new Promise(resolve => {
+                    setTimeout(() => {
+                        const file = getFileFromPath(filePath);
+                        if (file) {
+                            file.content = content;
+                        }
+                        updateStatus(`Saved ${filePath}`);
+                        resolve({ success: true });
+                    }, 400);
+                });
+            },
+
+            async deleteFile(filePath) {
+                console.log(`API: Deleting file ${filePath}`);
+                return new Promise(resolve => {
+                    setTimeout(() => {
+                        // Implementation would delete from tree
+                        updateStatus(`Deleted ${filePath}`);
+                        resolve({ success: true });
+                    }, 300);
+                });
+            },
+
+            async getFileTree() {
+                console.log('API: Getting file tree');
+                return new Promise(resolve => {
+                    setTimeout(() => {
+                        resolve(fileTree);
+                    }, 200);
+                });
+            }
+        };
+
+        function getFileFromPath(path) {
+            const parts = path.split('/').filter(p => p);
+            let current = fileTree;
+            
+            for (const part of parts) {
+                if (current[part]) {
+                    if (current[part].type === 'folder') {
+                        current = current[part].children;
+                    } else {
+                        return current[part];
+                    }
+                } else {
+                    return null;
+                }
+            }
+            return current;
+        }
+
+        function renderFileTree() {
+            const container = document.getElementById('fileTree');
+            container.innerHTML = '';
+            renderTreeNode(fileTree, container, '');
+        }
+
+        function renderTreeNode(node, container, path) {
+            for (const [name, item] of Object.entries(node)) {
+                const fullPath = path ? `${path}/${name}` : name;
+                
+                if (item.type === 'folder') {
+                    const folderDiv = document.createElement('div');
+                    folderDiv.className = 'folder-item expanded';
+                    folderDiv.innerHTML = `<span class="folder-icon"></span>${name}`;
+                    
+                    const childrenDiv = document.createElement('div');
+                    childrenDiv.className = 'folder-children';
+                    
+                    folderDiv.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        folderDiv.classList.toggle('expanded');
+                        folderDiv.classList.toggle('collapsed');
+                        childrenDiv.classList.toggle('hidden');
+                    });
+                    
+                    container.appendChild(folderDiv);
+                    container.appendChild(childrenDiv);
+                    
+                    renderTreeNode(item.children, childrenDiv, fullPath);
+                } else {
+                    const fileDiv = document.createElement('div');
+                    fileDiv.className = 'file-item';
+                    fileDiv.innerHTML = `<span class="file-icon"></span>${name}`;
+                    fileDiv.addEventListener('click', () => openFile(fullPath));
+                    
+                    // Add context menu
+                    fileDiv.addEventListener('contextmenu', (e) => {
+                        e.preventDefault();
+                        showContextMenu(e, fullPath);
+                    });
+                    
+                    container.appendChild(fileDiv);
+                }
+            }
+        }
+
+        function openFile(filePath) {
+            const file = getFileFromPath(filePath);
+            if (!file || file.type !== 'file') return;
+
+            // Add to open files if not already open
+            if (!openFiles.has(filePath)) {
+                openFiles.set(filePath, {
+                    content: file.content,
+                    originalContent: file.content,
+                    modified: false
+                });
+            }
+
+            activeFile = filePath;
+            updateTabs();
+            loadFileInEditor(filePath);
+            updateFileTreeSelection();
+        }
+
+        function loadFileInEditor(filePath) {
+            const fileData = openFiles.get(filePath);
+            if (!fileData) return;
+
+            const language = getLanguageFromPath(filePath);
+            
+            // Hide diff editor and show main editor
+            document.getElementById('monaco-diff').classList.add('hidden');
+            document.getElementById('monaco-editor').classList.remove('hidden');
+
+            const model = monaco.editor.createModel(fileData.content, language);
+            editor.setModel(model);
+            
+            updateStatus(`Opened ${filePath}`);
+        }
+
+        function getLanguageFromPath(filePath) {
+            const ext = filePath.split('.').pop().toLowerCase();
+            const languageMap = {
+                'js': 'javascript',
+                'jsx': 'javascript',
+                'ts': 'typescript',
+                'tsx': 'typescript',
+                'html': 'html',
+                'css': 'css',
+                'scss': 'scss',
+                'json': 'json',
+                'md': 'markdown',
+                'py': 'python',
+                'java': 'java',
+                'cpp': 'cpp',
+                'c': 'c',
+                'xml': 'xml',
+                'yml': 'yaml',
+                'yaml': 'yaml'
+            };
+            return languageMap[ext] || 'plaintext';
+        }
+
+        function updateTabs() {
+            const container = document.getElementById('tabsContainer');
+            container.innerHTML = '';
+
+            for (const [filePath, fileData] of openFiles) {
+                const tab = document.createElement('div');
+                tab.className = `tab ${filePath === activeFile ? 'active' : ''}`;
+                
+                const fileName = filePath.split('/').pop();
+                const modifiedIndicator = fileData.modified ? ' ●' : '';
+                
+                tab.innerHTML = `
+                    <span>${fileName}${modifiedIndicator}</span>
+                    <span class="tab-close">×</span>
+                `;
+                
+                tab.addEventListener('click', (e) => {
+                    if (e.target.classList.contains('tab-close')) {
+                        e.stopPropagation();
+                        closeFile(filePath);
+                    } else {
+                        switchToFile(filePath);
+                    }
+                });
+                
+                container.appendChild(tab);
+            }
+        }
+
+        function switchToFile(filePath) {
+            activeFile = filePath;
+            updateTabs();
+            loadFileInEditor(filePath);
+            updateFileTreeSelection();
+        }
+
+        function closeFile(filePath) {
+            if (openFiles.get(filePath)?.modified) {
+                if (!confirm(`File ${filePath} has unsaved changes. Close anyway?`)) {
+                    return;
+                }
+            }
+
+            openFiles.delete(filePath);
+            
+            if (activeFile === filePath) {
+                const remaining = Array.from(openFiles.keys());
+                if (remaining.length > 0) {
+                    switchToFile(remaining[remaining.length - 1]);
+                } else {
+                    activeFile = null;
+                    editor.setModel(null);
+                }
+            }
+            
+            updateTabs();
+            updateFileTreeSelection();
+        }
+
+        function markFileAsModified(filePath) {
+            const fileData = openFiles.get(filePath);
+            if (fileData) {
+                const currentContent = editor.getValue();
+                fileData.content = currentContent;
+                fileData.modified = currentContent !== fileData.originalContent;
+                updateTabs();
+            }
+        }
+
+        function updateFileTreeSelection() {
+            document.querySelectorAll('.file-item').forEach(item => {
+                item.classList.remove('active');
+                if (activeFile && item.textContent.trim().endsWith(activeFile.split('/').pop())) {
+                    item.classList.add('active');
+                }
+            });
+        }
+
+        async function saveCurrentFile() {
+            if (!activeFile) return;
+            
+            const content = editor.getValue();
+            await API.saveFile(activeFile, content);
+            
+            const fileData = openFiles.get(activeFile);
+            if (fileData) {
+                fileData.originalContent = content;
+                fileData.modified = false;
+                updateTabs();
+            }
+        }
+
+        async function saveAllFiles() {
+            for (const [filePath, fileData] of openFiles) {
+                if (fileData.modified) {
+                    await API.saveFile(filePath, fileData.content);
+                    fileData.originalContent = fileData.content;
+                    fileData.modified = false;
+                }
+            }
+            updateTabs();
+            updateStatus('All files saved');
+        }
+
+        function showDiff() {
+            if (!activeFile) return;
+            
+            const fileData = openFiles.get(activeFile);
+            if (!fileData) return;
+
+            document.getElementById('monaco-editor').classList.add('hidden');
+            document.getElementById('monaco-diff').classList.remove('hidden');
+
+            const language = getLanguageFromPath(activeFile);
+            const originalModel = monaco.editor.createModel(fileData.originalContent, language);
+            const modifiedModel = monaco.editor.createModel(fileData.content, language);
+
+            diffEditor.setModel({
+                original: originalModel,
+                modified: modifiedModel
+            });
+
+            updateStatus('Showing diff view');
+        }
+
+        function formatDocument() {
+            if (editor && activeFile) {
+                editor.getAction('editor.action.formatDocument').run();
+                updateStatus('Document formatted');
+            }
+        }
+
+        function newFile() {
+            const fileName = prompt('Enter file name:', 'newfile.js');
+            if (!fileName) return;
+
+            const content = `// New file: ${fileName}\n\n`;
+            
+            // Add to file tree (simplified - in real app would use API)
+            fileTree[fileName] = { type: 'file', content: content };
+            
+            openFiles.set(fileName, {
+                content: content,
+                originalContent: '',
+                modified: true
+            });
+
+            activeFile = fileName;
+            renderFileTree();
+            updateTabs();
+            loadFileInEditor(fileName);
+            updateStatus(`Created ${fileName}`);
+        }
+
+        function showContextMenu(event, filePath) {
+            const menu = document.createElement('div');
+            menu.className = 'context-menu';
+            menu.style.left = event.pageX + 'px';
+            menu.style.top = event.pageY + 'px';
+
+            menu.innerHTML = `
+                <div class="context-menu-item" onclick="openFile('${filePath}')">Open</div>
+                <div class="context-menu-item" onclick="renameFile('${filePath}')">Rename</div>
+                <div class="context-menu-item" onclick="deleteFileFromTree('${filePath}')">Delete</div>
+                <div class="context-menu-item" onclick="copyFilePath('${filePath}')">Copy Path</div>
+            `;
+
+            document.body.appendChild(menu);
+
+            // Remove menu on click outside
+            setTimeout(() => {
+                document.addEventListener('click', function removeMenu() {
+                    menu.remove();
+                    document.removeEventListener('click', removeMenu);
+                });
+            }, 10);
+        }
+
+        function renameFile(filePath) {
+            const newName = prompt('Enter new name:', filePath.split('/').pop());
+            if (newName && newName !== filePath.split('/').pop()) {
+                // Implementation would handle renaming
+                updateStatus(`Renamed to ${newName}`);
+            }
+        }
+
+        function deleteFileFromTree(filePath) {
+            if (confirm(`Delete ${filePath}?`)) {
+                API.deleteFile(filePath);
+                // Remove from tree and close if open
+                if (openFiles.has(filePath)) {
+                    closeFile(filePath);
+                }
+            }
+        }
+
+        function copyFilePath(filePath) {
+            navigator.clipboard.writeText(filePath);
+            updateStatus(`Copied path: ${filePath}`);
+        }
+
+        function updateStatus(message) {
+            document.getElementById('statusLeft').textContent = message;
+            setTimeout(() => {
+                document.getElementById('statusLeft').textContent = 'Ready';
+            }, 3000);
+        }
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey || e.metaKey) {
+                switch (e.key) {
+                    case 's':
+                        e.preventDefault();
+                        if (e.shiftKey) {
+                            saveAllFiles();
+                        } else {
+                            saveCurrentFile();
+                        }
+                        break;
+                    case 'n':
+                        e.preventDefault();
+                        newFile();
+                        break;
+                    case 'w':
+                        e.preventDefault();
+                        if (activeFile) {
+                            closeFile(activeFile);
+                        }
+                        break;
+                }
+            }
+        });
+
+        // Expose API for external use
+        window.CodeEditorAPI = {
+            openFile: (path, content) => {
+                fileTree[path] = { type: 'file', content: content };
+                renderFileTree();
+                openFile(path);
+            },
+            getOpenFiles: () => Array.from(openFiles.keys()),
+            getCurrentFile: () => activeFile,
+            getCurrentContent: () => editor ? editor.getValue() : '',
+            saveFile: saveCurrentFile,
+            saveAllFiles: saveAllFiles,
+            API: API
+        };
+
+        console.log('Code Editor initialized. Use window.CodeEditorAPI for external control.');
+    </script>
+</body>
+</html>
