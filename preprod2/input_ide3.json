@@ -1,0 +1,76 @@
+{
+  "version": "1.0",
+  "backup": true,
+  "changes": [
+    {
+      "id": "dockerfile_backend",
+      "description": "Add Dockerfile for backend service listening on port 3021",
+      "op": "write_file",
+      "path": "backend/Dockerfile",
+      "mode": "create_if_missing",
+      "content": "# syntax=docker/dockerfile:1\nFROM node:20-alpine\n\nWORKDIR /app\n\nENV NODE_ENV=production\nENV PORT=3021\n\n# Install dependencies first for better layer caching\nCOPY package.json ./package.json\nRUN npm install --omit=dev\n\n# Copy source files\nCOPY server.js ./server.js\nCOPY sshManager.js ./sshManager.js\nCOPY sshBridge.js ./sshBridge.js\n\nEXPOSE 3021\n\nCMD [\"node\", \"server.js\"]\n"
+    },
+    {
+      "id": "dockerignore_backend",
+      "description": "Add .dockerignore to reduce build context",
+      "op": "write_file",
+      "path": "backend/.dockerignore",
+      "mode": "create_if_missing",
+      "content": "node_modules\nnpm-debug.log*\nyarn.lock\n.pnpm-debug.log*\n.git\n.gitignore\n.DS_Store\n"
+    },
+    {
+      "id": "backend_port_change_server_js",
+      "description": "Change default backend port from 3001 to 3021 in server.js",
+      "op": "patch_text",
+      "path": "backend/server.js",
+      "patches": [
+        {
+          "type": "replace_regex",
+          "match": "process\\.env\\.PORT\\s*\\|\\|\\s*3001",
+          "replacement": "process.env.PORT || 3021",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "frontend_api_default_port_change",
+      "description": "Update frontend default BACKEND_HTTP to use port 3021",
+      "op": "patch_text",
+      "path": "src/services/api.js",
+      "patches": [
+        {
+          "type": "replace_literal",
+          "match": "http://localhost:3001",
+          "replacement": "http://localhost:3021"
+        }
+      ]
+    },
+    {
+      "id": "backend_readme_port_update",
+      "description": "Update backend README to reflect port 3021",
+      "op": "patch_text",
+      "path": "backend/README.md",
+      "patches": [
+        {
+          "type": "replace_regex",
+          "match": "3001",
+          "replacement": "3021",
+          "count": 0
+        }
+      ]
+    },
+    {
+      "id": "frontend_sample_logs_port_update",
+      "description": "Update sample log line in index.html to show port 3021",
+      "op": "patch_text",
+      "path": "index.html",
+      "patches": [
+        {
+          "type": "replace_literal",
+          "match": "[backend] API server started on port 3001",
+          "replacement": "[backend] API server started on port 3021"
+        }
+      ]
+    }
+  ]
+}

@@ -111,12 +111,26 @@ function bootstrap() {
 
     // Auth method change
     qs('#authMethod')?.addEventListener('change', (e) => {
-      const group = qs('#passwordGroup');
-      if (!group) return;
-      group.classList.toggle('hidden', e.target.value !== 'password');
+      const v = e.target.value;
+      const pass = qs('#passwordGroup');
+      const keyg = qs('#keyGroup');
+      pass?.classList.toggle('hidden', v !== 'password');
+      keyg?.classList.toggle('hidden', v !== 'key');
     });
 
+
     Logger.info('IDE initialized');
+
+    // Key upload → populate textarea, keep in memory only
+    const keyFileInput = qs('#sshPrivateKeyFile');
+    const keyTextArea = qs('#sshPrivateKey');
+    keyFileInput?.addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const text = await file.text();
+      if (keyTextArea) keyTextArea.value = text;
+    });
+
     console.log('Use window.AdvancedCodeEditorAPI for external control');
 
     // Expose limited external API

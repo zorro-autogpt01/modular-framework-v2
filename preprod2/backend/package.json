@@ -1,0 +1,17 @@
+{
+  "name": "ide-ssh-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "NODE_ENV=development node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "ssh2": "^1.15.0",
+    "uuid": "^9.0.1",
+    "ws": "^8.18.0"
+  }
+}

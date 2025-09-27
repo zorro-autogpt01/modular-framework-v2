@@ -3,6 +3,15 @@ import { state } from '../core/state.js';
 import * as API from '../services/api.js';
 
 export function initTerminal(){
+  const input = qs('#terminalInput');
+  input?.addEventListener('keydown', (e)=>{
+    if (e.ctrlKey && e.key.toLowerCase() === 'c'){
+      const ws = API.getActiveSocket?.();
+      if (ws && ws.readyState === WebSocket.OPEN){ ws.send(JSON.stringify({ type:'data', data: '\u0003' })); }
+      e.preventDefault();
+    }
+  });
+
   qs('#terminalInput')?.addEventListener('keypress', (e)=>{
     if (e.key === 'Enter'){
       executeTerminalCommand(e.target.value);

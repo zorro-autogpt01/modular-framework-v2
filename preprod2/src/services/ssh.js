@@ -8,10 +8,14 @@ export async function connect(){
     username: document.getElementById('sshUsername')?.value,
     authMethod: document.getElementById('authMethod')?.value,
     password: document.getElementById('sshPassword')?.value,
+    privateKey: document.getElementById('sshPrivateKey')?.value,
+    passphrase: document.getElementById('sshPassphrase')?.value,
     remotePath: document.getElementById('remotePath')?.value
   };
   if (!config.host || !config.username){ showNotification('❌ Please fill in required fields', 'error'); return; }
-  try{ await API.connectSSH(config); }catch(e){ showNotification('❌ Connection failed: ' + (e?.message||e), 'error'); }
+  if (config.authMethod === 'password' && !config.password){ showNotification('❌ Password is required', 'error'); return; }
+  if (config.authMethod === 'key' && !config.privateKey){ showNotification('❌ Provide a private key (upload or paste)', 'error'); return; }
+  try{ await API.connectSSH(config); }catch(e){ /* handled in API */ }
 }
 
 export async function disconnect(){ await API.disconnectSSH(); }
