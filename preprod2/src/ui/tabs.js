@@ -37,13 +37,27 @@ export function closeFile(filePath){
     const yes = confirm(`File ${filePath} has unsaved changes. Close anyway?`);
     if (!yes) return;
   }
-  state.openFiles.delete(filePath);
-  if (state.activeFile === filePath){
-    const remaining = Array.from(state.openFiles.keys());
-    if (remaining.length) switchToFile(remaining[remaining.length-1]); else {
-      state.activeFile = null; state.editor?.setModel(null);
-    }
+
+  const isActive = state.activeFile === filePath;
+  const modelToDispose = data?.model;
+
+  // Determine next file if current is active
+  let nextToOpen = null;
+  if (isActive) {
+    const remaining = Array.from(state.openFiles.keys()).filter(p => p !== filePath);
+    nextToOpen = remaining.length ? remaining[remaining.length - 1] : null;
   }
+
+  state.openFiles.delete(filePath);
+
+  if (isActive) {
+    if (nextToOpen) switchToFile(nextToOpen);
+    else { state.activeFile = null; state.editor?.setModel(null); }
+  }
+
+  // Dispose model after switching away to avoid disposing the active model
+  try { if (modelToDispose && !modelToDispose.isDisposed?.()) modelToDispose.dispose(); } catch {}
+
   updateTabs();
   bus.emit('ui:fileTree:selection');
 }

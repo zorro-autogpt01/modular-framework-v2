@@ -1,6 +1,8 @@
 export const state = {
   editor: null,
   diffEditor: null,
+  diffModels: null,
+
   openFiles: new Map(),
   activeFile: null,
   isConnected: false,

@@ -31,8 +31,12 @@ export function switchSidebarPanel(panel){
 export function switchBottomPanel(panel){
   qsa('.bottom-tab').forEach(t=>t.classList.remove('active'));
   qsa('.bottom-content-panel').forEach(p=>p.classList.add('hidden'));
-  qs(`[data-panel="${panel}"]`)?.classList.add('active');
-  qs(`#${panel}-panel`)?.classList.remove('hidden');
+  const tab = qs(`.bottom-tab[data-panel="${panel}"]`);
+  const panelEl = qs(`#${panel}-panel`);
+  if (tab) tab.classList.add('active');
+  if (panelEl) panelEl.classList.remove('hidden');
+  // Ensure the entire bottom panel is visible
+  qs('#bottomPanel')?.classList.remove('hidden');
 }
 
 export function updateWorkspaceIndicator(text){

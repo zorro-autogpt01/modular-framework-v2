@@ -20,17 +20,33 @@ export function initTerminal(){
   });
 }
 
+function bindTerminalInput(){
+  const input = qs('#terminalInput');
+  if (!input || input.__bound) return;
+  input.addEventListener('keypress', (e)=>{
+    if (e.key === 'Enter'){
+      executeTerminalCommand(e.target.value);
+      e.target.value='';
+    }
+  });
+  input.__bound = true;
+}
+
 export function toggleTerminalPanel(){
   const panel = qs('#bottomPanel');
   panel?.classList.toggle('hidden');
 }
 
 export function executeTerminalCommand(command){
+  if (!command || !command.trim()) return;
   addToTerminal(`$ ${command}`);
   if (command === 'help'){ addToTerminal('Available: ls, pwd, whoami, node --version, npm --version, git, docker, npm, help, clear'); return; }
   if (command === 'clear'){
     const t = qs('#terminal');
-    t.innerHTML = `<div>🚀 Advanced Web IDE Pro - Terminal</div><div>Connected to: <span id="terminalHost">${qs('#terminalHost').textContent}</span></div><div>Type 'help' for available commands</div>`;
+    const currentHost = qs('#terminalHost')?.textContent || 'localhost';
+    t.innerHTML = `<div>🚀 Advanced Web IDE Pro - Terminal</div><div>Connected to: <span id="terminalHost">${currentHost}</span></div><div>Type 'help' for available commands</div><div class="terminal-input"><span class="terminal-prompt">$</span><input type="text" class="terminal-command" id="terminalInput" placeholder="Enter command..." /></div>`;
+    // Re-bind input after DOM replacement
+    bindTerminalInput();
     return;
   }
   if (command.startsWith('git ')) { API.executeGitCommand(command); return; }

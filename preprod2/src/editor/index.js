@@ -32,21 +32,57 @@ export function loadFileInEditor(filePath){
   const fileData = state.openFiles.get(filePath);
   if (!fileData) return;
   const language = getLanguageFromPath(filePath);
-  document.getElementById('monaco-diff').classList.add('hidden');
-  document.getElementById('monaco-editor').classList.remove('hidden');
-  const model = monaco.editor.createModel(fileData.content, language);
+  const diffEl = document.getElementById('monaco-diff');
+  const editorEl = document.getElementById('monaco-editor');
+
+  // Hide diff, show main editor
+  diffEl.classList.add('hidden');
+  editorEl.classList.remove('hidden');
+
+  // Dispose any previous diff models to avoid leaks
+  if (state.diffModels) {
+    try { state.diffModels.original.dispose(); } catch {}
+    try { state.diffModels.modified.dispose(); } catch {}
+    state.diffModels = null;
+  }
+
+  // Create or reuse a model for this file
+  let model = fileData.model;
+  if (!model || model.isDisposed?.()) {
+    const uri = monaco.Uri.parse(`inmemory://${filePath}`);
+    model = monaco.editor.createModel(fileData.content ?? '', language, uri);
+    fileData.model = model;
+  } else {
+    monaco.editor.setModelLanguage(model, language);
+    if (model.getValue() !== fileData.content) model.setValue(fileData.content);
+  }
+
   state.editor.setModel(model);
 }
 
 export function showDiff(){
   if (!state.activeFile) return;
   const data = state.openFiles.get(state.activeFile); if (!data) return;
-  document.getElementById('monaco-editor').classList.add('hidden');
-  document.getElementById('monaco-diff').classList.remove('hidden');
+
+  const editorEl = document.getElementById('monaco-editor');
+  const diffEl = document.getElementById('monaco-diff');
+  editorEl.classList.add('hidden');
+  diffEl.classList.remove('hidden');
+
   const lang = getLanguageFromPath(state.activeFile);
-  const originalModel = monaco.editor.createModel(data.originalContent, lang);
-  const modifiedModel = monaco.editor.createModel(data.content, lang);
+
+  // Dispose previous diff models
+  if (state.diffModels) {
+    try { state.diffModels.original.dispose(); } catch {}
+    try { state.diffModels.modified.dispose(); } catch {}
+    state.diffModels = null;
+  }
+
+  const originalModel = monaco.editor.createModel(data.originalContent ?? '', lang, monaco.Uri.parse(`inmemory://diff/original/${state.activeFile}`));
+  const modifiedModel = monaco.editor.createModel(data.content ?? '', lang, monaco.Uri.parse(`inmemory://diff/modified/${state.activeFile}`));
+
   state.diffEditor.setModel({ original: originalModel, modified: modifiedModel });
+  state.diffModels = { original: originalModel, modified: modifiedModel };
 }
 
 export function toggleMinimap(){

@@ -1,0 +1,94 @@
+{
+  "version": "1.0",
+  "backup": true,
+  "changes": [
+    {
+      "id": "state-add-diffmodels",
+      "description": "Add diffModels to state to track and dispose diff editor models properly",
+      "op": "patch_text",
+      "path": "src/core/state.js",
+      "patches": [
+        {
+          "type": "insert_after",
+          "anchor": "diffEditor: null,",
+          "replacement": "\n  diffModels: null,\n"
+        }
+      ]
+    },
+    {
+      "id": "editor-fix-model-leaks-loadfile",
+      "description": "Refactor loadFileInEditor to reuse models per file, dispose diff models, and set language correctly",
+      "op": "patch_text",
+      "path": "src/editor/index.js",
+      "patches": [
+        {
+          "type": "replace_literal",
+          "match": "export function loadFileInEditor(filePath){\n  const fileData = state.openFiles.get(filePath);\n  if (!fileData) return;\n  const language = getLanguageFromPath(filePath);\n  document.getElementById('monaco-diff').classList.add('hidden');\n  document.getElementById('monaco-editor').classList.remove('hidden');\n  const model = monaco.editor.createModel(fileData.content, language);\n  state.editor.setModel(model);\n}\n",
+          "replacement": "export function loadFileInEditor(filePath){\n  const fileData = state.openFiles.get(filePath);\n  if (!fileData) return;\n  const language = getLanguageFromPath(filePath);\n  const diffEl = document.getElementById('monaco-diff');\n  const editorEl = document.getElementById('monaco-editor');\n\n  // Hide diff, show main editor\n  diffEl.classList.add('hidden');\n  editorEl.classList.remove('hidden');\n\n  // Dispose any previous diff models to avoid leaks\n  if (state.diffModels) {\n    try { state.diffModels.original.dispose(); } catch {}\n    try { state.diffModels.modified.dispose(); } catch {}\n    state.diffModels = null;\n  }\n\n  // Create or reuse a model for this file\n  let model = fileData.model;\n  if (!model || model.isDisposed?.()) {\n    const uri = monaco.Uri.parse(`inmemory://${filePath}`);\n    model = monaco.editor.createModel(fileData.content ?? '', language, uri);\n    fileData.model = model;\n  } else {\n    monaco.editor.setModelLanguage(model, language);\n    if (model.getValue() !== fileData.content) model.setValue(fileData.content);\n  }\n\n  state.editor.setModel(model);\n}\n"
+        }
+      ]
+    },
+    {
+      "id": "editor-fix-model-leaks-showdiff",
+      "description": "Refactor showDiff to dispose previous diff models and avoid leaks",
+      "op": "patch_text",
+      "path": "src/editor/index.js",
+      "patches": [
+        {
+          "type": "replace_literal",
+          "match": "export function showDiff(){\n  if (!state.activeFile) return;\n  const data = state.openFiles.get(state.activeFile); if (!data) return;\n  document.getElementById('monaco-editor').classList.add('hidden');\n  document.getElementById('monaco-diff').classList.remove('hidden');\n  const lang = getLanguageFromPath(state.activeFile);\n  const originalModel = monaco.editor.createModel(data.originalContent, lang);\n  const modifiedModel = monaco.editor.createModel(data.content, lang);\n  state.diffEditor.setModel({ original: originalModel, modified: modifiedModel });\n}\n",
+          "replacement": "export function showDiff(){\n  if (!state.activeFile) return;\n  const data = state.openFiles.get(state.activeFile); if (!data) return;\n\n  const editorEl = document.getElementById('monaco-editor');\n  const diffEl = document.getElementById('monaco-diff');\n  editorEl.classList.add('hidden');\n  diffEl.classList.remove('hidden');\n\n  const lang = getLanguageFromPath(state.activeFile);\n\n  // Dispose previous diff models\n  if (state.diffModels) {\n    try { state.diffModels.original.dispose(); } catch {}\n    try { state.diffModels.modified.dispose(); } catch {}\n    state.diffModels = null;\n  }\n\n  const originalModel = monaco.editor.createModel(data.originalContent ?? '', lang, monaco.Uri.parse(`inmemory://diff/original/${state.activeFile}`));\n  const modifiedModel = monaco.editor.createModel(data.content ?? '', lang, monaco.Uri.parse(`inmemory://diff/modified/${state.activeFile}`));\n\n  state.diffEditor.setModel({ original: originalModel, modified: modifiedModel });\n  state.diffModels = { original: originalModel, modified: modifiedModel };\n}\n"
+        }
+      ]
+    },
+    {
+      "id": "tabs-dispose-model-on-close",
+      "description": "Dispose Monaco models on file close to prevent memory leaks and avoid disposing active model prematurely",
+      "op": "patch_text",
+      "path": "src/ui/tabs.js",
+      "patches": [
+        {
+          "type": "replace_literal",
+          "match": "export function closeFile(filePath){\n  const data = state.openFiles.get(filePath);\n  if (data?.modified){\n    const yes = confirm(`File ${filePath} has unsaved changes. Close anyway?`);\n    if (!yes) return;\n  }\n  state.openFiles.delete(filePath);\n  if (state.activeFile === filePath){\n    const remaining = Array.from(state.openFiles.keys());\n    if (remaining.length) switchToFile(remaining[remaining.length-1]); else {\n      state.activeFile = null; state.editor?.setModel(null);\n    }\n  }\n  updateTabs();\n  bus.emit('ui:fileTree:selection');\n}\n",
+          "replacement": "export function closeFile(filePath){\n  const data = state.openFiles.get(filePath);\n  if (data?.modified){\n    const yes = confirm(`File ${filePath} has unsaved changes. Close anyway?`);\n    if (!yes) return;\n  }\n\n  const isActive = state.activeFile === filePath;\n  const modelToDispose = data?.model;\n\n  // Determine next file if current is active\n  let nextToOpen = null;\n  if (isActive) {\n    const remaining = Array.from(state.openFiles.keys()).filter(p => p !== filePath);\n    nextToOpen = remaining.length ? remaining[remaining.length - 1] : null;\n  }\n\n  state.openFiles.delete(filePath);\n\n  if (isActive) {\n    if (nextToOpen) switchToFile(nextToOpen);\n    else { state.activeFile = null; state.editor?.setModel(null); }\n  }\n\n  // Dispose model after switching away to avoid disposing the active model\n  try { if (modelToDispose && !modelToDispose.isDisposed?.()) modelToDispose.dispose(); } catch {}\n\n  updateTabs();\n  bus.emit('ui:fileTree:selection');\n}\n"
+        }
+      ]
+    },
+    {
+      "id": "panels-ensure-bottom-visible",
+      "description": "Ensure bottom panel becomes visible when switching bottom tabs and avoid selecting wrong tab elements",
+      "op": "patch_text",
+      "path": "src/ui/panels.js",
+      "patches": [
+        {
+          "type": "replace_literal",
+          "match": "export function switchBottomPanel(panel){\n  qsa('.bottom-tab').forEach(t=>t.classList.remove('active'));\n  qsa('.bottom-content-panel').forEach(p=>p.classList.add('hidden'));\n  qs(`[data-panel=\"${panel}\"]`)?.classList.add('active');\n  qs(`#${panel}-panel`)?.classList.remove('hidden');\n}\n",
+          "replacement": "export function switchBottomPanel(panel){\n  qsa('.bottom-tab').forEach(t=>t.classList.remove('active'));\n  qsa('.bottom-content-panel').forEach(p=>p.classList.add('hidden'));\n  const tab = qs(`.bottom-tab[data-panel=\"${panel}\"]`);\n  const panelEl = qs(`#${panel}-panel`);\n  if (tab) tab.classList.add('active');\n  if (panelEl) panelEl.classList.remove('hidden');\n  // Ensure the entire bottom panel is visible\n  qs('#bottomPanel')?.classList.remove('hidden');\n}\n"
+        }
+      ]
+    },
+    {
+      "id": "terminal-rebind-after-clear-init",
+      "description": "Make terminal input resilient to DOM resets (clear command) by re-binding input events",
+      "op": "patch_text",
+      "path": "src/terminal/index.js",
+      "patches": [
+        {
+          "type": "replace_literal",
+          "match": "export function initTerminal(){\n  qs('#terminalInput')?.addEventListener('keypress', (e)=>{\n    if (e.key === 'Enter'){\n      executeTerminalCommand(e.target.value);\n      e.target.value='';\n    }\n  });\n}\n",
+          "replacement": "export function initTerminal(){\n  bindTerminalInput();\n}\n"
+        },
+        {
+          "type": "insert_before",
+          "anchor": "export function toggleTerminalPanel(){",
+          "replacement": "function bindTerminalInput(){\n  const input = qs('#terminalInput');\n  if (!input || input.__bound) return;\n  input.addEventListener('keypress', (e)=>{\n    if (e.key === 'Enter'){\n      executeTerminalCommand(e.target.value);\n      e.target.value='';\n    }\n  });\n  input.__bound = true;\n}\n\n"
+        },
+        {
+          "type": "replace_literal",
+          "match": "export function executeTerminalCommand(command){\n  addToTerminal(`$ ${command}`);\n  if (command === 'help'){ addToTerminal('Available: ls, pwd, whoami, node --version, npm --version, git, docker, npm, help, clear'); return; }\n  if (command === 'clear'){\n    const t = qs('#terminal');\n    t.innerHTML = `<div>🚀 Advanced Web IDE Pro - Terminal</div><div>Connected to: <span id=\"terminalHost\">${qs('#terminalHost').textContent}</span></div><div>Type 'help' for available commands</div>`;\n    return;\n  }\n  if (command.startsWith('git ')) { API.executeGitCommand(command); return; }\n  API.executeRemoteCommand(command).then(result=> addToTerminal(result.output));\n}\n",
+          "replacement": "export function executeTerminalCommand(command){\n  if (!command || !command.trim()) return;\n  addToTerminal(`$ ${command}`);\n  if (command === 'help'){ addToTerminal('Available: ls, pwd, whoami, node --version, npm --version, git, docker, npm, help, clear'); return; }\n  if (command === 'clear'){\n    const t = qs('#terminal');\n    const currentHost = qs('#terminalHost')?.textContent || 'localhost';\n    t.innerHTML = `<div>🚀 Advanced Web IDE Pro - Terminal</div><div>Connected to: <span id=\"terminalHost\">${currentHost}</span></div><div>Type 'help' for available commands</div><div class=\"terminal-input\"><span class=\"terminal-prompt\">$</span><input type=\"text\" class=\"terminal-command\" id=\"terminalInput\" placeholder=\"Enter command...\" /></div>`;\n    // Re-bind input after DOM replacement\n    bindTerminalInput();\n    return;\n  }\n  if (command.startsWith('git ')) { API.executeGitCommand(command); return; }\n  API.executeRemoteCommand(command).then(result=> addToTerminal(result.output));\n}\n"
+        }
+      ]
+    }
+  ]
+}
