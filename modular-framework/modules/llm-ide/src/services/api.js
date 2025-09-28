@@ -9,7 +9,9 @@ const BACKEND_WS = (BACKEND_HTTP.startsWith('https') ? 'wss' : 'ws') + '://' + B
 
 let activeSessionId = null;
 let activeSocket = null;
-export async function fetchRemoteTree(remotePath, depth = 3) {
+export async function fetchRemoteTree(remotePath, depth = 10) {
+  // Default depth increased from 3 -> 10 to allow deeper tree browsing on initial load.
+  // Callers can still override depth per request (e.g. lazy loading with depth=1).
   if (!activeSessionId) throw new Error('No active session');
   const url = `${BACKEND_HTTP}/ssh/list?sessionId=${encodeURIComponent(activeSessionId)}&path=${encodeURIComponent(remotePath)}&depth=${depth}`;
   const res = await fetch(url);

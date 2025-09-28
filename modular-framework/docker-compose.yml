@@ -242,6 +242,28 @@ services:
       - app-network
     restart: unless-stopped
 
+  llm-ide-frontend:
+    build:
+      context: ./modules/llm-ide
+      dockerfile: Dockerfile
+    container_name: llm-ide-frontend
+    ports:
+      - "3020:3020"
+    depends_on:
+      - llm-ide-backend
+    networks:
+      - app-network
+
+  llm-ide-backend:
+    build:
+      context: ./modules/llm-ide/backend
+      dockerfile: Dockerfile
+    container_name: llm-ide-backend
+    ports:
+      - "3021:3021"
+    networks:
+      - app-network
+
 
 networks:
   app-network:

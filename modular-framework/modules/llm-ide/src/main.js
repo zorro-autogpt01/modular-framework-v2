@@ -25,6 +25,8 @@ function bootstrap() {
   if (!state.fileTree || typeof state.fileTree !== 'object') state.fileTree = {};
   if (!state.openFiles || !(state.openFiles instanceof Map)) state.openFiles = new Map();
   if (!state.git) state.git = { branch: 'main' };
+  // Track expanded/collapsed folders for file tree UX (persist in-memory)
+  if (!state.fileTreeExpanded || typeof state.fileTreeExpanded !== 'object') state.fileTreeExpanded = {};
 
   // ---- Init core UI ---------------------------------------------------------
   initPanels();
