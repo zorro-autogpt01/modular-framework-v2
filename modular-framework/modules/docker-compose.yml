@@ -41,17 +41,17 @@ services:
 
   # SSH Terminal Module Container
 # SSH Terminal Module Container
-  #ssh-terminal:
-  #  build: ./ssh-terminal
-  #  container_name: ssh-terminal-module
-  #  ports:
-  #    - "3001:3001"
-  #  environment:
-  #    - NODE_ENV=production
-  #    - PORT=3001
-  #  networks:
-  #    - app-network
-  #  restart: unless-stopped
+  ssh-terminal:
+    build: ./ssh-terminal
+    container_name: ssh-terminal-module
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+    networks:
+      - app-network
+    restart: unless-stopped
 
   llm-workflows-module:
     build: ./llm-workflows
