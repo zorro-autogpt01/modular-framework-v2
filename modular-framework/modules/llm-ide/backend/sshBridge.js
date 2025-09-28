@@ -13,10 +13,10 @@ export function connectSSH({ host, port = 22, username, authMethod, password, pr
   return new Promise((resolve, reject) => {
     const client = new Client();
 
-    const cfg = { host, port, username, tryKeyboard: false, readyTimeout: 20000 };
+    const cfg = { host, port, username, tryKeyboard: false, readyTimeout: 20000, keepaliveInterval: 60000, keepaliveCountMax: 5 };
     if (authMethod === 'password') cfg.password = password;
     else if (authMethod === 'key') {
-      cfg.privateKey = Buffer.from(privateKey || '', 'utf8');
+      cfg.privateKey = Buffer.from((privateKey || '').replace(/\r\n/g, '\n').trim(), 'utf8');
       if (passphrase) cfg.passphrase = passphrase;
     } else return reject(new Error('Unsupported authMethod'));
 
