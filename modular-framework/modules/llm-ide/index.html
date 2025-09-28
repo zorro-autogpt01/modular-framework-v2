@@ -3,9 +3,75 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Advanced Web IDE Pro</title>
+  <title>Advanced Web IDE Pro - GitHub Enhanced</title>
   <link rel="stylesheet" href="assets/css/base.css" />
   <link rel="stylesheet" href="assets/css/ide.css" />
+  <style>
+    /* GitHub integration styles */
+    .github-mode-toggle {
+      display: flex;
+      gap: 4px;
+      margin: 8px 0;
+      background: #2d2d30;
+      border-radius: 4px;
+      padding: 2px;
+    }
+    .github-mode-toggle button {
+      flex: 1;
+      padding: 4px 8px;
+      background: transparent;
+      border: none;
+      color: #9d9d9d;
+      cursor: pointer;
+      border-radius: 2px;
+      font-size: 11px;
+    }
+    .github-mode-toggle button.active {
+      background: #094771;
+      color: #fff;
+    }
+    .git-commands-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 4px;
+      margin: 8px 0;
+    }
+    .staged-files {
+      background: #1e1e1e;
+      border: 1px solid #3e3e3e;
+      border-radius: 4px;
+      padding: 8px;
+      margin: 8px 0;
+      max-height: 150px;
+      overflow-y: auto;
+    }
+    .staged-file-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px;
+      font-size: 11px;
+    }
+    .staged-file-item:hover {
+      background: #2a2d2e;
+    }
+    .github-indicator {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-left: 4px;
+    }
+    .github-indicator.synced {
+      background: #27ae60;
+    }
+    .github-indicator.modified {
+      background: #ff9800;
+    }
+    .github-indicator.untracked {
+      background: #9d9d9d;
+    }
+  </style>
 </head>
 <body>
   <div class="ide-container">
@@ -17,13 +83,19 @@
       </div>
       <div class="sidebar-content">
         <div class="repo-explorer">
-          <!-- Git Section -->
+          <!-- Enhanced Git Section with GitHub Hub Integration -->
           <section class="repo-section">
             <header class="repo-section-header" data-toggle-section="git">
               <span>🌿 Git Repository</span>
               <span id="gitToggle">▼</span>
             </header>
             <div class="repo-section-content" id="gitSection">
+              <!-- GitHub Mode Toggle -->
+              <div class="github-mode-toggle">
+                <button id="modeLocal" class="active" onclick="switchGitMode('local')">Local Git</button>
+                <button id="modeGithub" onclick="switchGitMode('github')">GitHub API</button>
+              </div>
+              
               <div class="input-group">
                 <label for="branchSelector">Current Branch</label>
                 <select id="branchSelector">
@@ -32,22 +104,58 @@
                   <option value="feature/auth">feature/auth</option>
                 </select>
               </div>
-              <div class="grid-2">
-                <button class="btn small" data-action="git:pull">Pull</button>
-                <button class="btn small" data-action="git:fetch">Fetch</button>
-                <button class="btn small secondary" data-action="git:stash">Stash</button>
-                <button class="btn small secondary" data-action="git:create-branch">Branch</button>
+              
+              <!-- Enhanced Git Commands -->
+              <div class="git-commands-grid">
+                <button class="btn small" data-action="git:add" title="Stage all changes">Add</button>
+                <button class="btn small" data-action="git:commit" title="Commit staged changes">Commit</button>
+                <button class="btn small" data-action="git:push" title="Push to remote">Push</button>
+                <button class="btn small" data-action="git:pull" title="Pull from remote">Pull</button>
+                <button class="btn small" data-action="git:fetch" title="Fetch updates">Fetch</button>
+                <button class="btn small secondary" data-action="git:stash" title="Stash changes">Stash</button>
+                <button class="btn small secondary" data-action="git:reset" title="Reset changes">Reset</button>
+                <button class="btn small secondary" data-action="git:checkout" title="Switch branch">Switch</button>
+                <button class="btn small secondary" data-action="git:merge" title="Merge branch">Merge</button>
+                <button class="btn small secondary" data-action="git:rebase" title="Rebase branch">Rebase</button>
+                <button class="btn small danger" data-action="git:reset-hard" title="Hard reset">Hard Reset</button>
+                <button class="btn small" data-action="git:status" title="Check status">Status</button>
               </div>
+              
+              <!-- Staged Files View -->
+              <div class="staged-files" id="stagedFiles">
+                <div class="sub-title">STAGED FILES</div>
+                <div id="stagedFilesList">
+                  <div class="staged-file-item">
+                    <input type="checkbox" checked />
+                    <span>src/main.js</span>
+                    <span class="github-indicator modified" title="Modified"></span>
+                  </div>
+                  <div class="staged-file-item">
+                    <input type="checkbox" checked />
+                    <span>README.md</span>
+                    <span class="github-indicator modified" title="Modified"></span>
+                  </div>
+                </div>
+              </div>
+              
               <div class="input-group">
                 <label for="commitMessage">Commit Message</label>
                 <textarea class="db-query-editor" id="commitMessage" placeholder="Commit message..."></textarea>
-              <div class="row gap-8 top-16">
-                <input type="file" id="sshKeyFile" accept=".pem,.key,.txt" />
-                <button class="btn small secondary" id="sshKeyFileLoadBtn" type="button">Load Key File</button>
               </div>
-
+              
+              <!-- GitHub Hub Actions -->
+              <div id="githubHubActions" style="display:none;">
+                <div class="sub-title">GITHUB DIRECT ACTIONS</div>
+                <div class="grid-2">
+                  <button class="btn small" data-action="github:browse">Browse Repo</button>
+                  <button class="btn small" data-action="github:sync">Sync Files</button>
+                  <button class="btn small success" data-action="github:batch-commit">Batch Commit</button>
+                  <button class="btn small secondary" data-action="github:create-pr">Create PR</button>
+                </div>
               </div>
+              
               <button class="btn success small" data-action="git:quick-commit-push">💫 Commit & Push</button>
+              
               <div class="repo-sublist">
                 <div class="sub-title">BRANCHES</div>
                 <div class="branch-list" id="branchList">
@@ -56,6 +164,7 @@
                   <div class="branch-item"><span>🌿 feature/auth</span><span></span></div>
                 </div>
               </div>
+              
               <div class="repo-sublist">
                 <div class="sub-title">RECENT COMMITS</div>
                 <div class="commit-list" id="commitList">
@@ -71,7 +180,7 @@
               </div>
             </div>
           </section>
-          <!-- Docker Section -->
+          <!-- Docker Section (unchanged) -->
           <section class="repo-section">
             <header class="repo-section-header" data-toggle-section="docker">
               <span>🐳 Docker</span>
@@ -112,7 +221,7 @@
               </div>
             </div>
           </section>
-          <!-- Database Section -->
+          <!-- Database Section (unchanged) -->
           <section class="repo-section">
             <header class="repo-section-header" data-toggle-section="database">
               <span>🗄️ Database</span>
@@ -146,6 +255,7 @@
         <div class="row gap-4">
           <button class="btn small secondary" data-action="files:refresh">↻</button>
           <button class="btn small" data-action="files:new-file">📄</button>
+          <button class="btn small" id="githubTreeToggle" style="display:none;" title="Toggle GitHub Tree">🐙</button>
         </div>
       </div>
       <div class="sidebar-tabs">
@@ -195,19 +305,22 @@
               <label for="sshPassword">Password</label>
               <input type="password" id="sshPassword" />
               <div class="muted">Your password is used once to establish the SSH session via the local bridge and is not persisted or logged.</div>
-
             </div>
-                        <div class="input-group" id="privateKeyGroup">
+            <div class="input-group" id="privateKeyGroup">
               <label for="sshPrivateKey">Private Key (PEM)</label>
               <textarea id="sshPrivateKey" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----"></textarea>
               <div class="muted">Your key is kept in-memory in this browser tab and only sent to the local SSH bridge to start the session. It is not stored or logged.</div>
+              <div class="row gap-8 top-16">
+                <input type="file" id="sshKeyFile" accept=".pem,.key,.txt" />
+                <button class="btn small secondary" id="sshKeyFileLoadBtn" type="button">Load Key File</button>
+              </div>
             </div>
             <div class="input-group" id="passphraseGroup">
               <label for="sshPassphrase">Key Passphrase (optional)</label>
               <input type="password" id="sshPassphrase" />
             </div>
             <div class="muted">Tip: Switch Authentication to "Password" if you prefer entering a password. Passwords and keys are used only for the active session and are not stored.</div>
-<div class="input-group">
+            <div class="input-group">
               <label for="remotePath">Remote Path</label>
               <input type="text" id="remotePath" value="/var/www/html" />
             </div>
@@ -218,7 +331,7 @@
       </div>
     </aside>
 
-    <!-- Main Content Area -->
+    <!-- Main Content Area (unchanged) -->
     <main class="main-content">
       <div class="toolbar">
         <div class="toolbar-group">
@@ -328,43 +441,62 @@
     </main>
   </div>
 
-  <!-- GitHub Modal -->
+  <!-- Simplified GitHub Modal -->
   <div id="githubModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="githubModalTitle">
     <div class="modal-content">
       <div class="modal-header">
         <h3 id="githubModalTitle">🐙 GitHub Integration</h3>
         <span class="modal-close" data-action="modal:close" data-target="#githubModal">×</span>
       </div>
-      <div class="input-group">
-        <label for="githubToken">GitHub Token</label>
-        <input type="password" id="githubToken" placeholder="ghp_..." />
-      <div class="muted">We never send or store this token on the server. It is only used to construct a Git command that you execute.</div>
-
+      
+      <!-- GitHub Hub Status -->
+      <div class="connection-status" style="margin-bottom: 16px; padding: 12px; background: #1e1e1e; border-radius: 4px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div id="githubHubStatus" class="status-indicator"></div>
+          <span id="githubHubStatusText">Checking GitHub Hub...</span>
+        </div>
+        <div id="githubHubRepo" style="margin-top: 8px; font-size: 11px; color: #9d9d9d;"></div>
       </div>
-      <div class="input-group">
-        <label for="repoUrl">Repository URL</label>
-        <input type="text" id="repoUrl" placeholder="https://github.com/user/repo.git" />
-      <div class="muted">Use HTTPS (https://github.com/owner/repo.git) with a token, or SSH (git@github.com:owner/repo.git) if your SSH key is configured on GitHub.</div>
-
+      
+      <!-- Only show config options if not connected to github-hub -->
+      <div id="githubLocalConfig" style="display: none;">
+        <div class="input-group">
+          <label for="repoUrl">Repository URL (for local git commands)</label>
+          <input type="text" id="repoUrl" placeholder="https://github.com/user/repo.git" />
+          <div class="muted">Only needed if GitHub Hub is not configured</div>
+        </div>
+        <div class="input-group">
+          <label for="gitAction">Action</label>
+          <select id="gitAction">
+            <option value="clone">Clone Repository</option>
+            <option value="init">Initialize & Connect</option>
+            <option value="connect">Connect Existing</option>
+          </select>
+        </div>
       </div>
-      <div class="input-group">
-        <label for="gitAction">Action</label>
-        <select id="gitAction">
-          <div class="muted" style="margin-top:8px;">Clone: download a repository. Initialize & Connect: run git init and add origin. Connect Existing: set or update origin URL of the current repo.</div>
-
-          <option value="clone">Clone Repository</option>
-          <option value="init">Initialize & Connect</option>
-          <option value="connect">Connect Existing</option>
-        </select>
+      
+      <!-- GitHub Hub actions when connected -->
+      <div id="githubHubConfig" style="display: none;">
+        <div class="sub-title">GITHUB HUB ACTIONS</div>
+        <div class="grid-2" style="margin-top: 12px;">
+          <button class="btn small" data-action="github:load-tree">Load Repository</button>
+          <button class="btn small" data-action="github:refresh-branches">Refresh Branches</button>
+          <button class="btn small secondary" data-action="github:switch-mode">Switch to Local</button>
+          <button class="btn small secondary" data-action="github:open-hub-ui">Open Hub UI</button>
+        </div>
+        <div class="muted" style="margin-top: 12px;">
+          GitHub Hub is managing repository configuration. Click "Load Repository" to browse files from GitHub.
+        </div>
       </div>
+      
       <div class="row gap-8 top-16">
-        <button class="btn" data-action="github:execute">Execute</button>
+        <button id="githubExecuteBtn" class="btn" data-action="github:execute">Execute</button>
         <button class="btn secondary" data-action="modal:close" data-target="#githubModal">Cancel</button>
       </div>
     </div>
   </div>
 
-  <!-- Database Modal -->
+  <!-- Database Modal (unchanged) -->
   <div id="databaseModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="databaseModalTitle">
     <div class="modal-content">
       <div class="modal-header">
@@ -400,7 +532,194 @@
   <script>
     // Configure Monaco path before main.js runs
     window.require && window.require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' } });
+    
+    // GitHub Hub configuration
+    window.__GITHUB_HUB_URL = window.location.protocol + '//' + window.location.host + '/api/github-hub';
+    window.__BACKEND_URL = window.location.protocol + '//' + window.location.host + '/api/ssh-terminal';
+    
+    // Mode switching function
+    function switchGitMode(mode) {
+      document.getElementById('modeLocal').classList.toggle('active', mode === 'local');
+      document.getElementById('modeGithub').classList.toggle('active', mode === 'github');
+      document.getElementById('githubHubActions').style.display = mode === 'github' ? 'block' : 'none';
+      document.getElementById('githubTreeToggle').style.display = mode === 'github' ? 'block' : 'none';
+      
+      // Update workspace indicator
+      if (mode === 'github') {
+        document.getElementById('workspaceIndicator').textContent = 'GitHub: ' + (window.currentGitHubRepo || 'Not configured');
+      }
+    }
   </script>
   <script type="module" src="src/main.js"></script>
+  <script type="module">
+    // Import the new GitHub Hub service
+    import { githubHub, gitHandlers } from './src/services/githubHub.js';
+    
+    // Wait for main IDE to initialize
+    import('./src/main.js').then(async () => {
+      
+      // Initialize GitHub Hub connection check when modal opens
+      document.addEventListener('click', async (e) => {
+        const btn = e.target.closest('[data-action]');
+        if (!btn) return;
+        
+        const action = btn.getAttribute('data-action');
+        
+        // Check GitHub Hub status when opening modal
+        if (action === 'modal:open' && btn.getAttribute('data-target') === '#githubModal') {
+          const statusEl = document.getElementById('githubHubStatus');
+          const statusTextEl = document.getElementById('githubHubStatusText');
+          const repoEl = document.getElementById('githubHubRepo');
+          const localConfig = document.getElementById('githubLocalConfig');
+          const hubConfig = document.getElementById('githubHubConfig');
+          const executeBtn = document.getElementById('githubExecuteBtn');
+          
+          statusTextEl.textContent = 'Checking GitHub Hub...';
+          statusEl.classList.remove('connected');
+          
+          const config = await githubHub.checkConnection();
+          
+          if (githubHub.connected && config) {
+            // GitHub Hub is configured
+            statusEl.classList.add('connected');
+            statusTextEl.textContent = 'Connected to GitHub Hub';
+            
+            const repoName = config.repo_url.split('/').slice(-2).join('/').replace('.git', '');
+            repoEl.textContent = `Repository: ${repoName} (${config.default_branch || 'main'})`;
+            
+            localConfig.style.display = 'none';
+            hubConfig.style.display = 'block';
+            executeBtn.style.display = 'none';
+            
+            // Update branch selector
+            try {
+              const branches = await githubHub.getBranches();
+              const selector = document.getElementById('branchSelector');
+              selector.innerHTML = '';
+              branches.branches?.forEach(branch => {
+                const option = document.createElement('option');
+                option.value = branch;
+                option.textContent = branch;
+                if (branch === config.default_branch) option.selected = true;
+                selector.appendChild(option);
+              });
+            } catch (e) {
+              console.error('Failed to load branches:', e);
+            }
+          } else {
+            // GitHub Hub not configured, show local options
+            statusEl.classList.remove('connected');
+            statusTextEl.textContent = 'GitHub Hub not configured';
+            repoEl.textContent = 'Configure GitHub Hub first or use local git commands';
+            
+            localConfig.style.display = 'block';
+            hubConfig.style.display = 'none';
+            executeBtn.style.display = 'block';
+          }
+        }
+        
+        // Handle all git actions
+        if (gitHandlers[action]) {
+          e.preventDefault();
+          gitHandlers[action]();
+        }
+        
+        // GitHub Hub specific actions
+        if (action === 'github:load-tree') {
+          await githubHub.loadGitHubTree();
+          document.querySelector('#githubModal')?.classList.add('hidden');
+        }
+        
+        if (action === 'github:refresh-branches') {
+          try {
+            const branches = await githubHub.getBranches();
+            const selector = document.getElementById('branchSelector');
+            const current = selector.value;
+            selector.innerHTML = '';
+            branches.branches?.forEach(branch => {
+              const option = document.createElement('option');
+              option.value = branch;
+              option.textContent = branch;
+              if (branch === current) option.selected = true;
+              selector.appendChild(option);
+            });
+            window.AdvancedCodeEditorAPI?.showNotification('✅ Branches refreshed', 'success');
+          } catch (e) {
+            window.AdvancedCodeEditorAPI?.showNotification(`❌ Failed to refresh: ${e.message}`, 'error');
+          }
+        }
+        
+        if (action === 'github:switch-mode') {
+          switchGitMode('local');
+          document.querySelector('#githubModal')?.classList.add('hidden');
+        }
+        
+        if (action === 'github:open-hub-ui') {
+          // Open GitHub Hub UI in a new tab (adjust URL as needed)
+          window.open('/api/github-hub/ui/', '_blank');
+        }
+      });
+      
+      // Enhanced file open to load from GitHub if needed
+      const originalBus = window.bus || window.AdvancedCodeEditorAPI?.bus;
+      if (originalBus) {
+        originalBus.on('file:open', async ({ path }) => {
+          if (window.state?.currentWorkspace === 'github') {
+            const fileNode = githubHub.getFileNode(path);
+            if (fileNode && !fileNode.content) {
+              // Load content from GitHub
+              try {
+                const content = await githubHub.syncFileContent(path);
+                fileNode.content = content;
+              } catch (e) {
+                console.error('Failed to load GitHub file:', e);
+              }
+            }
+          }
+        });
+        
+        // Track file modifications for GitHub mode
+        originalBus.on('file:modified', ({ path }) => {
+          if (window.state?.currentWorkspace === 'github') {
+            const fileNode = githubHub.getFileNode(path);
+            const currentContent = window.AdvancedCodeEditorAPI?.getCurrentContent?.() || '';
+            if (fileNode) {
+              githubHub.trackModifiedFile(path, currentContent, fileNode.originalContent || '');
+            }
+          }
+        });
+        
+        // Update UI when files are modified
+        originalBus.on('github:files:modified', ({ count, files }) => {
+          const stagedList = document.getElementById('stagedFilesList');
+          if (stagedList) {
+            stagedList.innerHTML = '';
+            files.forEach(file => {
+              const item = document.createElement('div');
+              item.className = 'staged-file-item';
+              item.innerHTML = `
+                <input type="checkbox" checked />
+                <span>${file}</span>
+                <span class="github-indicator modified" title="Modified"></span>
+              `;
+              stagedList.appendChild(item);
+            });
+          }
+        });
+        
+        // Update UI when connected to GitHub Hub
+        originalBus.on('github:hub:connected', ({ config, repoName }) => {
+          // Enable GitHub mode toggle
+          document.getElementById('githubTreeToggle').style.display = 'block';
+          
+          // Update workspace indicator
+          const indicator = document.getElementById('workspaceIndicator');
+          if (indicator && window.state?.currentWorkspace === 'github') {
+            indicator.textContent = `GitHub: ${repoName}`;
+          }
+        });
+      }
+    });
+  </script>
 </body>
 </html>
