@@ -29,7 +29,11 @@ app.get('/ssh/list', async (req, res) => {
   try {
     const sessionId = req.query.sessionId;
     const path = req.query.path;
+    console.log('[api] /ssh/read', { sessionId, path });
+
     const depth = Math.max(0, Math.min(5, parseInt(req.query.depth || '2', 10)));
+    console.log('[api] /ssh/list', { sessionId, path, depth });
+
     if (!sessionId || !path) return res.status(400).json({ ok: false, error: 'Missing sessionId or path' });
     const tree = await listRemote(sessionId, path, depth);
     return res.json({ ok: true, tree });

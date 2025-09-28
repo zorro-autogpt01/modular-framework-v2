@@ -1,0 +1,65 @@
+{
+  "version": "1.0",
+  "project_root": "modular-framework",
+  "dry_run": false,
+  "backup": true,
+  "changes": [
+    {
+      "id": "nginx-ws-upgrade-ide-api",
+      "description": "Enable WebSocket upgrade headers for LLM IDE backend API so /ide/api/ssh WS connections pass through",
+      "op": "patch_text",
+      "path": "modules/edge-nginx/nginx.conf",
+      "patches": [
+        {
+          "type": "insert_after",
+          "anchor": "location /ide/api/ {",
+          "replacement": "      proxy_set_header Upgrade $http_upgrade;\n      proxy_set_header Connection $connection_upgrade;\n",
+          "newline": true
+        }
+      ],
+      "continue_on_error": false
+    },
+    {
+      "id": "ide-index-point-to-llm-ide-backend",
+      "description": "Point IDE frontend to its own backend (/ide/api) instead of the separate ssh-terminal module",
+      "op": "patch_text",
+      "path": "modules/llm-ide/index.html",
+      "patches": [
+        {
+          "type": "replace_literal",
+          "match": "window.__BACKEND_URL = window.__BACKEND_URL || (window.location.origin + '/api/ssh-terminal');",
+          "replacement": "window.__BACKEND_URL = window.__BACKEND_URL || (window.location.origin + '/ide/api');"
+        }
+      ],
+      "continue_on_error": false
+    },
+    {
+      "id": "sshbridge-keepalive",
+      "description": "Add SSH keepalive to reduce idle disconnects",
+      "op": "patch_text",
+      "path": "modules/llm-ide/backend/sshBridge.js",
+      "patches": [
+        {
+          "type": "replace_literal",
+          "match": "const cfg = { host, port, username, tryKeyboard: false, readyTimeout: 20000 };",
+          "replacement": "const cfg = { host, port, username, tryKeyboard: false, readyTimeout: 20000, keepaliveInterval: 60000, keepaliveCountMax: 5 };"
+        }
+      ],
+      "continue_on_error": false
+    },
+    {
+      "id": "sshbridge-normalize-private-key",
+      "description": "Normalize private key input (trim and convert CRLF to LF) before passing to ssh2",
+      "op": "patch_text",
+      "path": "modules/llm-ide/backend/sshBridge.js",
+      "patches": [
+        {
+          "type": "replace_literal",
+          "match": "cfg.privateKey = Buffer.from(privateKey || '', 'utf8');",
+          "replacement": "cfg.privateKey = Buffer.from((privateKey || '').replace(/\\r\\n/g, '\\n').trim(), 'utf8');"
+        }
+      ],
+      "continue_on_error": false
+    }
+  ]
+}

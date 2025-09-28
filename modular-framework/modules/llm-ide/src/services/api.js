@@ -6,6 +6,8 @@ import { updateConnectionStatus, updateWorkspaceIndicator } from '../ui/panels.j
 import { addToTerminal } from '../terminal/index.js';
 import { joinRemotePath } from '../utils/remotePath.js';
 
+import { joinRemotePath } from '../utils/remotePath.js';
+
 
 // Dynamic backend URL detection
 function getBackendUrls() {
@@ -67,9 +69,11 @@ export async function readRemoteFile(relPath) {
     }
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'Read failed');
+    console.debug('[API] read:ok', { fullPath, bytes: (data.content || '').length });
+
     return data.content ?? '';
   } catch (e) {
-    console.error('readRemoteFile error:', e);
+    console.error('readRemoteFile error:', { fullPath, err: e?.message || e });
     throw e;
   }
 }

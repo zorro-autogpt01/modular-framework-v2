@@ -1,0 +1,92 @@
+{
+  "version": "1.0",
+  "backup": true,
+  "changes": [
+    {
+      "op": "patch_text",
+      "path": "modular-framework/modules/llm-ide/src/main.js",
+      "description": "Switch to triple-editor implementation and keep API surface identical",
+      "patches": [
+        {
+          "type": "replace_literal",
+          "match": "import { initEditor, loadFileInEditor, showDiff, toggleMinimap, getEditorValue } from './editor/index.js';",
+          "replacement": "import { initEditor, loadFileInEditor, showDiff, toggleMinimap, getEditorValue } from './editor/multiEditor.js';"
+        }
+      ]
+    },
+    {
+      "op": "patch_text",
+      "path": "modular-framework/modules/llm-ide/assets/css/ide.css",
+      "description": "Add triple editor layout styles and visual focus for focused editor pane",
+      "patches": [
+        {
+          "type": "ensure_line",
+          "match": "\n/* --- Triple editor layout --- */",
+          "replacement": "\n/* --- Triple editor layout --- */"
+        },
+        {
+          "type": "insert_after",
+          "anchor": "/* --- Triple editor layout --- */",
+          "replacement": "\n.editor-container.triple{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr;gap:6px;height:100%}\n.editor-pane{display:flex;flex-direction:column;min-height:0;border-left:1px solid #3e3e3e;border-right:1px solid #3e3e3e;background:#1e1e1e}\n.editor-pane .editor-header{height:28px;display:flex;align-items:center;justify-content:space-between;padding:0 8px;background:#2d2d30;border-bottom:1px solid #3e3e3e;font-size:12px}\n.editor-pane .editor-body{flex:1;min-height:0;position:relative;display:flex}\n.editor-pane .editor-body > div{flex:1;min-width:0;min-height:0}\n.editor-pane.focused .editor-header{background:#094771;color:#fff}\n.editor-left{grid-column:1;grid-row:1}\n.editor-right-top{grid-column:2;grid-row:1;display:grid;grid-template-rows:1fr 1fr}\n.editor-right-top .pane-top,.editor-right-top .pane-bottom{display:flex;flex-direction:column;min-height:0}\n/* Monaco hosts */\n#monaco-editor-1,#monaco-editor-2,#monaco-editor-3,#monaco-diff{width:100%;height:100%}\n"
+        }
+      ]
+    },
+    {
+      "op": "patch_text",
+      "path": "modular-framework/modules/llm-ide/index.html",
+      "description": "Implement triple editor panes, move SSH connection UI under Database section with presets, and avoid showing GitHub tree in file explorer.",
+      "patches": [
+        {
+          "type": "replace_regex",
+          "match": "<div class=\"editor-container\">[\\s\\S]*?<div class=\"bottom-panel\"",
+          "replacement": "<div class=\"editor-container triple\">\n          <!-- Left half: full-height editor 1 -->\n          <section class=\"editor-pane editor-left\" aria-label=\"Editor Pane 1\">\n            <div class=\"editor-header\"><span id=\"editor1Title\">Editor 1</span></div>\n            <div class=\"editor-body\">\n              <div id=\"monaco-editor-1\" aria-label=\"Code editor 1\"></div>\n            </div>\n          </section>\n          <!-- Right half: two stacked editors (top=editor 2, bottom=editor 3/diff) -->\n          <section class=\"editor-right-top\">\n            <div class=\"editor-pane pane-top\" aria-label=\"Editor Pane 2\">\n              <div class=\"editor-header\"><span id=\"editor2Title\">Editor 2</span></div>\n              <div class=\"editor-body\">\n                <div id=\"monaco-editor-2\" aria-label=\"Code editor 2\"></div>\n              </div>\n            </div>\n            <div class=\"editor-pane pane-bottom\" aria-label=\"Editor Pane 3\">\n              <div class=\"editor-header\"><span id=\"editor3Title\">Editor 3</span></div>\n              <div class=\"editor-body\">\n                <div id=\"monaco-editor-3\" aria-label=\"Code editor 3\"></div>\n                <!-- Diff editor overlays editor 3 when requested by multiEditor.js -->\n                <div id=\"monaco-diff\" class=\"hidden\" aria-label=\"Diff editor\"></div>\n              </div>\n            </div>\n          </section>\n        </div>\n        <div class=\"bottom-panel\""
+        },
+        {
+          "type": "replace_regex",
+          "match": "<div class=\"sidebar-tab\" data-panel=\"ssh\">[\\s\\S]*?</div>",
+          "replacement": ""
+        },
+        {
+          "type": "replace_regex",
+          "match": "<div id=\"ssh-panel\"[\\s\\S]*?</div>\\s*</div>\\s*</div>",
+          "replacement": "</div></div>"
+        },
+        {
+          "type": "replace_regex",
+          "match": "<button class=\"btn small\" id=\"githubTreeToggle\"[\\s\\S]*?</button>",
+          "replacement": ""
+        },
+        {
+          "type": "replace_regex",
+          "match": "<section class=\"repo-section\">\\s*<header class=\"repo-section-header\" data-toggle-section=\"database\">[\\s\\S]*?</section>",
+          "replacement": "<section class=\"repo-section\">\n            <header class=\"repo-section-header\" data-toggle-section=\"database\">\n              <span>🗄️ Database</span>\n              <span id=\"databaseToggle\">▼</span>\n            </header>\n            <div class=\"repo-section-content\" id=\"databaseSection\">\n              <button class=\"btn small\" data-action=\"database:open-add-modal\">➕ Add Connection</button>\n              <div class=\"repo-sublist\">\n                <div class=\"sub-title\">CONNECTIONS</div>\n                <div id=\"databaseConnections\">\n                  <div class=\"database-connection\" data-action=\"database:connect\" data-connection=\"postgres_dev\">\n                    <div class=\"row\"><div class=\"db-status connected\"></div><span>PostgreSQL Dev</span></div>\n                    <span class=\"ok\">●</span>\n                  </div>\n                  <div class=\"database-connection\" data-action=\"database:connect\" data-connection=\"mysql_prod\">\n                    <div class=\"row\"><div class=\"db-status disconnected\"></div><span>MySQL Prod</span></div>\n                    <span class=\"err\">●</span>\n                  </div>\n                </div>\n              </div>\n\n              <hr style=\"border:0;border-top:1px solid #3e3e3e;margin:8px 0;\" />\n              <div class=\"repo-sublist\">\n                <div class=\"sub-title\">SSH CONNECTION</div>\n                <div class=\"connection-panel\" style=\"padding:8px;background:#1e1e1e;border-radius:4px;\">\n                  <div class=\"connection-status\">\n                    <div class=\"status-indicator\" id=\"connectionStatus\"></div>\n                    <span id=\"connectionText\">Disconnected</span>\n                  </div>\n                  <div class=\"grid-2\">\n                    <div class=\"input-group\">\n                      <label for=\"sshHost\">Host</label>\n                      <input type=\"text\" id=\"sshHost\" placeholder=\"dev-server.local\" />\n                    </div>\n                    <div class=\"input-group\">\n                      <label for=\"sshPort\">Port</label>\n                      <input type=\"number\" id=\"sshPort\" value=\"22\" />\n                    </div>\n                  </div>\n                  <div class=\"grid-2\">\n                    <div class=\"input-group\">\n                      <label for=\"sshUsername\">Username</label>\n                      <input type=\"text\" id=\"sshUsername\" placeholder=\"developer\" />\n                    </div>\n                    <div class=\"input-group\">\n                      <label for=\"authMethod\">Authentication</label>\n                      <select id=\"authMethod\">\n                        <option value=\"key\">SSH Key</option>\n                        <option value=\"password\">Password</option>\n                      </select>\n                    </div>\n                  </div>\n                  <div class=\"input-group hidden\" id=\"passwordGroup\">\n                    <label for=\"sshPassword\">Password</label>\n                    <input type=\"password\" id=\"sshPassword\" />\n                    <div class=\"muted\">Your password is used once to establish the SSH session via the local bridge and is not persisted or logged.</div>\n                  </div>\n                  <div class=\"input-group\" id=\"privateKeyGroup\">\n                    <label for=\"sshPrivateKey\">Private Key (PEM)</label>\n                    <textarea id=\"sshPrivateKey\" placeholder=\"-----BEGIN OPENSSH PRIVATE KEY-----&#10;...&#10;-----END OPENSSH PRIVATE KEY-----\"></textarea>\n                    <div class=\"muted\">Your key is kept in-memory in this browser tab and only sent to the local SSH bridge to start the session. It is not stored or logged.</div>\n                    <div class=\"row gap-8 top-16\">\n                      <input type=\"file\" id=\"sshKeyFile\" accept=\".pem,.key,.txt\" />\n                      <button class=\"btn small secondary\" id=\"sshKeyFileLoadBtn\" type=\"button\">Load Key File</button>\n                    </div>\n                  </div>\n                  <div class=\"input-group\" id=\"passphraseGroup\">\n                    <label for=\"sshPassphrase\">Key Passphrase (optional)</label>\n                    <input type=\"password\" id=\"sshPassphrase\" />\n                  </div>\n                  <div class=\"input-group\">\n                    <label for=\"remotePath\">Remote Path</label>\n                    <input type=\"text\" id=\"remotePath\" value=\"/var/www/html\" />\n                  </div>\n\n                  <div class=\"row gap-8\" style=\"margin:8px 0; align-items:center;\">\n                    <label style=\"display:flex;align-items:center;gap:6px;font-size:11px;\">\n                      <input type=\"checkbox\" id=\"sshStoreSecrets\" /> Store secrets (password/key) in this browser\n                    </label>\n                  </div>\n\n                  <div class=\"grid-2\" style=\"margin-bottom:6px;gap:8px;\">\n                    <div class=\"row\" style=\"gap:8px;align-items:center;\">\n                      <input type=\"text\" class=\"text-input\" id=\"sshPresetName\" placeholder=\"Preset name (e.g., staging)\" />\n                    </div>\n                    <div class=\"row\" style=\"gap:8px;align-items:center;\">\n                      <select id=\"sshPresetSelect\" class=\"text-input\"></select>\n                    </div>\n                  </div>\n                  <div class=\"grid-2\" style=\"gap:8px;\">\n                    <div class=\"row\" style=\"gap:8px;\">\n                      <button class=\"btn small secondary\" id=\"sshSavePresetBtn\" type=\"button\">💾 Save Preset</button>\n                      <button class=\"btn small secondary\" id=\"sshLoadPresetBtn\" type=\"button\">📥 Load</button>\n                    </div>\n                    <div class=\"row\" style=\"gap:8px;justify-content:flex-end;\">\n                      <button class=\"btn small danger\" id=\"sshDeletePresetBtn\" type=\"button\">🗑 Delete Preset</button>\n                    </div>\n                  </div>\n\n                  <div class=\"row gap-8 top-16\">\n                    <button id=\"connectBtn\" class=\"btn\" data-action=\"ssh:connect\">🔗 Connect SSH</button>\n                    <button id=\"disconnectBtn\" class=\"btn danger hidden\" data-action=\"ssh:disconnect\">Disconnect</button>\n                  </div>\n                </div>\n              </div>\n            </div>\n          </section>"
+        },
+        {
+          "type": "replace_regex",
+          "match": "<button class=\"btn small\" data-action=\"github:load-tree\">Load Repository</button>",
+          "replacement": "<button class=\"btn small\" data-action=\"github:open-hub-ui\">Open Hub UI</button>"
+        },
+        {
+          "type": "replace_regex",
+          "match": "<button class=\"btn small\" data-action=\"github:browse\">Browse Repo</button>",
+          "replacement": "<button class=\"btn small\" data-action=\"github:open-hub-ui\">Open Hub UI</button>"
+        },
+        {
+          "type": "insert_after",
+          "anchor": "<script type=\"module\" src=\"src/main.js\"></script>",
+          "replacement": "\n  <script type=\"module\">\n    // SSH presets (local, optional secrets)\n    const PRESETS_KEY = 'ssh_presets_v1';\n    function loadPresets(){\n      let items = [];\n      try { items = JSON.parse(localStorage.getItem(PRESETS_KEY) || '[]'); } catch {}\n      const sel = document.getElementById('sshPresetSelect'); if (!sel) return;\n      sel.innerHTML = '';\n      if (!items.length){ const opt = document.createElement('option'); opt.value=''; opt.textContent='No presets'; sel.appendChild(opt); return; }\n      items.forEach(p=>{ const opt = document.createElement('option'); opt.value = p.name; opt.textContent = p.name; sel.appendChild(opt); });\n    }\n    function getForm(){\n      return {\n        name: (document.getElementById('sshPresetName')?.value||'').trim(),\n        host: (document.getElementById('sshHost')?.value||'').trim(),\n        port: Number(document.getElementById('sshPort')?.value||22),\n        username: (document.getElementById('sshUsername')?.value||'').trim(),\n        authMethod: document.getElementById('authMethod')?.value || 'key',\n        password: document.getElementById('sshPassword')?.value || '',\n        privateKey: document.getElementById('sshPrivateKey')?.value || '',\n        passphrase: document.getElementById('sshPassphrase')?.value || '',\n        remotePath: document.getElementById('remotePath')?.value || '/',\n        storeSecrets: !!document.getElementById('sshStoreSecrets')?.checked\n      };\n    }\n    function setForm(p){\n      if (!p) return;\n      const set = (id,val)=>{ const el = document.getElementById(id); if (el!=null) el.value = val ?? el.value; };\n      set('sshHost', p.host); set('sshPort', p.port); set('sshUsername', p.username); set('authMethod', p.authMethod);\n      document.getElementById('authMethod')?.dispatchEvent(new Event('change',{bubbles:true}));\n      if (p.password!=null) set('sshPassword', p.password);\n      if (p.privateKey!=null) set('sshPrivateKey', p.privateKey);\n      if (p.passphrase!=null) set('sshPassphrase', p.passphrase);\n      set('remotePath', p.remotePath);\n      set('sshPresetName', p.name);\n    }\n    function savePreset(){\n      const p = getForm();\n      if (!p.name){ window.AdvancedCodeEditorAPI?.showNotification('⚠️ Preset name is required','warning'); return; }\n      if (!p.host || !p.username){ window.AdvancedCodeEditorAPI?.showNotification('⚠️ Host and Username required','warning'); return; }\n      const preset = { name: p.name, host: p.host, port: p.port, username: p.username, authMethod: p.authMethod, remotePath: p.remotePath };\n      if (p.storeSecrets){ preset.password = p.password; preset.privateKey = p.privateKey; preset.passphrase = p.passphrase; }\n      let items = [];\n      try { items = JSON.parse(localStorage.getItem(PRESETS_KEY) || '[]'); } catch {}\n      const idx = items.findIndex(x=>x.name===preset.name);\n      if (idx>=0) items[idx] = preset; else items.push(preset);\n      localStorage.setItem(PRESETS_KEY, JSON.stringify(items));\n      loadPresets();\n      window.AdvancedCodeEditorAPI?.showNotification('✅ SSH preset saved','success');\n    }\n    function loadSelectedPreset(){\n      const name = document.getElementById('sshPresetSelect')?.value || '';\n      if (!name){ window.AdvancedCodeEditorAPI?.showNotification('⚠️ No preset selected','warning'); return; }\n      let items = [];\n      try { items = JSON.parse(localStorage.getItem(PRESETS_KEY) || '[]'); } catch {}\n      const preset = items.find(x=>x.name===name);\n      if (!preset){ window.AdvancedCodeEditorAPI?.showNotification('⚠️ Preset not found','warning'); return; }\n      setForm(preset);\n      window.AdvancedCodeEditorAPI?.showNotification(`📥 Loaded preset: ${name}`,'info');\n    }\n    function deleteSelectedPreset(){\n      const name = document.getElementById('sshPresetSelect')?.value || '';\n      if (!name) return;\n      let items = [];\n      try { items = JSON.parse(localStorage.getItem(PRESETS_KEY) || '[]'); } catch {}\n      items = items.filter(x=>x.name!==name);\n      localStorage.setItem(PRESETS_KEY, JSON.stringify(items));\n      loadPresets();\n      window.AdvancedCodeEditorAPI?.showNotification(`🗑 Deleted preset: ${name}`,'info');\n    }\n    window.addEventListener('DOMContentLoaded', ()=>{\n      loadPresets();\n      document.getElementById('sshSavePresetBtn')?.addEventListener('click', savePreset);\n      document.getElementById('sshLoadPresetBtn')?.addEventListener('click', loadSelectedPreset);\n      document.getElementById('sshDeletePresetBtn')?.addEventListener('click', deleteSelectedPreset);\n    });\n  </script>\n"
+        },
+        {
+          "type": "replace_regex",
+          "match": "if \\(action === 'github:load-tree'\\)[\\s\\S]*?\\}",
+          "replacement": "if (action === 'github:open-hub-ui') {\n          window.open('/api/github-hub/ui/', '_blank');\n          document.querySelector('#githubModal')?.classList.add('hidden');\n        }"
+        },
+        {
+          "type": "replace_regex",
+          "match": "originalBus\\.on\\('github:hub:connected'[\\s\\S]*?\\);",
+          "replacement": "// No-op: do not expose GitHub tree in IDE file explorer; rely on Hub UI\n          "
+        }
+      ]
+    }
+  ]
+}

@@ -107,6 +107,8 @@ export function initTripleEditors({ onCursorMove, onContentChange }) {
   state.editor = editors.editor1; // Default editor for backward compatibility
   state.editors = editors;
   state.editorFiles = editorFiles;
+  Logger.info('[Editor] triple editors ready');
+
 }
 
 function setupEditorHandlers(editorId, editor, onCursorMove, onContentChange) {
@@ -134,6 +136,8 @@ function setupEditorHandlers(editorId, editor, onCursorMove, onContentChange) {
 }
 
 export function openFileInEditor(filePath, targetEditor = null) {
+  Logger.debug('[Editor] openFileInEditor', { filePath, targetEditor, focusedEditor });
+
   const fileData = state.openFiles.get(filePath);
   if (!fileData) {
     Logger.warn('File not in openFiles:', filePath);
@@ -170,6 +174,8 @@ export function openFileInEditor(filePath, targetEditor = null) {
   }
   
   // Create or reuse a model for this file
+  Logger.debug('[Editor] model-check', { hasModel: !!fileData.model, disposed: fileData.model?.isDisposed?.() });
+
   let model = fileData.model;
   if (!model || model.isDisposed?.()) {
     const uri = monaco.Uri.parse(`inmemory://${editorId}/${filePath}`);
@@ -183,6 +189,8 @@ export function openFileInEditor(filePath, targetEditor = null) {
   }
   
   editor.setModel(model);
+  try { Logger.info('[Editor] model set', { editorId, uri: model?.uri?.toString?.(), lang: language, len: (model?.getValue?.() || '').length }); } catch {}
+
   
   // Update tracking
   editorFiles[editorId] = filePath;

@@ -3,6 +3,8 @@ import { state } from '../core/state.js';
 import { bus } from '../core/eventBus.js';
 import * as API from '../services/api.js';
 import { getFileIcon } from '../utils/path.js';
+import { joinRemotePath } from '../utils/remotePath.js';
+
 
 // Improved file tree rendering and interaction
 export function initFileTree(){
@@ -154,7 +156,9 @@ async function ensureFolderChildrenRendered(fullPath, item, folderChildren){
   if (!item.children || Object.keys(item.children).length === 0){
     folderChildren.innerHTML = '<div class="pad-8 muted">Loading...</div>';
     try{
-      const tree = await API.fetchRemoteTree(fullPath, 1).catch(()=> ({}));
+      const abs = joinRemotePath(state.remoteRoot || '/', fullPath);
+      console.debug('[Tree] expand', { fullPath, abs });
+      const tree = await API.fetchRemoteTree(abs, 1).catch(() => ({}));
       item.children = tree || {};
 
       // Mark returned folders as lazy so they can fetch their own children when expanded

@@ -48,6 +48,8 @@ function bootstrap() {
 
   // Open a file into tabs/editor
   bus.on('file:open', ({ path } = {}) => {
+    Logger.info('[Open] request', { path });
+
     try {
       if (!path) {
         showNotification('⚠️ No file path provided', 'warning');
@@ -55,6 +57,8 @@ function bootstrap() {
       }
 
       const fileNode = getFileFromPath(path);
+      Logger.debug('[Open] node', { found: !!fileNode, type: fileNode?.type });
+
       if (!fileNode || fileNode.type !== 'file') {
         Logger.warn('file:open: not a file or not found', { path, node: fileNode });
         showNotification(`⚠️ File not found: ${path}`, 'warning');
@@ -64,6 +68,8 @@ function bootstrap() {
       if (!state.openFiles.has(path)) {
         const content = fileNode.content ?? '';
         state.openFiles.set(path, { content, originalContent: content, modified: false });
+        Logger.debug('[Open] openFiles entry created', { path, initialLen: (content || '').length });
+
       }
 
       state.activeFile = path;
@@ -79,6 +85,8 @@ function bootstrap() {
 
       // Lazy-load from remote if the node has no content
       if (fileNode.content == null && state.isConnected) {
+        Logger.debug('[Open] fetching remote', { path, remoteRoot: state.remoteRoot });
+
         API.readRemoteFile(path)
           .then((content) => {
             fileNode.content = content;

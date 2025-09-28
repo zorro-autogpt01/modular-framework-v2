@@ -10,7 +10,8 @@ services:
     volumes:
       - ./framework/html:/usr/share/nginx/html
       - ./framework/nginx.conf:/etc/nginx/nginx.conf
-    depends_on:
+    depends_on:      - ssh-terminal
+
       - rag-api-module
       - github-hub-module
       - llm-chat
