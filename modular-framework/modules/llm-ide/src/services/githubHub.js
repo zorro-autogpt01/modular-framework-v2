@@ -5,43 +5,119 @@ import { state } from '../core/state.js';
 
 class GitHubHubService {
   constructor() {
-    this.baseUrl = this.detectBaseUrl();
+    this.baseUrl = null;  // resolved later
     this.config = null;
     this.connected = false;
+    this._candidates = [];
   }
 
-  detectBaseUrl() {
-   const { protocol, host, pathname } = window.location;
-   // Allow an explicit override (handy for prod)
-   const override = window.GITHUB_HUB_BASE
-     || document.querySelector('meta[name="github-hub-base"]')?.content;
-   if (override) return override.replace(/\/$/, '');
+  _buildCandidates() {
+    const { protocol, host } = window.location;
 
-   // Prefer the framework proxy on the same host
-   // (works whether IDE is on :3020 or another port)
-   //return `${protocol}//${host.replace(/:3020$/, ':8080')}/api/github-hub`;
-   return `${protocol}//${host}/api/github-hub`;
+    // User / page overrides
+    const fromWindow     = window.GITHUB_HUB_BASE || window.__GITHUB_HUB_URL || null;
+    const fromMeta       = document.querySelector('meta[name="github-hub-base"]')?.content || null;
+
+    // Same-origin default
+    const sameOrigin     = `${protocol}//${host}/api/github-hub`;
+
+    // If running dev UI on :3020, try the edge on :8080 and :8443
+    const host8080       = host.replace(/:3020$/, ':8080');
+    const host8443       = host.replace(/:3020$/, ':8443');
+    const via8080        = `${protocol}//${host8080}/api/github-hub`;
+    const via8443        = `https://${host8443.replace(/:?\d*$/, host.includes(':') ? ':8443' : '')}/api/github-hub`;
+
+    // Deduplicated list
+    const list = [fromWindow, fromMeta, sameOrigin, via8080, via8443]
+      .filter(Boolean)
+      .map(u => u.replace(/\/$/, ''));
+
+    // Remove duplicates while preserving order
+    return [...new Set(list)];
+  }
+
+  async _tryBase(base) {
+    const testUrl = `${base}/api/config`;
+    const started = Date.now();
+    try {
+      const res = await fetch(testUrl, { credentials: 'include' });
+      const elapsed = Date.now() - started;
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        console.warn(`[GitHubHub] Probe failed ${res.status} @ ${testUrl} in ${elapsed}ms`, { bodySample: text.slice(0, 160) });
+        return null;
+      }
+
+      const cfg = await res.json();
+      console.info(`[GitHubHub] Using base ${base} (config ok) in ${elapsed}ms`);
+      return cfg;
+    } catch (e) {
+      console.warn(`[GitHubHub] Network/CORS error @ ${testUrl}:`, e?.message || e);
+      return null;
+    }
+  }
+
+  async _resolveBaseUrl() {
+    if (this.baseUrl) return this.baseUrl;
+
+    this._candidates = this._buildCandidates();
+    console.groupCollapsed('[GitHubHub] Detecting base URL');
+    console.log('window.location =', window.location.href);
+    console.log('candidates =', this._candidates);
+    console.groupEnd();
+
+    for (const base of this._candidates) {
+      const cfg = await this._tryBase(base);
+      if (cfg) {
+        this.baseUrl = base;
+        // Surface where we ended up for future runs / debugging
+        window.GITHUB_HUB_BASE = base;
+        this.config = cfg;
+        return base;
+      }
+    }
+
+    // Nothing worked
+    this.baseUrl = this._candidates[0] || `${window.location.protocol}//${window.location.host}/api/github-hub`;
+    return this.baseUrl;
   }
 
   async checkConnection() {
     try {
-      const res = await fetch(`${this.baseUrl}/api/config`);
-      if (!res.ok) throw new Error('GitHub Hub not available');
-      
-      this.config = await res.json();
+      await this._resolveBaseUrl();
+
+      // If config already fetched during probe, reuse it; otherwise fetch once more
+      if (!this.config) {
+        const res = await fetch(`${this.baseUrl}/api/config`, { credentials: 'include' });
+        if (!res.ok) {
+          const body = await res.text().catch(() => '');
+          throw new Error(`GitHub Hub not available (HTTP ${res.status}) @ ${this.baseUrl}/api/config :: ${body.slice(0,160)}`);
+        }
+        this.config = await res.json();
+      }
+
       this.connected = !!this.config.repo_url;
-      
+
       if (this.connected) {
-        // Parse repo name from URL for display
         const repoName = this.config.repo_url.split('/').slice(-2).join('/').replace('.git', '');
         showNotification(`✅ Connected to GitHub Hub: ${repoName}`, 'success');
+        console.info('[GitHubHub] Connected:', {
+          baseUrl: this.baseUrl,
+          default_branch: this.config.default_branch,
+          repo_url: this.config.repo_url
+        });
         bus.emit('github:hub:connected', { config: this.config, repoName });
+      } else {
+        console.warn('[GitHubHub] Config loaded but repo is not configured:', this.config);
       }
-      
+
       return this.config;
     } catch (e) {
       this.connected = false;
-      console.warn('GitHub Hub not available:', e);
+      const msg = e?.message || String(e);
+      console.error('[GitHubHub] checkConnection failed:', msg, { tried: this._candidates });
+      showNotification(`❌ GitHub Hub connection failed: ${msg}`, 'error');
       return null;
     }
   }

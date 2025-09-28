@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="github-hub-base" content="http://YOUR-HOST:8080/api/github-hub">
+  <meta name="github-hub-base" content="/api/github-hub">
   <title>Advanced Web IDE Pro - GitHub Enhanced</title>
   <link rel="stylesheet" href="assets/css/base.css" />
   <link rel="stylesheet" href="assets/css/ide.css" />
@@ -537,7 +537,8 @@
     // GitHub Hub configuration
     window.__GITHUB_HUB_URL = window.location.protocol + '//' + window.location.host + '/api/github-hub';
     window.__BACKEND_URL = window.location.protocol + '//' + window.location.host + '/api/ssh-terminal';
-    
+    window.GITHUB_HUB_BASE = window.__GITHUB_HUB_URL;
+
     // Mode switching function
     function switchGitMode(mode) {
       document.getElementById('modeLocal').classList.toggle('active', mode === 'local');
