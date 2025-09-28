@@ -34,27 +34,17 @@ const { httpUrl: BACKEND_HTTP, wsUrl: BACKEND_WS } = getBackendUrls();
 let activeSessionId = null;
 let activeSocket = null;
 
-export async function fetchRemoteTree(remotePath, depth = 10) {
+export async function fetchRemoteTree(relOrAbsPath, depth = 10) {
   if (!activeSessionId) throw new Error('No active session');
-  
-  const url = new URL('ssh/list', BACKEND_HTTP);
-  url.searchParams.append('sessionId', activeSessionId);
-  url.searchParams.append('path', remotePath);
-  url.searchParams.append('depth', String(depth));
-  
-  try {
-    const res = await fetch(url.toString());
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(text || `HTTP ${res.status}`);
-    }
-    const data = await res.json();
-    if (!data.ok) throw new Error(data.error || 'List failed');
-    return data.tree || {};
-  } catch (e) {
-    console.error('fetchRemoteTree error:', e);
-    throw e;
-  }
+  const base = (state.remoteRoot || '').replace(/\/$/, '');
+  const fullPath = relOrAbsPath?.startsWith('/')
+    ? relOrAbsPath
+    : (base ? `${base}/${relOrAbsPath || ''}` : (relOrAbsPath || '/'));
+  const url = `${BACKEND_HTTP}/ssh/list?sessionId=${encodeURIComponent(activeSessionId)}&path=${encodeURIComponent(fullPath)}&depth=${depth}`;
+  const res = await fetch(url);
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error || 'List failed');
+  return data.tree || {};
 }
 
 export async function readRemoteFile(relPath) {
