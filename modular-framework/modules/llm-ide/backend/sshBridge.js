@@ -49,13 +49,17 @@ export async function listTree(client, rootPath, depth = 2) {
       // If directory cannot be read, return empty
       return out;
     }
+    const dirTasks = [];
     for (const e of entries) {
       const name = e.filename;
       if (!name || name === '.' || name === '..') continue;
       try {
         if (e.attrs?.isDirectory?.()) {
           if (d > 0) {
-            out[name] = { type: 'folder', children: await walk(joinPosix(path, name), d - 1) };
+            dirTasks.push((async () => {
+              const children = await walk(joinPosix(path, name), d - 1);
+              out[name] = { type: 'folder', children };
+            })());
           } else {
             out[name] = { type: 'folder', children: {} };
           }
@@ -68,11 +72,16 @@ export async function listTree(client, rootPath, depth = 2) {
         // Skip problematic entries
       }
     }
+    // Resolve directory traversal in parallel; ignore individual failures
+    try { await Promise.allSettled(dirTasks); } catch {}
     return out;
   }
 
   return await walk(rootPath || '/', maxDepth);
-}
+
+  }
+
+
 
 export async function readFileContent(client, remotePath) {
   const sftp = await getSftp(client);

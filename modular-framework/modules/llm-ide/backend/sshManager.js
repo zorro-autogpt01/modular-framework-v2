@@ -2,6 +2,22 @@ import { v4 as uuidv4 } from 'uuid';
 import { connectSSH, resizePty, closeSession, listTree, readFileContent, writeFileContent, makeDirectory } from './sshBridge.js';
 
 const sessions = new Map();
+const listCache = new Map();
+const CACHE_TTL_MS = 30000;
+function cacheKey(sessionId, path, depth){ return `${sessionId}|${path}|${depth}`; }
+function invalidateListCache(sessionId, changedPath = null) {
+  for (const key of Array.from(listCache.keys())) {
+    if (key.startsWith(sessionId + '|')) {
+      if (!changedPath) { listCache.delete(key); continue; }
+      const parts = key.split('|');
+      const p = parts[1] || '';
+      if (p === changedPath || p.startsWith(changedPath) || changedPath.startsWith(p)) {
+        listCache.delete(key);
+      }
+    }
+  }
+}
+
 
 export async function createSession(config) {
   const sessionId = uuidv4();
@@ -57,7 +73,13 @@ function cleanup(sessionId) {
 export async function listRemote(sessionId, path, depth = 2) {
   const s = sessions.get(sessionId);
   if (!s) throw new Error('Invalid session');
-  return await listTree(s.client, path, depth);
+  const key = cacheKey(sessionId, path, depth);
+  const now = Date.now();
+  const cached = listCache.get(key);
+  if (cached && (now - cached.ts) < CACHE_TTL_MS) return cached.data;
+  const data = await listTree(s.client, path, depth);
+  listCache.set(key, { ts: now, data });
+  return data;
 }
 
 export async function readRemote(sessionId, path) {
@@ -72,12 +94,18 @@ export async function writeRemote(sessionId, path, content) {
   const s = sessions.get(sessionId);
   if (!s) throw new Error('Invalid session');
   return await writeFileContent(s.client, path, content);
+  // Invalidate directory listing cache for this session
+  try { invalidateListCache(sessionId, path); } catch {}
+
 }
 
 export async function mkdirRemote(sessionId, path, options) {
   const s = sessions.get(sessionId);
   if (!s) throw new Error('Invalid session');
   return await makeDirectory(s.client, path, options);
+  // Invalidate directory listing cache for this session
+  try { invalidateListCache(sessionId, path); } catch {}
+
 }
 
 export function disconnect(sessionId) {

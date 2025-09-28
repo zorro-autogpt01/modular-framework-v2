@@ -4,6 +4,8 @@ import { bus } from '../core/eventBus.js';
 import { showNotification } from '../ui/notifications.js';
 import { updateConnectionStatus, updateWorkspaceIndicator } from '../ui/panels.js';
 import { addToTerminal } from '../terminal/index.js';
+import { joinRemotePath } from '../utils/remotePath.js';
+
 
 // Dynamic backend URL detection
 function getBackendUrls() {
