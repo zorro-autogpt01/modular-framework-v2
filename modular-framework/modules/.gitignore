@@ -1,0 +1,15 @@
+*/*.env
+/qdrant_storage
+/redis_data
+*.env
+*/collections
+*/redis_data
+*/logs
+/openvscode/workspaces
+/RAG/qdrant_storage
+/RAG/redis_data
+/RAG/logs
+/llm-gateway/pgdata/
+/splunk/
+*.bak
+*.bak.*

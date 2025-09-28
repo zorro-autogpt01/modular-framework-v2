@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/code-change-plan.schema.json",
+  "title": "CodeChangePlan",
+  "type": "object",
+  "version": "1.0",
+  "backup": true,
+  "changes": [
+    {
+      "id": "compose-replace-framework-with-edge-and-web",
+      "description": "Update docker-compose: split framework service into edge-nginx (public 80/443) and framework-web (internal static site). Keep proxy routes identical to previous config in edge.",
+      "op": "patch_text",
+      "path": "docker-compose.yml",
+      "patches": [
+        {
+          "type": "replace_between",
+          "start": "# Main Framework Container with Nginx",
+          "end": "# SSH Terminal Module Container",
+          "include_anchors": false,
+          "replacement": "# Edge Nginx (reverse proxy & TLS terminator)\n  edge-nginx:\n    build: ./edge-nginx\n    container_name: edge-nginx\n    ports:\n      - \"80:80\"\n      - \"443:443\"\n    volumes:\n      - ./framework/certs/dev.crt:/etc/nginx/certs/dev.crt:ro\n      - ./framework/certs/dev.key:/etc/nginx/certs/dev.key:ro\n    depends_on:\n      - framework-web\n      - rag-api-module\n      - github-hub-module\n      - llm-chat\n      - browser-module\n      - llm-workflows-module\n      - llm-gateway\n    networks:\n      - app-network\n    restart: unless-stopped\n\n  # Framework static website (served behind edge-nginx)\n  framework-web:\n    build: ./framework\n    container_name: framework-web\n    expose:\n      - \"80\"\n    volumes:\n      - ./framework/html:/usr/share/nginx/html\n      - ./framework/nginx.conf:/etc/nginx/nginx.conf\n    depends_on:\n      - rag-api-module\n      - github-hub-module\n      - llm-chat\n      - browser-module\n    networks:\n      - app-network\n    restart: unless-stopped\n\n  # SSH Terminal Module Container\n"
+        }
+      ]
+    },
+    {
+      "id": "compose-remove-old-framework-ports-comment",
+      "description": "Ensure old cert volume comments referencing framework are not misleading (edge-nginx terminates TLS now).",
+      "op": "patch_text",
+      "path": "docker-compose.yml",
+      "patches": [
+        {
+          "type": "replace_regex",
+          "match": "(?ms)^\\s*#-\\s*\\./certs/dev\\.crt:.*$",
+          "replacement": ""
+        },
+        {
+          "type": "replace_regex",
+          "match": "(?ms)^\\s*#-\\s*\\./certs/dev\\.key:.*$",
+          "replacement": ""
+        }
+      ]
+    },
+    {
+      "id": "note-urls-validated",
+      "description": "No code changes required for module URLs; they already reference reverse-proxied paths. Edge Nginx maintains identical routes. This change is a no-op placeholder to document that validation was performed.",
+      "op": "ensure_block",
+      "path": "framework/html/index.html",
+      "block_id": "url-validation-note",
+      "anchor": "<!-- Modules will be loaded here -->",
+      "position": "after",
+      "block_content": "<!-- NOTE: URL schema validated for edge-nginx split: / (framework-web static), /api/github-hub/, /api/llm-workflows/, /api/llm-chat/, /api/ssh-terminal/, /api/browser/, /llm-gateway/, /llm-gateway/api/, /rag/ are all reverse-proxied by edge-nginx to their respective containers. -->\n",
+      "markers": {
+        "start": "<!-- BEGIN:{id} -->",
+        "end": "<!-- END:{id} -->"
+      }
+    }
+  ]
+}

@@ -1,0 +1,732 @@
+<!-- BEGIN:url-validation-note -->
+<!-- NOTE: URL schema validated for edge-nginx split: / (framework-web static), /api/github-hub/, /api/llm-workflows/, /api/llm-chat/, /api/ssh-terminal/, /api/browser/, /llm-gateway/, /llm-gateway/api/, /rag/ are all reverse-proxied by edge-nginx to their respective containers. -->
+<!-- END:url-validation-note -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modular Application Framework</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            height: 100vh;
+            overflow: hidden;
+            background: #1e1e1e;
+            color: #e0e0e0;
+        }
+
+        .app-container {
+            display: grid;
+            grid-template-columns: 250px 500px 1fr 250px 250px;
+            grid-template-rows: 40px 1fr;
+            height: 100vh;
+            gap: 1px;
+            background: #2d2d30;
+        }
+
+        .header {
+            grid-column: 1 / -1;
+            background: #252526;
+            display: flex;
+            align-items: center;
+            padding: 0 15px;
+            border-bottom: 1px solid #3e3e42;
+        }
+
+        .header h1 {
+            font-size: 14px;
+            font-weight: 400;
+            margin-right: auto;
+        }
+
+        .header button {
+            background: #0e639c;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+
+        .header button:hover {
+            background: #1177bb;
+        }
+
+        .sidebar {
+            background: #252526;
+            border-right: 1px solid #3e3e42;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar.right {
+            border-left: 1px solid #3e3e42;
+            border-right: none;
+        }
+
+        .sidebar-left-1 {
+            grid-column: 1;
+            grid-row: 2;
+        }
+
+        .sidebar-left-2 {
+            grid-column: 2;
+            grid-row: 2;
+        }
+
+        .sidebar-right-1 {
+            grid-column: 4;
+            grid-row: 2 / 3;
+            display: grid;
+            grid-template-rows: 1fr 1fr;
+            gap: 1px;
+        }
+
+        .sidebar-right-2 {
+            grid-column: 5;
+            grid-row: 2 / 3;
+            display: grid;
+            grid-template-rows: 1fr 1fr;
+            gap: 1px;
+        }
+
+        .sidebar-pane {
+            background: #252526;
+            overflow: auto;
+            padding: 10px;
+        }
+
+        .central-grid {
+            grid-column: 3;
+            grid-row: 2;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: 1fr 1fr;
+            gap: 1px;
+            background: #3e3e42;
+        }
+
+        .pane {
+            background: #1e1e1e;
+            overflow: hidden;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .pane-header {
+            background: #2d2d30;
+            padding: 8px;
+            border-bottom: 1px solid #3e3e42;
+            font-size: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .pane-content {
+            flex: 1;
+            overflow: auto;
+            position: relative;
+        }
+
+        .pane iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        .module-list {
+            padding: 10px;
+        }
+
+        .module-item {
+            padding: 10px;
+            margin-bottom: 5px;
+            background: #2d2d30;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .module-item:hover {
+            background: #3e3e42;
+        }
+
+        .module-item.active {
+            background: #0e639c;
+        }
+
+        .module-status {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #4ec9b0;
+        }
+
+        .module-status.offline {
+            background: #f48771;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+        }
+
+        .modal-content {
+            background-color: #2d2d30;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #3e3e42;
+            width: 400px;
+            border-radius: 8px;
+        }
+
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .close:hover {
+            color: #fff;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 12px;
+        }
+
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 8px;
+            background: #1e1e1e;
+            border: 1px solid #3e3e42;
+            color: #e0e0e0;
+            border-radius: 4px;
+        }
+
+        .form-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .btn-primary {
+            background: #0e639c;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #1177bb;
+        }
+
+        .btn-secondary {
+            background: #3e3e42;
+            color: #e0e0e0;
+        }
+
+        .btn-secondary:hover {
+            background: #4e4e52;
+        }
+
+        .resizer {
+            background: #3e3e42;
+            cursor: col-resize;
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            right: -2px;
+            z-index: 10;
+        }
+
+        .resizer:hover {
+            background: #0e639c;
+        }
+
+        .resizer.horizontal {
+            cursor: row-resize;
+            width: auto;
+            height: 3px;
+            left: 0;
+            right: 0;
+            bottom: -2px;
+            top: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container" id="appContainer">
+        <div class="header">
+            <h1>🚀 Modular Application Framework</h1>
+            <button onclick="showRegistrationModal()">+ Register Module</button>
+            <button onclick="refreshModules()">🔄 Refresh</button>
+        </div>
+
+        <div class="sidebar sidebar-left-1">
+            <div class="pane-header">Modules</div>
+            <div class="module-list" id="moduleList">
+                <!-- Modules will be loaded here -->
+            </div>
+        </div>
+
+        <div class="sidebar sidebar-left-2">
+            <div class="pane-header">Module Config</div>
+            <div class="pane-content" id="moduleConfig">
+                <iframe id="configFrame" style="display:none;"></iframe>
+            </div>
+        </div>
+
+        <div class="central-grid">
+            <div class="pane" data-pane="1">
+                <div class="pane-header">
+                    <span>Pane 1</span>
+                    <select onchange="loadModuleInPane(1, this.value)">
+                        <option value="">Select Module</option>
+                    </select>
+                </div>
+                <div class="pane-content">
+                    <iframe id="pane1Frame"></iframe>
+                </div>
+            </div>
+            <div class="pane" data-pane="2">
+                <div class="pane-header">
+                    <span>Pane 2</span>
+                    <select onchange="loadModuleInPane(2, this.value)">
+                        <option value="">Select Module</option>
+                    </select>
+                </div>
+                <div class="pane-content">
+                    <iframe id="pane2Frame"></iframe>
+                </div>
+            </div>
+            <div class="pane" data-pane="3">
+                <div class="pane-header">
+                    <span>Pane 3</span>
+                    <select onchange="loadModuleInPane(3, this.value)">
+                        <option value="">Select Module</option>
+                    </select>
+                </div>
+                <div class="pane-content">
+                    <iframe id="pane3Frame"></iframe>
+                </div>
+            </div>
+            <div class="pane" data-pane="4">
+                <div class="pane-header">
+                    <span>Pane 4</span>
+                    <select onchange="loadModuleInPane(4, this.value)">
+                        <option value="">Select Module</option>
+                    </select>
+                </div>
+                <div class="pane-content">
+                    <iframe id="pane4Frame"></iframe>
+                </div>
+            </div>
+        </div>
+
+        <div class="sidebar sidebar-right-1 right">
+            <div class="sidebar-pane">
+                <div class="pane-header">Properties</div>
+                <div id="propertiesPane"></div>
+            </div>
+            <div class="sidebar-pane">
+                <div class="pane-header">Events</div>
+                <div id="eventsPane"></div>
+            </div>
+        </div>
+
+        <div class="sidebar sidebar-right-2 right">
+            <div class="sidebar-pane">
+                <div class="pane-header">Logs</div>
+                <div id="logsPane"></div>
+            </div>
+            <div class="sidebar-pane">
+                <div class="pane-header">Debug</div>
+                <div id="debugPane"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Registration Modal -->
+    <div id="registrationModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeRegistrationModal()">&times;</span>
+            <h2 style="margin-bottom: 20px; font-size: 16px;">Register New Module</h2>
+            <div class="form-group">
+                <label for="moduleName">Module Name</label>
+                <input type="text" id="moduleName" placeholder="e.g., SSH Terminal">
+            </div>
+            <div class="form-group">
+                <label for="moduleUrl">Module URL</label>
+                <input type="text" id="moduleUrl" placeholder="http://module-host:port">
+            </div>
+            <div class="form-group">
+                <label for="moduleType">Module Type</label>
+                <select id="moduleType">
+                    <option value="terminal">Terminal</option>
+                    <option value="editor">Editor</option>
+                    <option value="viewer">Viewer</option>
+                    <option value="dashboard">Dashboard</option>
+                    <option value="other">Other</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="moduleDescription">Description</label>
+                <input type="text" id="moduleDescription" placeholder="Brief description">
+            </div>
+            <div class="form-actions">
+                <button class="btn btn-secondary" onclick="closeRegistrationModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="registerModule()">Register</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Module Registry
+        const moduleRegistry = new Map();
+        const eventBus = new EventTarget();
+        
+        // Initialize with demo data
+        const demoModules = [
+        {
+            name: 'SSH Terminal',
+            url: '/api/ssh-terminal/',
+            type: 'terminal',
+            description: 'SSH connection to remote systems',
+            configUrl: '/api/ssh-terminal/',
+            status: 'online'
+        },
+        {
+            name: 'LLM Workflows',
+            url: '/api/llm-workflows/',
+            type: 'dashboard',
+            description: 'Build, validate & execute JSON-based workflows',
+            configUrl: '/api/llm-workflows/',
+            status: 'online'
+            },
+        {
+            name: 'LLM Chat',
+            url: '/api/llm-chat/',
+            type: 'other',
+            description: 'Chat with LLMs (OpenAI/Ollama/Compat)',
+            configUrl: '/api/llm-chat/config',
+            status: 'online'
+        },
+        // 👇 NEW
+        {
+            name: 'GitHub Hub',
+            url: '/api/github-hub/',
+            type: 'viewer',
+            description: 'Repo browser & GitHub API for all modules',
+            configUrl: '/api/github-hub/',   // same UI also serves config
+            status: 'online'
+        },
+        {
+            name: 'RAG Admin',
+            url: '/rag/admin/',
+            type: 'dashboard',
+            description: 'RAG Admin UI and API',
+            configUrl: '/rag/admin/',
+            status: 'online'
+            },
+        {
+            name: 'Logging Orchestrator',
+            url: '/logging/',
+            type: 'dashboard',
+            description: 'Central logging configuration management',
+            configUrl: '/logging/',
+            status: 'online'
+        },
+        {
+            name: 'Web Browser',
+            url: '/api/browser/',
+            type: 'viewer',
+            description: 'Tabbed browser with proxy mode + screenshots',
+            configUrl: '/api/browser/',
+            status: 'online'
+            }
+        ];
+
+        // Event Bus System
+        class ModuleEventBus {
+            constructor() {
+                this.listeners = new Map();
+                this.setupMessageListener();
+            }
+
+            setupMessageListener() {
+                window.addEventListener('message', (event) => {
+                    if (event.data.type === 'MODULE_EVENT') {
+                        this.emit(event.data.eventName, event.data.payload);
+                    }
+                });
+            }
+
+            on(eventName, callback) {
+                if (!this.listeners.has(eventName)) {
+                    this.listeners.set(eventName, []);
+                }
+                this.listeners.get(eventName).push(callback);
+            }
+
+            emit(eventName, data) {
+                if (this.listeners.has(eventName)) {
+                    this.listeners.get(eventName).forEach(callback => {
+                        callback(data);
+                    });
+                }
+                
+                // Log event
+                logEvent(eventName, data);
+            }
+
+            sendToModule(moduleName, eventName, data) {
+                const module = moduleRegistry.get(moduleName);
+                if (module && module.iframe) {
+                    module.iframe.contentWindow.postMessage({
+                        type: 'FRAMEWORK_EVENT',
+                        eventName,
+                        payload: data
+                    }, '*');
+                }
+            }
+        }
+
+        const messageBus = new ModuleEventBus();
+
+        // Module Management
+        function loadModules() {
+            const moduleList = document.getElementById('moduleList');
+            moduleList.innerHTML = '';
+            
+            // Load from localStorage or use demo modules
+            const savedModules = localStorage.getItem('modules');
+            const modules = savedModules ? JSON.parse(savedModules) : demoModules;
+            
+            modules.forEach(module => {
+                moduleRegistry.set(module.name, module);
+                const moduleItem = document.createElement('div');
+                moduleItem.className = 'module-item';
+                moduleItem.innerHTML = `
+                    <span>${module.name}</span>
+                    <div class="module-status ${module.status === 'offline' ? 'offline' : ''}"></div>
+                `;
+                moduleItem.onclick = () => selectModule(module, moduleItem);
+                moduleList.appendChild(moduleItem);
+            });
+            
+            updatePaneSelectors();
+        }
+
+        function selectModule(module, el) {
+            // Load config
+            const configFrame = document.getElementById('configFrame');
+            if (module.configUrl) {
+                configFrame.src = module.configUrl;
+                configFrame.style.display = 'block';
+            }
+
+            // Highlight
+            document.querySelectorAll('.module-item').forEach(item => item.classList.remove('active'));
+            if (el) el.classList.add('active');
+
+            messageBus.emit('module-selected', { module: module.name });
+            }
+
+        function loadModuleInPane(paneNumber, moduleName) {
+            if (!moduleName) return;
+            
+            const module = moduleRegistry.get(moduleName);
+            if (!module) return;
+            
+            const frame = document.getElementById(`pane${paneNumber}Frame`);
+            frame.src = module.url;
+            
+            // Store iframe reference for messaging
+            module.iframe = frame;
+            
+            // Update pane header
+            const pane = document.querySelector(`[data-pane="${paneNumber}"]`);
+            const header = pane.querySelector('.pane-header span');
+            header.textContent = `${module.name} - Pane ${paneNumber}`;
+            
+            // Emit pane load event
+            messageBus.emit('module-loaded', { 
+                module: moduleName, 
+                pane: paneNumber 
+            });
+        }
+
+        function updatePaneSelectors() {
+            const selectors = document.querySelectorAll('.pane select');
+            selectors.forEach(select => {
+                // Keep current selection
+                const currentValue = select.value;
+                
+                // Clear and rebuild options
+                select.innerHTML = '<option value="">Select Module</option>';
+                moduleRegistry.forEach((module, name) => {
+                    const option = document.createElement('option');
+                    option.value = name;
+                    option.textContent = name;
+                    select.appendChild(option);
+                });
+                
+                // Restore selection
+                select.value = currentValue;
+            });
+        }
+
+        // Registration Modal
+        function showRegistrationModal() {
+            document.getElementById('registrationModal').style.display = 'block';
+        }
+
+        function closeRegistrationModal() {
+            document.getElementById('registrationModal').style.display = 'none';
+            document.getElementById('moduleName').value = '';
+            document.getElementById('moduleUrl').value = '';
+            document.getElementById('moduleDescription').value = '';
+        }
+
+        function registerModule() {
+            const name = document.getElementById('moduleName').value;
+            const url = document.getElementById('moduleUrl').value;
+            const type = document.getElementById('moduleType').value;
+            const description = document.getElementById('moduleDescription').value;
+            
+            if (!name || !url) {
+                alert('Please fill in all required fields');
+                return;
+            }
+            
+            const newModule = {
+                name,
+                url,
+                type,
+                description,
+                configUrl: `${url}/config`,
+                status: 'online'
+            };
+            
+            // Save to registry and localStorage
+            moduleRegistry.set(name, newModule);
+            const modules = Array.from(moduleRegistry.values());
+            localStorage.setItem('modules', JSON.stringify(modules));
+            
+            // Reload module list
+            loadModules();
+            
+            // Close modal
+            closeRegistrationModal();
+            
+            // Emit registration event
+            messageBus.emit('module-registered', { module: name });
+            
+            // Show success
+            logEvent('Module Registered', `${name} has been successfully registered`);
+        }
+
+        function mountGithubHubInLeftPane() {
+            // Use the second left sidebar (the one that currently shows "Module Config")
+            const leftPaneHeader = document.querySelector('.sidebar-left-2 .pane-header');
+            const leftPaneContent = document.querySelector('.sidebar-left-2 .pane-content');
+            if (!leftPaneContent) return;
+
+            if (leftPaneHeader) leftPaneHeader.textContent = 'GitHub Hub';
+
+            const iframe = document.createElement('iframe');
+            // Only-tree side mode (no file viewer)
+            iframe.src = '/api/github-hub/ui/?embed=side';
+            iframe.style.width = '100%';
+            iframe.style.height = '100%';
+            iframe.style.border = 'none';
+
+            leftPaneContent.innerHTML = '';
+            leftPaneContent.appendChild(iframe);
+        }
+
+        function refreshModules() {
+            loadModules();
+            messageBus.emit('modules-refreshed', { timestamp: Date.now() });
+        }
+
+        // Logging
+        function logEvent(eventName, data) {
+            const logsPane = document.getElementById('logsPane');
+            const logEntry = document.createElement('div');
+            logEntry.style.cssText = 'padding: 5px; border-bottom: 1px solid #3e3e42; font-size: 11px;';
+            const timestamp = new Date().toLocaleTimeString();
+            logEntry.innerHTML = `<span style="color: #608b4e;">[${timestamp}]</span> <strong>${eventName}</strong>: ${JSON.stringify(data)}`;
+            logsPane.insertBefore(logEntry, logsPane.firstChild);
+            
+            // Keep only last 50 logs
+            while (logsPane.children.length > 50) {
+                logsPane.removeChild(logsPane.lastChild);
+            }
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadModules();
+            
+            // Setup event listeners
+            messageBus.on('module-selected', (data) => {
+                console.log('Module selected:', data);
+            });
+            mountGithubHubInLeftPane();
+
+            messageBus.on('module-loaded', (data) => {
+                console.log('Module loaded:', data);
+            });
+            
+            // Welcome message
+            logEvent('System', 'Framework initialized successfully');
+        });
+
+        // Handle Escape key to close modal
+        window.onclick = function(event) {
+            const modal = document.getElementById('registrationModal');
+            if (event.target === modal) {
+                closeRegistrationModal();
+            }
+        }
+    </script>
+</body>
+</html>
