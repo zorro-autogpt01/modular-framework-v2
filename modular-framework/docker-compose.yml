@@ -14,9 +14,10 @@ services:
       - rag-api-module
       - github-hub-module
       - llm-chat
-      - browser-module
       - llm-gateway
       - logging-orchestrator
+      - llm-ide-backend
+      - llm-ide-frontend
 
     networks:
       - app-network

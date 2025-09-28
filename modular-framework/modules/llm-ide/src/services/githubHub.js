@@ -11,17 +11,16 @@ class GitHubHubService {
   }
 
   detectBaseUrl() {
-    // Auto-detect the GitHub Hub URL based on current environment
-    const host = window.location.host;
-    const protocol = window.location.protocol;
-    
-    // If running in the modular framework
-    if (window.location.pathname.includes('/api/')) {
-      return `${protocol}//${host}/api/github-hub`;
-    }
-    
-    // Fallback to localhost for development
-    return 'http://localhost:3005';
+   const { protocol, host, pathname } = window.location;
+   // Allow an explicit override (handy for prod)
+   const override = window.GITHUB_HUB_BASE
+     || document.querySelector('meta[name="github-hub-base"]')?.content;
+   if (override) return override.replace(/\/$/, '');
+
+   // Prefer the framework proxy on the same host
+   // (works whether IDE is on :3020 or another port)
+   //return `${protocol}//${host.replace(/:3020$/, ':8080')}/api/github-hub`;
+   return `${protocol}//${host}/api/github-hub`;
   }
 
   async checkConnection() {
