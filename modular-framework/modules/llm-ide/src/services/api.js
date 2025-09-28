@@ -6,8 +6,6 @@ import { updateConnectionStatus, updateWorkspaceIndicator } from '../ui/panels.j
 import { addToTerminal } from '../terminal/index.js';
 import { joinRemotePath } from '../utils/remotePath.js';
 
-import { joinRemotePath } from '../utils/remotePath.js';
-
 
 // Dynamic backend URL detection
 function getBackendUrls() {
@@ -57,12 +55,12 @@ export async function readRemoteFile(relPath) {
   const base = (state.remoteRoot || '').replace(/\/$/, '');
   const fullPath = base + (relPath.startsWith('/') ? relPath : '/' + relPath);
   
-  const url = new URL('ssh/read', BACKEND_HTTP);
-  url.searchParams.append('sessionId', activeSessionId);
-  url.searchParams.append('path', fullPath);
+  // IMPORTANT: avoid new URL(...) which can drop path segments on BACKEND_HTTP
+  const url = `${BACKEND_HTTP}/ssh/read?sessionId=${encodeURIComponent(activeSessionId)}&path=${encodeURIComponent(fullPath)}`;
+   
   
   try {
-    const res = await fetch(url.toString());
+    const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
     if (!res.ok) {
       const text = await res.text();
       throw new Error(text || `HTTP ${res.status}`);
