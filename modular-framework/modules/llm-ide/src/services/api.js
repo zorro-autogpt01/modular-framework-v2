@@ -37,7 +37,7 @@ let activeSocket = null;
 export async function fetchRemoteTree(remotePath, depth = 10) {
   if (!activeSessionId) throw new Error('No active session');
   
-  const url = new URL('/ssh/list', BACKEND_HTTP);
+  const url = new URL('ssh/list', BACKEND_HTTP);
   url.searchParams.append('sessionId', activeSessionId);
   url.searchParams.append('path', remotePath);
   url.searchParams.append('depth', String(depth));
@@ -63,7 +63,7 @@ export async function readRemoteFile(relPath) {
   const base = (state.remoteRoot || '').replace(/\/$/, '');
   const fullPath = base + (relPath.startsWith('/') ? relPath : '/' + relPath);
   
-  const url = new URL('/ssh/read', BACKEND_HTTP);
+  const url = new URL('ssh/read', BACKEND_HTTP);
   url.searchParams.append('sessionId', activeSessionId);
   url.searchParams.append('path', fullPath);
   
