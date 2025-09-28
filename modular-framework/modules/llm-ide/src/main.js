@@ -8,7 +8,7 @@ import { initFileTree, renderFileTree } from './ui/fileTree.js';
 import { initTabs, updateTabs } from './ui/tabs.js';
 import { setStatus } from './ui/statusBar.js';
 import { initModals } from './ui/modals.js';
-import { initEditor, loadFileInEditor, showDiff, toggleMinimap, getEditorValue } from './editor/index.js';
+import { initEditor, loadFileInEditor, showDiff, toggleMinimap, getEditorValue } from './editor/multiEditor.js';
 import { initTerminal, addToOutput, toggleTerminalPanel } from './terminal/index.js';
 import * as API from './services/api.js';
 import * as Git from './services/git.js';
