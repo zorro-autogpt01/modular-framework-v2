@@ -9,43 +9,32 @@ export function setBusy(b) {
   else   { dot.classList.remove('on'); st.textContent = 'Idle'; }
 }
 
-export function addMsg(role, content) {
-  const msgs = getEl('msgs'); if (!msgs) return;
-  const el = document.createElement('div');
-  el.className = `msg ${role==='user'?'user':'assistant'}`;
-  el.textContent = content;
-  el.dataset.msg = content;
-  el.dataset.complete = 'true';
-  el.dataset.role = role;
-  el.dataset.timestamp = new Date().toISOString();
-  msgs.appendChild(el);
-  msgs.scrollTop = msgs.scrollHeight;
-  // Only attach controls for completed messages; defer a frame to avoid layout race
-  requestAnimationFrame(() => {
-    try { attachMessageControls(el, () => el.dataset.msg || el.textContent || ''); } catch {}
-  });
-}
-
-function _getMsgText(el) {
-  return (el?.dataset?.msg ?? '').toString() || (el?.textContent ?? '').toString();
-}
-
-async function _writeClipboard(text) {
-  const t = String(text ?? '');
-  try {
-    await navigator.clipboard.writeText(t);
-    return true;
-  } catch (err) {
-    try {
-      const ta = document.createElement('textarea');
-      ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0'; ta.setAttribute('readonly', '');
-      document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
-      return true;
-    } catch (e) {
-      console.error('Copy to clipboard failed', e);
-      return false;
-    }
-  }
+// Create navigation sidebar once on page load
+export function createNavigationSidebar() {
+  // Check if sidebar already exists
+  if (document.querySelector('.nav-sidebar')) return;
+  
+  const sidebar = document.createElement('div');
+  sidebar.className = 'nav-sidebar';
+  sidebar.innerHTML = `
+    <button class="nav-btn" id="navTop" title="Jump to first">⬆️⬆️</button>
+    <button class="nav-btn" id="navUp" title="Previous message">⬆️</button>
+    <div class="nav-divider"></div>
+    <button class="nav-btn" id="navDown" title="Next message">⬇️</button>
+    <button class="nav-btn" id="navBottom" title="Jump to last">⬇️⬇️</button>
+  `;
+  
+  // Find the appropriate container to append to
+  const chatContainer = document.querySelector('.msgs-container') || 
+                        document.querySelector('.chat') || 
+                        document.body;
+  chatContainer.appendChild(sidebar);
+  
+  // Attach event listeners
+  getEl('navTop')?.addEventListener('click', () => navigateToMessage('first'));
+  getEl('navUp')?.addEventListener('click', () => navigateToMessage('up'));
+  getEl('navDown')?.addEventListener('click', () => navigateToMessage('down'));
+  getEl('navBottom')?.addEventListener('click', () => navigateToMessage('last'));
 }
 
 function navigateToMessage(direction) {
@@ -53,6 +42,8 @@ function navigateToMessage(direction) {
   if (!msgs.length) return;
   
   const msgsContainer = getEl('msgs');
+  if (!msgsContainer) return;
+  
   const containerRect = msgsContainer.getBoundingClientRect();
   const currentScrollTop = msgsContainer.scrollTop;
   
@@ -101,10 +92,95 @@ function navigateToMessage(direction) {
   }
 }
 
-function editMessage(msgEl) {
+export function addMsg(role, content) {
+  const msgs = getEl('msgs'); if (!msgs) return;
+  const el = document.createElement('div');
+  el.className = `msg ${role==='user'?'user':'assistant'}`;
+  el.textContent = content;
+  el.dataset.msg = content;
+  el.dataset.complete = 'true';
+  el.dataset.role = role;
+  el.dataset.timestamp = new Date().toISOString();
+  msgs.appendChild(el);
+  msgs.scrollTop = msgs.scrollHeight;
+  // Only attach copy button for completed messages
+  requestAnimationFrame(() => {
+    try { attachCopyButton(el); } catch {}
+  });
+}
+
+async function _writeClipboard(text) {
+  const t = String(text ?? '');
+  try {
+    await navigator.clipboard.writeText(t);
+    return true;
+  } catch (err) {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0'; ta.setAttribute('readonly', '');
+      document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+      return true;
+    } catch (e) {
+      console.error('Copy to clipboard failed', e);
+      return false;
+    }
+  }
+}
+
+// Simplified - only adds copy button
+export function attachCopyButton(msgEl) {
+  try {
+    if (!msgEl || !(msgEl instanceof HTMLElement)) return;
+    
+    // Don't attach if still streaming or already has copy button
+    if (msgEl.dataset.streaming === 'true') return;
+    if (msgEl.querySelector('.msg-copy')) return;
+
+    // Ensure the message is positioned
+    try {
+      const cs = window.getComputedStyle(msgEl);
+      if (!cs || cs.position === 'static') {
+        msgEl.style.position = 'relative';
+      }
+    } catch {}
+
+    const copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
+    copyBtn.className = 'msg-copy';
+    copyBtn.title = 'Copy to clipboard';
+    copyBtn.setAttribute('aria-label', 'Copy message');
+    copyBtn.innerHTML = '📋';
+    copyBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const text = msgEl.dataset.msg || msgEl.textContent || '';
+      const ok = await _writeClipboard(text);
+      const prev = copyBtn.innerHTML;
+      copyBtn.innerHTML = ok ? '✅' : '⚠️';
+      copyBtn.classList.toggle('copied', ok);
+      setTimeout(() => { 
+        copyBtn.innerHTML = prev; 
+        copyBtn.classList.remove('copied');
+      }, 1200);
+    });
+
+    // Defer append to avoid layout issues
+    requestAnimationFrame(() => {
+      msgEl.appendChild(copyBtn);
+    });
+  } catch (e) {
+    console.error('attachCopyButton failed', e);
+  }
+}
+
+// Keep for backward compatibility
+export function attachMessageControls(msgEl, textProvider) {
+  return attachCopyButton(msgEl);
+}
+
+// Edit message functionality (if needed for user messages)
+export function editMessage(msgEl) {
   const currentText = msgEl.dataset.msg || msgEl.textContent || '';
   
-  // Create textarea for editing
   const textarea = document.createElement('textarea');
   textarea.className = 'msg-edit';
   textarea.value = currentText;
@@ -120,12 +196,10 @@ function editMessage(msgEl) {
     resize: vertical;
   `;
   
-  // Hide original text
   const originalContent = msgEl.innerHTML;
   msgEl.innerHTML = '';
   msgEl.appendChild(textarea);
   
-  // Create save/cancel buttons
   const editControls = document.createElement('div');
   editControls.style.cssText = 'margin-top: 8px; display: flex; gap: 8px;';
   
@@ -138,9 +212,8 @@ function editMessage(msgEl) {
       msgEl.textContent = newText;
       msgEl.dataset.msg = newText;
       msgEl.dataset.edited = 'true';
-      // Re-attach controls on next frame
       requestAnimationFrame(() => {
-        try { attachMessageControls(msgEl, () => newText); } catch {}
+        try { attachCopyButton(msgEl); } catch {}
       });
     }
   };
@@ -158,139 +231,6 @@ function editMessage(msgEl) {
   
   textarea.focus();
   textarea.select();
-}
-
-export function attachMessageControls(msgEl, textProvider) {
-  try {
-    if (!msgEl || !(msgEl instanceof HTMLElement)) return;
-    
-    // Don't attach if still streaming or already has controls
-    if (msgEl.dataset.streaming === 'true') return;
-    if (msgEl.querySelector('.msg-controls')) return;
-
-    // ✅ Defensive: ensure the message container is a positioned ancestor
-    try {
-      const cs = window.getComputedStyle(msgEl);
-      if (!cs || cs.position === 'static') {
-        msgEl.style.position = 'relative';
-      }
-    } catch {}
-
-    const controls = document.createElement('div');
-    controls.className = 'msg-controls';
-    
-    // Copy button
-    const copyBtn = document.createElement('button');
-    copyBtn.type = 'button';
-    copyBtn.className = 'msg-btn';
-    copyBtn.title = 'Copy to clipboard';
-    copyBtn.setAttribute('aria-label', 'Copy message');
-    copyBtn.innerHTML = '📋';
-    copyBtn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const text = typeof textProvider === 'function' ? textProvider() : _getMsgText(msgEl);
-      const ok = await _writeClipboard(text);
-      const prev = copyBtn.innerHTML;
-      copyBtn.innerHTML = ok ? '✅' : '⚠️';
-      copyBtn.classList.toggle('copied', ok);
-      setTimeout(() => { 
-        copyBtn.innerHTML = prev; 
-        copyBtn.classList.remove('copied');
-      }, 1200);
-    });
-    
-    // Edit button only for user bubbles
-    const isUser = msgEl.classList.contains('user');
-    if (isUser) {
-      const editBtn = document.createElement('button');
-      editBtn.type = 'button';
-      editBtn.className = 'msg-btn';
-      editBtn.title = 'Edit message';
-      editBtn.setAttribute('aria-label', 'Edit message');
-      editBtn.innerHTML = '✏️';
-      editBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        editMessage(msgEl);
-      });
-      controls.appendChild(editBtn);
-    }
-    
-    // Navigation controls
-    const topBtn = document.createElement('button');
-    topBtn.type = 'button';
-    topBtn.className = 'msg-btn';
-    topBtn.title = 'Jump to first';
-    topBtn.setAttribute('aria-label', 'Jump to first message');
-    topBtn.innerHTML = '⏫';
-    topBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      navigateToMessage('first');
-    });
-    
-    const upBtn = document.createElement('button');
-    upBtn.type = 'button';
-    upBtn.className = 'msg-btn';
-    upBtn.title = 'Previous';
-    upBtn.setAttribute('aria-label', 'Previous message');
-    upBtn.innerHTML = '⬆️';
-    upBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      navigateToMessage('up');
-    });
-    
-    const downBtn = document.createElement('button');
-    downBtn.type = 'button';
-    downBtn.className = 'msg-btn';
-    downBtn.title = 'Next';
-    downBtn.setAttribute('aria-label', 'Next message');
-    downBtn.innerHTML = '⬇️';
-    downBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      navigateToMessage('down');
-    });
-    
-    const bottomBtn = document.createElement('button');
-    bottomBtn.type = 'button';
-    bottomBtn.className = 'msg-btn';
-    bottomBtn.title = 'Jump to last';
-    bottomBtn.setAttribute('aria-label', 'Jump to last message');
-    bottomBtn.innerHTML = '⏬';
-    bottomBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      navigateToMessage('last');
-    });
-    
-    // Timestamp indicator (read-only)
-    const timestamp = msgEl.dataset.timestamp;
-    if (timestamp) {
-      const timeBtn = document.createElement('span');
-      timeBtn.className = 'msg-btn';
-      timeBtn.style.cssText = 'cursor: default; font-size: 10px; padding: 2px 4px;';
-      const date = new Date(timestamp);
-      const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      timeBtn.textContent = timeStr;
-      timeBtn.title = date.toLocaleString();
-      controls.appendChild(timeBtn);
-    }
-    
-    controls.appendChild(copyBtn);
-    controls.appendChild(topBtn);
-    controls.appendChild(upBtn);
-    controls.appendChild(downBtn);
-    controls.appendChild(bottomBtn);
-
-    // Defer append to avoid top-left flashes before layout stabilizes
-    requestAnimationFrame(() => {
-      msgEl.appendChild(controls);
-    });
-  } catch (e) {
-    console.error('attachMessageControls failed', e);
-  }
-}
-
-// Export the old function name for backward compatibility
-export function attachCopyButton(msgEl, textProvider) {
-  return attachMessageControls(msgEl, textProvider);
 }
 
 export function toast(msg){ alert(msg); }

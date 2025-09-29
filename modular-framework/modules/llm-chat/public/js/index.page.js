@@ -1,6 +1,6 @@
 import { initToolbar, applyProfileToFields, readOverrides } from './toolbar.js';
 import { send, stop, clearChat, summarizeConversation, initialize, startNewConversation, saveConversation, searchPastConversations } from './chat.js';
-import { showTab } from './ui.js';
+import { showTab, createNavigationSidebar } from './ui.js';
 import { initEmbeddedConfigOnce, refreshEmbeddedConfig } from './config.embed.js';
 
 function activateMainTab(name){
@@ -26,6 +26,7 @@ function activateMainTab(name){
 document.addEventListener('DOMContentLoaded', () => {
   // Initialize chat system
   initialize();
+  createNavigationSidebar();
 
   initToolbar();
   

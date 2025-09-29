@@ -1,7 +1,7 @@
 // modular-framework/modules/llm-chat/public/js/chat.js
 import { getGlobal, getProfiles, getActiveName } from './storage.js';
 import { parseStream } from './sse.js';
-import { getEl, setBusy, addMsg, detectBasePath, attachCopyButton, attachMessageControls } from './ui.js';
+import { getEl, setBusy, addMsg, detectBasePath, attachCopyButton, } from './ui.js';
 
 const state = { 
   controller: null, 
@@ -89,7 +89,7 @@ function displayConversationHistory() {
     el.dataset.role = msg.role || '';
     el.dataset.timestamp = new Date().toISOString();
     msgsDiv.appendChild(el);
-    try { attachCopyButton(el, () => el.dataset.msg || el.textContent || ''); } catch {}
+    try { attachCopyButton(el); } catch {}
   });
   msgsDiv.scrollTop = msgsDiv.scrollHeight;
 }
@@ -339,7 +339,7 @@ export async function summarizeConversation() {
       placeholder.dataset.complete = 'true';
       // Defer attach to ensure layout is ready
       requestAnimationFrame(() => {
-        try { attachMessageControls(placeholder, () => placeholder.dataset.msg || placeholder.textContent || ''); } catch {}
+        try { attachCopyButton(placeholder); } catch {}
       });
       state.messages.push({ role:'assistant', content: placeholder.textContent });
     };
@@ -563,7 +563,7 @@ Use this information to answer the user's question accurately. If the knowledge 
       delete placeholder.dataset.streaming;
       placeholder.dataset.complete = 'true';
       requestAnimationFrame(() => {
-        try { attachMessageControls(placeholder, () => placeholder.dataset.msg || placeholder.textContent || ''); } catch {}
+        try { attachCopyButton(placeholder); } catch {}
       });
       state.messages.push({ role:'assistant', content: placeholder.textContent }); 
       updateMessageCount();
