@@ -1,3 +1,4 @@
+// modular-framework/modules/llm-ide/src/ui/fileTree.js
 import { qs } from './dom.js';
 import { state } from '../core/state.js';
 import { bus } from '../core/eventBus.js';
@@ -5,6 +6,7 @@ import * as API from '../services/api.js';
 import { getFileIcon } from '../utils/path.js';
 import { joinRemotePath } from '../utils/remotePath.js';
 
+// ... (existing code above unchanged) ...
 
 // Improved file tree rendering and interaction
 export function initFileTree(){
@@ -112,12 +114,16 @@ function renderNode(node, container, path, filter){
         e.stopPropagation();
         // Toggle on click of label too
         toggleFolder(folderDiv, fullPath, item, folderChildren);
+        // Record which folder the user has selected for repo operations
+        state.selectedRepoFolder = fullPath;
       });
 
       folderDiv.addEventListener('dblclick', (e)=>{
         e.stopPropagation();
         // Toggle on double click as well
         toggleFolder(folderDiv, fullPath, item, folderChildren);
+        // Also surface selection
+        state.selectedRepoFolder = fullPath;
       });
 
       folderWrap.appendChild(folderDiv);
@@ -202,7 +208,7 @@ function highlightSelection(){
     item.classList.remove('active','modified');
     const itemPath = item.dataset.path;
     if (!itemPath) return;
-    if (state.activeFile === itemPath) item.classList.add('active');
+    if (state.activeFile && itemPath === state.activeFile) item.classList.add('active');
 
     // mark modified files (use state.openFiles map)
     try{

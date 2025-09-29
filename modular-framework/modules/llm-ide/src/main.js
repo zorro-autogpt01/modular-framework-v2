@@ -20,6 +20,7 @@ import { getFileFromPath, getLanguageFromPath } from './utils/path.js';
 
 Logger.info('Bootstrapping IDE...');
 
+
 function bootstrap() {
   // ---- Base state guards ----------------------------------------------------
   if (!state.fileTree || typeof state.fileTree !== 'object') state.fileTree = {};
@@ -190,6 +191,8 @@ function bootstrap() {
     else keyInput?.click();
   });
 
+  // Ensure a baseline value for selected repo folder
+  state.selectedRepoFolder = state.selectedRepoFolder || null;
 
   Logger.info('UI initialized');
   console.log('Use window.AdvancedCodeEditorAPI for external control');
@@ -250,10 +253,15 @@ function onActionClick(e) {
     }
 
     // Git
-    case 'git:pull': Git.pull().then(updateGitStatus); break;
+    case 'git:pull': {
+      const repoPath = deriveRepoPathFromUI();
+      // If derive failed, gracefully degrade to current behavior
+      Git.pull(repoPath).then(updateGitStatus);
+      break;
+    }
     case 'git:fetch': Git.fetch().then(updateGitStatus); break;
     case 'git:stash': Git.stash().then(updateGitStatus); break;
-    case 'git:create-branch': Git.createBranch(); break;
+    case 'git:create-branch': Git.createBranch().then(updateGitStatus); break;
     case 'git:quick-commit-push':
       Git.quickCommitPush(qs('#commitMessage')?.value || '').then(updateGitStatus);
       break;
@@ -305,11 +313,29 @@ function onActionClick(e) {
   }
 }
 
+function deriveRepoPathFromUI() {
+  // Prefer a user-selected folder in the UI
+  // If not available, fall back to the active file's directory
+  const root = (state.remoteRoot || '/').replace(/\/+$/, '');
+  const sel = state.selectedRepoFolder;
+  if (sel && sel.startsWith(root)) return sel;
+
+  const af = state.activeFile;
+  if (af) {
+    const rel = af.startsWith(root) ? af.slice(root.length) : af;
+    const idx = rel.lastIndexOf('/');
+    if (idx >= 0) {
+      const dir = rel.substring(0, idx);
+      return root + (dir.startsWith('/') ? dir : '/' + dir);
+    }
+  }
+  return null;
+}
+
 function updateGitStatus() {
   const el = qs('#gitInfo');
   if (el) el.textContent = `🌿 ${state.git?.branch || 'main'}`;
 }
-
 // ---- File operations & helpers ---------------------------------------------
 
 function newFile() {
@@ -402,7 +428,6 @@ function saveCurrentFile() {
 }
 
 function saveAllFiles() {
-
   let saved = 0;
   for (const [path, fileData] of state.openFiles) {
     if (fileData.modified) {
@@ -453,7 +478,7 @@ function applyTooltips() {
     ['[data-action="modal:open"][data-target="#githubModal"]', 'Open GitHub integration'],
     ['[data-action="git:pull"]', 'Pull latest changes from origin/main'],
     ['[data-action="git:fetch"]', 'Fetch remote updates without merging'],
-    ['[data-action="git:stash"]', 'Stash local changes'],
+    ['[data-action="git:stash"]', 'Stash changes'],
     ['[data-action="git:create-branch"]', 'Create and switch to a new branch'],
     ['[data-action="git:quick-commit-push"]', 'Commit all staged changes and push to origin'],
     ['[data-action="docker:build"]', 'Build Docker image(s)'],
@@ -484,6 +509,7 @@ function applyTooltips() {
     if (el && !el.getAttribute('title')) el.setAttribute('title', title);
   }
 }
+
 
 // ---- Start ------------------------------------------------------------------
 bootstrap();
