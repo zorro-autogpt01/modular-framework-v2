@@ -1,4 +1,3 @@
-
 import { Client } from 'ssh2';
 // Simple POSIX join to avoid pulling in 'path'
 const joinPosix = (a, b) => (a.endsWith('/') ? a.slice(0, -1) : a) + '/' + b;
@@ -33,7 +32,7 @@ export function connectSSH({ host, port = 22, username, authMethod, password, pr
 }
 
 export function resizePty(stream, cols, rows) {
-  try { stream.setWindow(rows, cols, 600, 800); } catch {}
+  try { stream.setWindow(cols, rows, 0, 0); } catch {}
 }
 
 export async function listTree(client, rootPath, depth = 2) {
