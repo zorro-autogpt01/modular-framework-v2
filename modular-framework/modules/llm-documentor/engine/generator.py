@@ -89,6 +89,7 @@ class DocGenerator:
             context_str = json.dumps(context, indent=2)[:8000]
         else:
             context_str = str(context)[:8000]
+
         prompt = template.format(context=context_str)
         messages = [
             {"role": "system", "content": "You are a technical documentation expert. Generate comprehensive, accurate documentation based on the provided code context."},
@@ -101,5 +102,61 @@ class DocGenerator:
                 if resp.status != 200:
                     error_text = await resp.text()
                     return f"# Documentation Generation Failed\n\nError: {error_text}"
-                result = await resp.json()
-                return result.get('content', '# No content generated')
+
+                result = await resp.json(content_type=None)
+
+                def _pick(resp_obj):
+                    if not isinstance(resp_obj, dict):
+                        return ''
+                    c = resp_obj.get('content')
+                    if isinstance(c, str) and c.strip():
+                        return c
+
+                    raw = resp_obj.get('raw')
+                    candidates = []
+                    if isinstance(raw, (dict, list)):
+                        candidates.append(raw)
+                    candidates.append(resp_obj)
+
+                    for obj in candidates:
+                        if not isinstance(obj, dict):
+                            continue
+
+                        out_text = obj.get('output_text')
+                        if isinstance(out_text, list) and out_text:
+                            joined = ''.join([t for t in out_text if isinstance(t, str)])
+                            if joined.strip():
+                                return joined
+
+                        output = obj.get('output')
+                        if isinstance(output, list):
+                            try:
+                                msg = next((p for p in output if isinstance(p, dict) and p.get('type') == 'message'), None)
+                                parts = msg.get('content') if isinstance(msg, dict) else None
+                                if isinstance(parts, list):
+                                    ot = next((p for p in parts if isinstance(p, dict) and p.get('type') == 'output_text' and isinstance(p.get('text'), str)), None)
+                                    if ot and ot.get('text', '').strip():
+                                        return ot['text']
+                                    if parts and isinstance(parts[0], dict):
+                                        if isinstance(parts[0].get('text'), str) and parts[0]['text'].strip():
+                                            return parts[0]['text']
+                                        if isinstance(parts[0].get('content'), str) and parts[0]['content'].strip():
+                                            return parts[0]['content']
+                            except Exception:
+                                pass
+
+                        choices = obj.get('choices')
+                        if isinstance(choices, list):
+                            for ch in choices:
+                                mc = ch.get('message', {}).get('content') if isinstance(ch, dict) else None
+                                if isinstance(mc, str) and mc.strip():
+                                    return mc
+
+                        if isinstance(obj.get('text'), str) and obj['text'].strip():
+                            return obj['text']
+                        if isinstance(obj.get('content'), str) and obj['content'].strip():
+                            return obj['content']
+                    return ''
+
+                text = _pick(result)
+                return text if text.strip() else '# No content generated'

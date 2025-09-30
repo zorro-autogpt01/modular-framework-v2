@@ -21,9 +21,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN mkdir -p /app/public /app/templates /app/logs /data/cache /data/output
 
 # Copy application code
-COPY app.py .
-COPY public ./public
-COPY templates ./templates
+COPY . .
 
 # Set environment variables
 ENV DATA_DIR=/data
