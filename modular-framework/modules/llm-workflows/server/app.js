@@ -5,13 +5,15 @@ const path = require('path');
 const fs = require('fs');
 const axios = require('axios');
 const bodyParser = require('body-parser');
-const Ajv = require('ajv');const { router: logsRouter } = require('./routes/logs');
+const Ajv = require('ajv');
+const { router: logsRouter } = require('./routes/logs');
 const { router: loggingRouter } = require('./routes/logging');
 
 const { execBash, execPython, sanitizeCwd } = require('./executor');
 const { stamp, logDebug, logInfo, logWarn, logError } = require('./logger');
 
 const BASE_PATH = (process.env.BASE_PATH || '').replace(/\/$/, ''); // e.g. /modules/llm-workflows
+const ALLOW_STEP_EXEC = String(process.env.ALLOW_STEP_EXEC || 'false').toLowerCase() === 'true';
 
 // Gateway endpoints:
 const DEFAULT_GW_API = 'http://llm-gateway:3010/api';
@@ -33,7 +35,9 @@ ensureFile(WF_FILE, JSON.stringify({ workflows: [] }, null, 2));
 
 const app = express();
 app.use(cors({ origin: true, credentials: true }));
-app.use(bodyParser.json({ limit: '2mb' }));// Attach request id to each request
+app.use(bodyParser.json({ limit: '2mb' }));
+
+// Attach request id to each request
 app.use(stamp);
 
 // Lightweight http access logging compatible with Splunk
@@ -54,36 +58,56 @@ app.use((req, res, next) => {
   next();
 });
 
+// Internal auth middleware (opt-in via env INTERNAL_API_TOKEN)
+function requireInternalAuth(req, res, next) {
+  const token = process.env.INTERNAL_API_TOKEN;
+  if (!token) return next(); // disabled if token not set
+  const hdr = req.headers['authorization'] || '';
+  if (hdr === `Bearer ${token}`) return next();
+  return res.status(401).json({ error: 'unauthorized' });
+}
 
 // Static UI
 const pub = path.join(__dirname, '..', 'public');
-app.use(express.static(pub));// Log buffer and dynamic logging config
+app.use(express.static(pub));
+
+// Log buffer and dynamic logging config
 app.use('/api', logsRouter);
 app.use('/api', loggingRouter);
 
-if (BASE_PATH) app.use(BASE_PATH, express.static(pub));if (BASE_PATH) {
+if (BASE_PATH) app.use(BASE_PATH, express.static(pub));
+if (BASE_PATH) {
   app.use(`${BASE_PATH}/api`, logsRouter);
   app.use(`${BASE_PATH}/api`, loggingRouter);
 }
-
 
 app.get('/', (_req, res) => res.sendFile(path.join(pub, 'index.html')));
 if (BASE_PATH) app.get(`${BASE_PATH}/`, (_req, res) => res.sendFile(path.join(pub, 'index.html')));
 
 // Health
 app.get('/health', (_req, res) =>
-  res.json({ status: 'healthy', gatewayChatUrl: LLM_GATEWAY_CHAT_URL, gatewayApiBase: LLM_GATEWAY_API_BASE })
+  res.json({
+    status: 'healthy',
+    gatewayChatUrl: LLM_GATEWAY_CHAT_URL,
+    gatewayApiBase: LLM_GATEWAY_API_BASE,
+    allowStepExec: ALLOW_STEP_EXEC
+  })
 );
 if (BASE_PATH)
   app.get(`${BASE_PATH}/health`, (_req, res) =>
-    res.json({ status: 'healthy', gatewayChatUrl: LLM_GATEWAY_CHAT_URL, gatewayApiBase: LLM_GATEWAY_API_BASE })
+    res.json({
+      status: 'healthy',
+      gatewayChatUrl: LLM_GATEWAY_CHAT_URL,
+      gatewayApiBase: LLM_GATEWAY_API_BASE,
+      allowStepExec: ALLOW_STEP_EXEC
+    })
   );
+
 // Central error handler to ensure JSON + logging
 app.use((err, _req, res, _next) => {
   try { logError('unhandled_error', { message: err?.message || String(err), stack: err?.stack }); } catch {}
   res.status(500).json({ error: 'Internal Server Error' });
 });
-
 
 // Storage helpers
 function ensureDir(p) { if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true }); }
@@ -178,7 +202,6 @@ function tryParseJson(text) {
   // 1) fast path
   try {
     const once = JSON.parse(s);
-    // If the model returned JSON-as-a-string, parse again
     if (typeof once === 'string') {
       try { return JSON.parse(once); } catch {}
     }
@@ -232,16 +255,26 @@ function firstDefined(...vals) {
   return undefined;
 }
 
+function pickContentFromResponses(data) {
+  if (!data || typeof data !== 'object') return '';
+  // OpenAI Responses API: output[].message.content[] parts
+  if (Array.isArray(data.output)) {
+    const msg = data.output.find(p => p?.type === 'message');
+    const parts = msg?.content;
+    if (Array.isArray(parts)) {
+      const ot = parts.find(p => p?.type === 'output_text' && typeof p?.text === 'string');
+      if (ot?.text) return ot.text;
+      if (typeof parts[0]?.text === 'string') return parts[0].text;
+      if (typeof parts[0]?.content === 'string') return parts[0].content;
+    }
+  }
+  if (typeof data.text === 'string') return data.text;
+  if (typeof data.content === 'string') return data.content;
+  return '';
+}
+
 /**
- * Normalizes the llm-gateway compat/Responses API body into a single string.
- * Supports:
- * - { content: "..." }
- * - { message: { content: "..." } }
- * - { choices[0].message.content }
- * - Responses API: { output: [ { type:"message", content:[ { type:"output_text", text:"..." } ] } ] }
- * - { output_text: [ { content: "..." } ] }
- * - { text: "..." }
- * - Plain string bodies
+ * Normalizes gateway responses into a single string.
  */
 function pickContentFromGateway(data) {
   if (typeof data === 'string') return data;
@@ -269,17 +302,17 @@ function pickContentFromGateway(data) {
     }
   }
 
-   // NEW: gateway wrapper support — if body is { content:"", raw:{...Responses...} }
- if (!content && data && typeof data === 'object' && data.raw) {
-   const fromRaw = pickContentFromResponses(data.raw);
-   if (fromRaw) return fromRaw;
- }
+  // NEW: gateway wrapper support — if body is { content:"", raw:{...Responses...} }
+  if (!content && data && typeof data === 'object' && data.raw) {
+    const fromRaw = pickContentFromResponses(data.raw);
+    if (fromRaw) return fromRaw;
+  }
 
- // Also handle the case the gateway already passed a Responses payload directly
- if (!content && data && typeof data === 'object' && data.output) {
-   const fromResponses = pickContentFromResponses(data);
-   if (fromResponses) return fromResponses;
- }
+  // Also handle the case the gateway already passed a Responses payload directly
+  if (!content && data && typeof data === 'object' && data.output) {
+    const fromResponses = pickContentFromResponses(data);
+    if (fromResponses) return fromResponses;
+  }
 
   if (!content && typeof data === 'object') {
     const maybe = firstDefined(
@@ -291,27 +324,6 @@ function pickContentFromGateway(data) {
 
   return typeof content === 'string' ? content : '';
 }
-
-function pickContentFromResponses(data) {
-  if (!data || typeof data !== 'object') return '';
-  // OpenAI Responses API: output[].message.content[] parts
-  if (Array.isArray(data.output)) {
-    const msg = data.output.find(p => p?.type === 'message');
-    const parts = msg?.content;
-    if (Array.isArray(parts)) {
-      const ot = parts.find(p => p?.type === 'output_text' && typeof p?.text === 'string');
-      if (ot?.text) return ot.text;
-      if (typeof parts[0]?.text === 'string') return parts[0].text;
-      if (typeof parts[0]?.content === 'string') return parts[0].content;
-    }
-  }
-  // Some providers flatten to data.text or data.content
-  if (typeof data.text === 'string') return data.text;
-  if (typeof data.content === 'string') return data.content;
-  return '';
-}
-
-
 
 // --- Gateway call (uses extractor) ---
 async function callgateway({ model, temperature, max_tokens, messages, corr, ctx }) {
@@ -326,7 +338,6 @@ async function callgateway({ model, temperature, max_tokens, messages, corr, ctx
     const resp = await axios.post(url, body, { timeout: 60_000 });
 
     const rawData = resp?.data;
-    // NEW: log top-level keys to verify what we received (no secrets)
     const shape = rawData && typeof rawData === 'object'
       ? Object.keys(rawData).slice(0, 12)
       : typeof rawData;
@@ -335,27 +346,19 @@ async function callgateway({ model, temperature, max_tokens, messages, corr, ctx
     const hasContent = !!(rawData && rawData.content);
     const hasText = !!(rawData && rawData.text);
 
-    // Try normal extraction
     let content = pickContentFromGateway(rawData) ?? '';
 
-    // ULTRA-SAFE FALLBACK: if still empty but we have an object with data, stringify it.
-    // Your tryParseJson() has a brace scanner, so it can pull out the first valid { ... } block from this string.
+    // Ultra-safe fallback for brace extraction by parser
     if (!content && rawData && typeof rawData === 'object') {
-      try {
-        content = JSON.stringify(rawData);
-      } catch {
-        // ignore
-      }
+      try { content = JSON.stringify(rawData); } catch {}
     }
 
     logInfo('WF <- GW response', {
       ctx, corr,
       status: resp.status,
       contentLen: String(content || '').length,
-      // Helpful diagnostics to catch mismatches between environments
       shape,
       hasOutput, hasChoices, hasContent, hasText,
-      // small head of whatever we’ll hand to the parser
       contentHead: String(content || '').slice(0, 500)
     });
 
@@ -581,42 +584,49 @@ if (BASE_PATH) app.get(`${BASE_PATH}/api/llm-models`, (req, res) => {
 });
 
 // --- API: test single step ---
-app.post('/api/testStep', async (req, res) => {
+app.post('/api/testStep', requireInternalAuth, async (req, res) => {
   const { chat, step, vars, execute=false } = req.body || {};
   const corr = `test_${uuid()}`;
   try {
-    logInfo('WF TEST_STEP start', { corr, ip: req.ip, model: step?.model || chat?.model, stepId: step?.id || null, hasVars: !!vars, execute });
+    logInfo('WF TEST_STEP start', { corr, ip: req.ip, model: step?.model || chat?.model, stepId: step?.id || null, hasVars: !!vars, execute, allowExec: ALLOW_STEP_EXEC });
     const result = await runStep({ chatConfig: chat || {}, step: step || {}, vars: vars || {}, ctx: 'testStep', corr });
-    if (execute && result.ok && Array.isArray(result.json?.actions)) {
-      const actionResults = [];
-      for (const [i, a] of result.json.actions.entries()) {
-        if (!a || typeof a !== 'object') continue;
-        const kind = String(a.type || a.kind || '').toLowerCase();
-        const code = a.content || a.code || '';
-        const cwd = sanitizeCwd(a.cwd || '');
-        const timeoutMs = Math.min(Number(a.timeoutSec || 20000), 300000);
-        if (!['bash','python'].includes(kind)) {
-          actionResults.push({ index:i, kind, skipped:true, reason:'unsupported kind' });
-          continue;
-        }
-        try {
-          if (kind === 'bash') {
-            let out='', err='';
-            const r = await execBash({ cmd: code, cwd, env: a.env, timeoutMs },
-              (s)=> out+=s, (s)=> err+=s );
-            actionResults.push({ index:i, kind, exitCode:r.code, killed:r.killed, stdout:out, stderr:err });
-          } else if (kind === 'python') {
-            let out='', err='';
-            const r = await execPython({ script: code, cwd, env: a.env, timeoutMs },
-              (s)=> out+=s, (s)=> err+=s );
-            actionResults.push({ index:i, kind, exitCode:r.code, killed:r.killed, stdout:out, stderr:err });
+
+    const willExec = execute && result.ok && Array.isArray(result.json?.actions);
+    if (willExec) {
+      if (!ALLOW_STEP_EXEC) {
+        result.actionResults = [{ index:0, kind:'exec', skipped:true, reason:'execution disabled; set ALLOW_STEP_EXEC=true' }];
+      } else {
+        const actionResults = [];
+        for (const [i, a] of result.json.actions.entries()) {
+          if (!a || typeof a !== 'object') continue;
+          const kind = String(a.type || a.kind || '').toLowerCase();
+          const code = a.content || a.code || '';
+          const cwd = sanitizeCwd(a.cwd || '');
+          const timeoutMs = Math.min(Number(a.timeoutSec || 20000), 300000);
+          if (!['bash','python'].includes(kind)) {
+            actionResults.push({ index:i, kind, skipped:true, reason:'unsupported kind' });
+            continue;
           }
-        } catch (e) {
-          actionResults.push({ index:i, kind, error: String(e.message || e) });
+          try {
+            if (kind === 'bash') {
+              let out='', err='';
+              const r = await execBash({ cmd: code, cwd, env: a.env, timeoutMs },
+                (s)=> out+=s, (s)=> err+=s );
+              actionResults.push({ index:i, kind, exitCode:r.code, killed:r.killed, stdout:out, stderr:err });
+            } else if (kind === 'python') {
+              let out='', err='';
+              const r = await execPython({ script: code, cwd, env: a.env, timeoutMs },
+                (s)=> out+=s, (s)=> err+=s );
+              actionResults.push({ index:i, kind, exitCode:r.code, killed:r.killed, stdout:out, stderr:err });
+            }
+          } catch (e) {
+            actionResults.push({ index:i, kind, error: String(e.message || e) });
+          }
         }
+        result.actionResults = actionResults;
       }
-      result.actionResults = actionResults;
     }
+
     logInfo('WF TEST_STEP result', { corr, ok: !!result.ok, rawLen: (result.raw || '').length, hasJson: !!result.json, validationErrors: (result.validation?.errors || []).length, artifacts: (result.artifacts || []).length });
     res.json(result);
   } catch (e) {
@@ -630,7 +640,7 @@ if (BASE_PATH) app.post(`${BASE_PATH}/api/testStep`, (req, res) => {
 });
 
 // --- API: run a workflow ---
-app.post('/api/workflows/:id/run', async (req, res) => {
+app.post('/api/workflows/:id/run', requireInternalAuth, async (req, res) => {
   const { id } = req.params;
   const inputs = req.body?.vars || {};
   const store = readStore();
@@ -652,28 +662,120 @@ app.post('/api/workflows/:id/run', async (req, res) => {
 
   function runLog(level, msg, meta) { run.logs.push({ ts: new Date().toISOString(), level, msg, meta }); }
 
-  logInfo('WF RUN start', { corr: run.id, workflowId: run.workflowId, steps: (wf.steps || []).length });
+  logInfo('WF RUN start', { corr: run.id, workflowId: run.workflowId, steps: (wf.steps || []).length, allowExec: ALLOW_STEP_EXEC });
 
   try {
     const vars = { ...(wf.defaults || {}), ...(inputs || {}) };
+
     for (const step of (wf.steps || [])) {
+      const stepKey = step.id || step.name || 'step';
       runLog('info', `Step start: ${step.name || step.id}`);
       const r = await runStep({ chatConfig: wf.chat || {}, step, vars, ctx: 'workflowRun', corr: run.id });
-      run.outputByStep[step.id || step.name || `step_${Math.random()}`] = {
+
+      run.outputByStep[stepKey] = {
         ok: r.ok, json: r.json, validation: r.validation, raw: r.raw, logs: r.logs
       };
       run.logs.push(...r.logs.map(l => ({ ...l, step: step.name || step.id })));
+
       if (r.artifacts?.length) {
         for (const a of r.artifacts) {
           run.artifacts.push({ step: step.name || step.id, ...a });
         }
       }
+
+      // Optional execution of actions during workflow runs
+      if (step.execute === true && r.ok && Array.isArray(r.json?.actions)) {
+        if (!ALLOW_STEP_EXEC) {
+          run.outputByStep[stepKey] = {
+            ...(run.outputByStep[stepKey] || {}),
+            executed: false,
+            execResults: [{ index:0, kind:'exec', skipped:true, reason:'execution disabled; set ALLOW_STEP_EXEC=true' }]
+          };
+        } else {
+          const execResults = [];
+          let allStdout = '', allStderr = '';
+          let anyNonZero = false;
+
+          for (const [i, a] of r.json.actions.entries()) {
+            if (!a || typeof a !== 'object') continue;
+            const kind = String(a.type || a.kind || '').toLowerCase();
+            const code = a.content || a.code || '';
+            const cwd = sanitizeCwd(a.cwd || '');
+            const timeoutMs = Math.min(Number(a.timeoutSec || 20000), 300000);
+
+            if (!['bash','python'].includes(kind)) {
+              execResults.push({ index:i, kind, skipped:true, reason:'unsupported kind' });
+              continue;
+            }
+
+            try {
+              if (kind === 'bash') {
+                let out='', err='';
+                const r2 = await execBash({ cmd: code, cwd, env: a.env, timeoutMs },
+                  (s)=> { out+=s; allStdout+=s; }, (s)=> { err+=s; allStderr+=s; } );
+                execResults.push({ index:i, kind, exitCode:r2.code, killed:r2.killed, stdout:out, stderr:err });
+                if (typeof r2.code === 'number' && r2.code !== 0) anyNonZero = true;
+              } else if (kind === 'python') {
+                let out='', err='';
+                const r2 = await execPython({ script: code, cwd, env: a.env, timeoutMs },
+                  (s)=> { out+=s; allStdout+=s; }, (s)=> { err+=s; allStderr+=s; } );
+                execResults.push({ index:i, kind, exitCode:r2.code, killed:r2.killed, stdout:out, stderr:err });
+                if (typeof r2.code === 'number' && r2.code !== 0) anyNonZero = true;
+              }
+            } catch (e) {
+              execResults.push({ index:i, kind, error: String(e.message || e) });
+              anyNonZero = true;
+            }
+          }
+
+          run.outputByStep[stepKey] = {
+            ...(run.outputByStep[stepKey] || {}),
+            executed: true,
+            execResults
+          };
+
+          // Export aggregated stdout/stderr into vars for downstream templating if requested
+          if (step.exportExecStdoutAs) {
+            const varName = String(step.exportExecStdoutAs).trim();
+            if (varName) vars[varName] = allStdout;
+          }
+          if (step.exportExecStderrAs) {
+            const varName = String(step.exportExecStderrAs).trim();
+            if (varName) vars[varName] = allStderr;
+          }
+
+          // Optional fail conditions
+          const patterns = Array.isArray(step.failOnRegex) ? step.failOnRegex : (step.failOnRegex ? [step.failOnRegex] : []);
+          const matched = [];
+          for (const p of patterns) {
+            try {
+              const re = new RegExp(p, 'm');
+              if (re.test(allStdout) || re.test(allStderr)) matched.push(p);
+            } catch {
+              // ignore bad regex
+            }
+          }
+          const failOnRegexHit = matched.length > 0;
+          const failOnNonZero = !!step.failOnNonZeroExit && anyNonZero;
+
+          if (failOnRegexHit || failOnNonZero) {
+            runLog('warn', 'Step fail conditions met', { step: stepKey, failOnRegexHit, matched, failOnNonZero });
+            if (step.stopOnFailure !== false) {
+              run.status = 'failed';
+              run.finishedAt = new Date().toISOString();
+              return res.json(run);
+            }
+          }
+        }
+      }
+
       if (step.exportPath && r.json) {
         try {
           const value = lookup(r.json, step.exportPath);
           if (value !== undefined) vars[step.exportAs || step.exportPath] = value;
         } catch {}
       }
+
       if (!r.ok) {
         runLog('warn', `Step failed: ${step.name || step.id}`);
         if (step.stopOnFailure !== false) {
@@ -686,6 +788,7 @@ app.post('/api/workflows/:id/run', async (req, res) => {
         runLog('info', `Step ok: ${step.name || step.id}`);
       }
     }
+
     run.status = 'ok';
     run.finishedAt = new Date().toISOString();
     logInfo('WF RUN ok', { corr: run.id });
