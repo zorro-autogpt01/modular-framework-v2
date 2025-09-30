@@ -6,11 +6,12 @@ const fs = require('fs');
 const axios = require('axios');
 const bodyParser = require('body-parser');
 const Ajv = require('ajv');
+
 const { router: logsRouter } = require('./routes/logs');
 const { router: loggingRouter } = require('./routes/logging');
-
 const { execBash, execPython, sanitizeCwd } = require('./executor');
 const { stamp, logDebug, logInfo, logWarn, logError } = require('./logger');
+const { listRunners, getRunner, pingRunner, execRemote } = require('./runnerClient');
 
 const BASE_PATH = (process.env.BASE_PATH || '').replace(/\/$/, ''); // e.g. /modules/llm-workflows
 const ALLOW_STEP_EXEC = String(process.env.ALLOW_STEP_EXEC || 'false').toLowerCase() === 'true';
@@ -103,10 +104,24 @@ if (BASE_PATH)
     })
   );
 
-// Central error handler to ensure JSON + logging
-app.use((err, _req, res, _next) => {
-  try { logError('unhandled_error', { message: err?.message || String(err), stack: err?.stack }); } catch {}
-  res.status(500).json({ error: 'Internal Server Error' });
+// --- API: list / ping runners ---
+app.get('/api/runners', (_req, res) => {
+  res.json({ runners: listRunners() });
+});
+if (BASE_PATH) app.get(`${BASE_PATH}/api/runners`, (req, res) => {
+  req.url = '/api/runners';
+  app._router.handle(req, res);
+});
+
+app.get('/api/runners/:name/health', async (req, res) => {
+  const { name } = req.params;
+  const r = await pingRunner(name);
+  if (!r.ok) return res.status(502).json(r);
+  res.json(r);
+});
+if (BASE_PATH) app.get(`${BASE_PATH}/api/runners/:name/health`, (req, res) => {
+  req.url = `/api/runners/${req.params.name}/health`;
+  app._router.handle(req, res);
 });
 
 // Storage helpers
@@ -273,9 +288,7 @@ function pickContentFromResponses(data) {
   return '';
 }
 
-/**
- * Normalizes gateway responses into a single string.
- */
+/** Normalizes gateway responses into a single string. */
 function pickContentFromGateway(data) {
   if (typeof data === 'string') return data;
 
@@ -302,13 +315,13 @@ function pickContentFromGateway(data) {
     }
   }
 
-  // NEW: gateway wrapper support — if body is { content:"", raw:{...Responses...} }
+  // wrapper support — if body is { content:"", raw:{...Responses...} }
   if (!content && data && typeof data === 'object' && data.raw) {
     const fromRaw = pickContentFromResponses(data.raw);
     if (fromRaw) return fromRaw;
   }
 
-  // Also handle the case the gateway already passed a Responses payload directly
+  // Responses payload directly
   if (!content && data && typeof data === 'object' && data.output) {
     const fromResponses = pickContentFromResponses(data);
     if (fromResponses) return fromResponses;
@@ -591,40 +604,52 @@ app.post('/api/testStep', requireInternalAuth, async (req, res) => {
     logInfo('WF TEST_STEP start', { corr, ip: req.ip, model: step?.model || chat?.model, stepId: step?.id || null, hasVars: !!vars, execute, allowExec: ALLOW_STEP_EXEC });
     const result = await runStep({ chatConfig: chat || {}, step: step || {}, vars: vars || {}, ctx: 'testStep', corr });
 
-    const willExec = execute && result.ok && Array.isArray(result.json?.actions);
-    if (willExec) {
-      if (!ALLOW_STEP_EXEC) {
-        result.actionResults = [{ index:0, kind:'exec', skipped:true, reason:'execution disabled; set ALLOW_STEP_EXEC=true' }];
-      } else {
-        const actionResults = [];
-        for (const [i, a] of result.json.actions.entries()) {
-          if (!a || typeof a !== 'object') continue;
-          const kind = String(a.type || a.kind || '').toLowerCase();
-          const code = a.content || a.code || '';
-          const cwd = sanitizeCwd(a.cwd || '');
-          const timeoutMs = Math.min(Number(a.timeoutSec || 20000), 300000);
-          if (!['bash','python'].includes(kind)) {
-            actionResults.push({ index:i, kind, skipped:true, reason:'unsupported kind' });
-            continue;
-          }
-          try {
+    // Enforce ALLOW_STEP_EXEC
+    if (execute && !ALLOW_STEP_EXEC) {
+      result.actionResults = [{ skipped: true, reason: 'step execution disabled by server (ALLOW_STEP_EXEC=false)' }];
+      logWarn('WF TEST_STEP exec blocked', { corr });
+      return res.status(403).json({ ok: true, ...result, execBlocked: true });
+    }
+
+    if (execute && result.ok && Array.isArray(result.json?.actions)) {
+      const actionResults = [];
+      const defaultTarget = step.target || step.runner || null;
+
+      for (const [i, a] of result.json.actions.entries()) {
+        if (!a || typeof a !== 'object') continue;
+        const kind = String(a.type || a.kind || '').toLowerCase();
+        const code = a.content || a.code || '';
+        const cwd = sanitizeCwd(a.cwd || '');
+        const timeoutMs = Math.min(Number(a.timeoutSec || 20000), 300000);
+        const target = (a.meta && a.meta.target) ? String(a.meta.target) : defaultTarget;
+
+        if (!['bash','python'].includes(kind)) {
+          actionResults.push({ index:i, kind, skipped:true, reason:'unsupported kind' });
+          continue;
+        }
+
+        try {
+          if (target && getRunner(target)) {
+            // REMOTE
+            const rmt = await execRemote({ target, kind, code, cwd, env: a.env, timeoutMs });
+            actionResults.push({ index:i, kind, target, exitCode:rmt.exitCode, killed:rmt.killed, stdout:rmt.stdout, stderr:rmt.stderr });
+          } else {
+            // LOCAL
             if (kind === 'bash') {
               let out='', err='';
-              const r = await execBash({ cmd: code, cwd, env: a.env, timeoutMs },
-                (s)=> out+=s, (s)=> err+=s );
-              actionResults.push({ index:i, kind, exitCode:r.code, killed:r.killed, stdout:out, stderr:err });
-            } else if (kind === 'python') {
+              const r = await execBash({ cmd: code, cwd, env: a.env, timeoutMs }, s=> out+=s, s=> err+=s);
+              actionResults.push({ index:i, kind, target:'local', exitCode:r.code, killed:r.killed, stdout:out, stderr:err });
+            } else {
               let out='', err='';
-              const r = await execPython({ script: code, cwd, env: a.env, timeoutMs },
-                (s)=> out+=s, (s)=> err+=s );
-              actionResults.push({ index:i, kind, exitCode:r.code, killed:r.killed, stdout:out, stderr:err });
+              const r = await execPython({ script: code, cwd, env: a.env, timeoutMs }, s=> out+=s, s=> err+=s);
+              actionResults.push({ index:i, kind, target:'local', exitCode:r.code, killed:r.killed, stdout:out, stderr:err });
             }
-          } catch (e) {
-            actionResults.push({ index:i, kind, error: String(e.message || e) });
           }
+        } catch (e) {
+          actionResults.push({ index:i, kind, target: target || 'local', error: String(e.message || e) });
         }
-        result.actionResults = actionResults;
       }
+      result.actionResults = actionResults;
     }
 
     logInfo('WF TEST_STEP result', { corr, ok: !!result.ok, rawLen: (result.raw || '').length, hasJson: !!result.json, validationErrors: (result.validation?.errors || []).length, artifacts: (result.artifacts || []).length });
@@ -670,6 +695,7 @@ app.post('/api/workflows/:id/run', requireInternalAuth, async (req, res) => {
     for (const step of (wf.steps || [])) {
       const stepKey = step.id || step.name || 'step';
       runLog('info', `Step start: ${step.name || step.id}`);
+
       const r = await runStep({ chatConfig: wf.chat || {}, step, vars, ctx: 'workflowRun', corr: run.id });
 
       run.outputByStep[stepKey] = {
@@ -683,18 +709,16 @@ app.post('/api/workflows/:id/run', requireInternalAuth, async (req, res) => {
         }
       }
 
-      // Optional execution of actions during workflow runs
-      if (step.execute === true && r.ok && Array.isArray(r.json?.actions)) {
+      // Prepare exec aggregations *outside* the exec block so fail rules can read them
+      let execResults = [];
+      let allStdout = '', allStderr = '';
+
+      // Optional execution of actions during workflow runs (gated)
+      if (step.execute === true) {
         if (!ALLOW_STEP_EXEC) {
-          run.outputByStep[stepKey] = {
-            ...(run.outputByStep[stepKey] || {}),
-            executed: false,
-            execResults: [{ index:0, kind:'exec', skipped:true, reason:'execution disabled; set ALLOW_STEP_EXEC=true' }]
-          };
-        } else {
-          const execResults = [];
-          let allStdout = '', allStderr = '';
-          let anyNonZero = false;
+          runLog('warn', 'Execution blocked by server setting', { step: stepKey });
+        } else if (r.ok && Array.isArray(r.json?.actions)) {
+          const defaultTarget = step.target || step.runner || null;
 
           for (const [i, a] of r.json.actions.entries()) {
             if (!a || typeof a !== 'object') continue;
@@ -702,39 +726,38 @@ app.post('/api/workflows/:id/run', requireInternalAuth, async (req, res) => {
             const code = a.content || a.code || '';
             const cwd = sanitizeCwd(a.cwd || '');
             const timeoutMs = Math.min(Number(a.timeoutSec || 20000), 300000);
+            const target = (a.meta && a.meta.target) ? String(a.meta.target) : defaultTarget;
 
             if (!['bash','python'].includes(kind)) {
-              execResults.push({ index:i, kind, skipped:true, reason:'unsupported kind' });
+              execResults.push({ index:i, kind, target: target || 'local', skipped:true, reason:'unsupported kind' });
               continue;
             }
 
             try {
-              if (kind === 'bash') {
-                let out='', err='';
-                const r2 = await execBash({ cmd: code, cwd, env: a.env, timeoutMs },
-                  (s)=> { out+=s; allStdout+=s; }, (s)=> { err+=s; allStderr+=s; } );
-                execResults.push({ index:i, kind, exitCode:r2.code, killed:r2.killed, stdout:out, stderr:err });
-                if (typeof r2.code === 'number' && r2.code !== 0) anyNonZero = true;
-              } else if (kind === 'python') {
-                let out='', err='';
-                const r2 = await execPython({ script: code, cwd, env: a.env, timeoutMs },
-                  (s)=> { out+=s; allStdout+=s; }, (s)=> { err+=s; allStderr+=s; } );
-                execResults.push({ index:i, kind, exitCode:r2.code, killed:r2.killed, stdout:out, stderr:err });
-                if (typeof r2.code === 'number' && r2.code !== 0) anyNonZero = true;
+              if (target && getRunner(target)) {
+                // REMOTE
+                const r2 = await execRemote({ target, kind, code, cwd, env: a.env, timeoutMs });
+                allStdout += r2.stdout || ''; allStderr += r2.stderr || '';
+                execResults.push({ index:i, kind, target, exitCode:r2.exitCode, killed:r2.killed, stdout:r2.stdout, stderr:r2.stderr });
+              } else {
+                // LOCAL
+                if (kind === 'bash') {
+                  let out='', err='';
+                  const rr = await execBash({ cmd: code, cwd, env: a.env, timeoutMs }, s=> { out+=s; allStdout+=s; }, s=> { err+=s; allStderr+=s; });
+                  execResults.push({ index:i, kind, target:'local', exitCode:rr.code, killed:rr.killed, stdout:out, stderr:err });
+                } else {
+                  let out='', err='';
+                  const rr = await execPython({ script: code, cwd, env: a.env, timeoutMs }, s=> { out+=s; allStdout+=s; }, s=> { err+=s; allStderr+=s; });
+                  execResults.push({ index:i, kind, target:'local', exitCode:rr.code, killed:rr.killed, stdout:out, stderr:err });
+                }
               }
             } catch (e) {
-              execResults.push({ index:i, kind, error: String(e.message || e) });
-              anyNonZero = true;
+              execResults.push({ index:i, kind, target: target || 'local', error: String(e.message || e) });
             }
           }
 
-          run.outputByStep[stepKey] = {
-            ...(run.outputByStep[stepKey] || {}),
-            executed: true,
-            execResults
-          };
+          run.outputByStep[stepKey] = { ...(run.outputByStep[stepKey] || {}), executed: true, execResults };
 
-          // Export aggregated stdout/stderr into vars for downstream templating if requested
           if (step.exportExecStdoutAs) {
             const varName = String(step.exportExecStdoutAs).trim();
             if (varName) vars[varName] = allStdout;
@@ -743,32 +766,35 @@ app.post('/api/workflows/:id/run', requireInternalAuth, async (req, res) => {
             const varName = String(step.exportExecStderrAs).trim();
             if (varName) vars[varName] = allStderr;
           }
-
-          // Optional fail conditions
-          const patterns = Array.isArray(step.failOnRegex) ? step.failOnRegex : (step.failOnRegex ? [step.failOnRegex] : []);
-          const matched = [];
-          for (const p of patterns) {
-            try {
-              const re = new RegExp(p, 'm');
-              if (re.test(allStdout) || re.test(allStderr)) matched.push(p);
-            } catch {
-              // ignore bad regex
-            }
-          }
-          const failOnRegexHit = matched.length > 0;
-          const failOnNonZero = !!step.failOnNonZeroExit && anyNonZero;
-
-          if (failOnRegexHit || failOnNonZero) {
-            runLog('warn', 'Step fail conditions met', { step: stepKey, failOnRegexHit, matched, failOnNonZero });
-            if (step.stopOnFailure !== false) {
-              run.status = 'failed';
-              run.finishedAt = new Date().toISOString();
-              return res.json(run);
-            }
-          }
         }
       }
 
+      // Optional fail conditions (safe even if no exec happened)
+      const patterns = Array.isArray(step.failOnRegex) ? step.failOnRegex : (step.failOnRegex ? [step.failOnRegex] : []);
+      const matched = [];
+      for (const p of patterns) {
+        try {
+          const re = new RegExp(p, 'm');
+          if (re.test(allStdout) || re.test(allStderr)) matched.push(p);
+        } catch { /* ignore bad regex */ }
+      }
+      const anyNonZero = Array.isArray(execResults) && execResults.some(r0 =>
+        !r0.skipped && typeof r0.exitCode === 'number' && r0.exitCode !== 0
+      );
+
+      const failOnRegexHit = matched.length > 0;
+      const failOnNonZero = !!step.failOnNonZeroExit && anyNonZero;
+
+      if (failOnRegexHit || failOnNonZero) {
+        runLog('warn', 'Step fail conditions met', { step: stepKey, failOnRegexHit, matched, failOnNonZero });
+        if (step.stopOnFailure !== false) {
+          run.status = 'failed';
+          run.finishedAt = new Date().toISOString();
+          return res.json(run);
+        }
+      }
+
+      // Export path from JSON response
       if (step.exportPath && r.json) {
         try {
           const value = lookup(r.json, step.exportPath);
@@ -812,6 +838,12 @@ app.get('/api/runs', (_req, res) => {
 });
 if (BASE_PATH) app.get(`${BASE_PATH}/api/runs`, (_req, res) => {
   res.json({ runs });
+});
+
+// ---- Central error handler (MUST be last) ----
+app.use((err, _req, res, _next) => {
+  try { logError('unhandled_error', { message: err?.message || String(err), stack: err?.stack }); } catch {}
+  res.status(500).json({ error: 'Internal Server Error' });
 });
 
 module.exports = app;

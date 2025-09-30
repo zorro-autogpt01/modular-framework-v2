@@ -3,8 +3,18 @@ const state = {
   current: null,
   currentStepIdx: -1,
   runs: [],
-  models: [] // from llm-gateway
+  models: [],
+  runners: [] // <--- NEW
 };
+
+// PUT IN TOKEN!!!!!!!!!!!
+
+const INTERNAL_TOKEN_KEY = 'internal_api_token';
+function authHeaders(h = {}) {
+  const t = localStorage.getItem(INTERNAL_TOKEN_KEY);
+  return t ? { ...h, Authorization: `Bearer ${t}` } : h;
+}
+
 
 // Helpers
 const $ = (id) => document.getElementById(id);
@@ -58,6 +68,8 @@ function updatePromptPreview() {
   const vars = parseJson($('varsInput')?.value || '{}', {});
   pre.textContent = computeFullPromptForStep(step, vars) || '';
 }
+
+
 
 // Gateway models
 async function fetchGatewayModels() {
@@ -215,7 +227,6 @@ function newWorkflow() {
 }
 function newStep() {
   const currentModel = state.current?.chat?.model || '';
-  console.log(`[newStep] Creating new step with inherited model: "${currentModel}"`);
   return {
     id: `step_${Date.now().toString(36)}`,
     name: 'Step',
@@ -228,8 +239,9 @@ function newStep() {
     provider: '',
     baseUrl: '',
     apiKey: '',
-    model: currentModel, // Inherit from workflow
-    temperature: ''
+    model: currentModel,
+    temperature: '',
+    target: ''   // <--- NEW
   };
 }
 function defaultActionSchema() {
@@ -311,6 +323,39 @@ async function saveCurrent() {
   }
 }
 
+
+async function fetchRunners() {
+  try {
+    const r = await fetch('./api/runners');
+    const data = await r.json();
+    state.runners = data.runners || [];
+  } catch {
+    state.runners = [];
+  }
+  populateRunnersSelect();
+}
+function populateRunnersSelect() {
+  const sel = $('sTarget'); const info = $('sTargetInfo');
+  if (!sel) return;
+  const val = (state.current?.steps?.[state.currentStepIdx]?.target) || '';
+  sel.innerHTML = '';
+  const none = document.createElement('option');
+  none.value = ''; none.textContent = '— local (no runner) —';
+  sel.appendChild(none);
+  for (const r of state.runners) {
+    const opt = document.createElement('option');
+    opt.value = r.name;
+    opt.textContent = `${r.name} (${r.url})`;
+    sel.appendChild(opt);
+  }
+  sel.value = val || '';
+  if (info) {
+    const found = state.runners.find(x => x.name === sel.value);
+    info.textContent = found ? `URL: ${found.url} · default cwd: ${found.default_cwd || '(none)'}` : '';
+  }
+}
+
+
 // Delete current
 async function deleteCurrent() {
   if (!state.current?.id) { toast('Nothing selected'); return; }
@@ -342,7 +387,7 @@ async function runCurrent() {
   try {
     const resp = await fetch(`./api/workflows/${wf.id}/run`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ vars })
     });
     const data = await safeJson(resp);
@@ -368,7 +413,7 @@ async function testStep() {
   try {
     const resp = await fetch('./api/testStep', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ chat: wf.chat, step, vars, execute: $('execInTest')?.checked === true })
     });
     const data = await safeJson(resp);
@@ -421,6 +466,7 @@ function collectWorkflowFromForm() {
     s.baseUrl = $('sBaseUrl').value.trim();
     s.apiKey = $('sApiKey').value.trim();
     s.model = stepModelValue;
+    s.target = $('sTarget')?.value || '';
     s.temperature = $('sTemp').value !== '' ? Number($('sTemp').value) : '';
     
     console.log(`[collectWorkflowFromForm] Updated step model to: "${s.model}"`);
@@ -505,6 +551,7 @@ function renderSteps() {
     row.innerHTML = `
       <div><strong>${escapeHtml(s.name || s.id)}</strong>
         <span class="pill">${s.model || state.current?.chat?.model || '(model)'}</span>
+        <span class="pill">${s.target ? ('→ ' + escapeHtml(s.target)) : 'local'}</span>
       </div>
       <button class="ghost">Up</button>
       <button class="ghost">Down</button>
@@ -550,8 +597,8 @@ function renderStepEditor() {
   
   // Now populate the select with the step's model value directly
   console.log(`[renderStepEditor] About to populate select with model: "${s.model || ''}"`);
+  populateRunnersSelect();
   populateModelSelect($('sModelSelect'), $('sModelInfo'), s.model || '');
-
   updateTestButtonTooltip();
   updatePromptPreview();
 }
@@ -718,10 +765,21 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('sModelSelect')?.addEventListener('change', () => onModelSelectChanged(true));
   $('refreshModelsBtn2')?.addEventListener('click', fetchGatewayModels);
 
+  $('refreshRunnersBtn')?.addEventListener('click', fetchRunners);
+  await fetchRunners(); // call once on load
+  $('sTarget')?.addEventListener('change', () => {
+    collectWorkflowFromForm();
+    // update the info line without rebuilding the whole select
+    const info = $('sTargetInfo');
+    const val = $('sTarget')?.value || '';
+    const found = state.runners.find(x => x.name === val);
+    if (info) info.textContent = found ? `URL: ${found.url} · default cwd: ${found.default_cwd || '(none)'}` : '';
+  });
+
   // Keep form changes in state for current step
   ['wfName','wfDesc','provider','baseUrl','apiKey','model','temperature','max_tokens','defaults',
    'stepName','stepPrompt','stepSchema','stepNoGuard','stepDontStop','stepExportPath','stepExportAs',
-   'sProvider','sBaseUrl','sApiKey','sModel','sTemp'
+   'sProvider','sBaseUrl','sApiKey','sModel','sTemp','sTarget'
   ].forEach(id => {
     const el = $(id);
     if (el) el.addEventListener('change', () => { collectWorkflowFromForm(); updateTestButtonTooltip(); updatePromptPreview(); });
