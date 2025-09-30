@@ -13,3 +13,4 @@
 /splunk/
 *.bak
 *.bak.*
+*.md

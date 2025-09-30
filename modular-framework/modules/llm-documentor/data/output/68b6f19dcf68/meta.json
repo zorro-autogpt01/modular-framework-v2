@@ -1,0 +1,22 @@
+{
+  "job_id": "68b6f19dcf68",
+  "repo_url": null,
+  "branch": "main",
+  "packs": [
+    "high-level"
+  ],
+  "file_hashes": {},
+  "verification": {
+    "checks": [],
+    "warnings": [],
+    "errors": [
+      "overview/SYSTEM_OVERVIEW.md: Documentation too short"
+    ],
+    "coverage": {
+      "total_source_files": 12,
+      "generated_component_docs": 0,
+      "coverage_ratio": 0.0
+    }
+  },
+  "generated_at": "2025-09-30T14:18:14.105174"
+}

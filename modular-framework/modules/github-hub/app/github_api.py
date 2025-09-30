@@ -77,6 +77,15 @@ class GHClient:
         r.raise_for_status()
         return r.json()
 
+    # Pull requests
+    def create_pull_request(self, owner: str, repo: str, title: str, head: str, base: str, body: Optional[str] = None, draft: bool = False) -> Dict[str, Any]:
+        payload = {"title": title, "head": head, "base": base}
+        if body: payload["body"] = body
+        if draft: payload["draft"] = True
+        r = requests.post(f"{self.base_url}/repos/{owner}/{repo}/pulls", headers=self._h(), json=payload, timeout=30)
+        r.raise_for_status()
+        return r.json()
+
     # ----- batch commit (single commit for many files) -----
     def get_commit_and_tree(self, owner: str, repo: str, branch: str) -> tuple[str, str]:
         ref = requests.get(f"{self.base_url}/repos/{owner}/{repo}/git/ref/heads/{branch}", headers=self._h(), timeout=20)

@@ -1,0 +1,765 @@
+{
+  "meta": {
+    "repo": "(via github-hub config)",
+    "branch": "main",
+    "extracted_at": "2025-09-30T13:06:11.195176"
+  },
+  "structure": {
+    "type": "dir",
+    "children": {
+      "modular-framework": {
+        "type": "dir",
+        "children": {
+          ".gitignore": {
+            "type": "file",
+            "size": 177
+          },
+          "docker-compose.yml": {
+            "type": "file",
+            "size": 3371
+          },
+          "framework": {
+            "type": "dir",
+            "children": {
+              "Dockerfile": {
+                "type": "file",
+                "size": 403
+              },
+              "html": {
+                "type": "dir",
+                "children": {
+                  "index.html": {
+                    "type": "file",
+                    "size": 22737
+                  }
+                }
+              },
+              "nginx.conf": {
+                "type": "file",
+                "size": 5026
+              }
+            }
+          },
+          "modules": {
+            "type": "dir",
+            "children": {
+              "RAG": {
+                "type": "dir",
+                "children": {
+                  "Dockerfile": {
+                    "type": "file",
+                    "size": 840
+                  },
+                  "docker-compose.yml": {
+                    "type": "file",
+                    "size": 607
+                  },
+                  "public": {
+                    "type": "dir",
+                    "children": {
+                      "css": {
+                        "type": "dir",
+                        "children": {
+                          "theme.css": {
+                            "type": "file",
+                            "size": 3948
+                          }
+                        }
+                      },
+                      "index.html": {
+                        "type": "file",
+                        "size": 9556
+                      },
+                      "js": {
+                        "type": "dir",
+                        "children": {
+                          "admin.js": {
+                            "type": "file",
+                            "size": 10067
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "rag_system.py": {
+                    "type": "file",
+                    "size": 43988
+                  },
+                  "requirements.txt": {
+                    "type": "file",
+                    "size": 172
+                  }
+                }
+              },
+              "browser": {
+                "type": "dir",
+                "children": {
+                  "Dockerfile": {
+                    "type": "file",
+                    "size": 510
+                  },
+                  "public": {
+                    "type": "dir",
+                    "children": {
+                      "browser.js": {
+                        "type": "file",
+                        "size": 8903
+                      },
+                      "index.html": {
+                        "type": "file",
+                        "size": 6179
+                      }
+                    }
+                  },
+                  "server": {
+                    "type": "dir",
+                    "children": {
+                      "index.js": {
+                        "type": "file",
+                        "size": 16057
+                      },
+                      "package.json": {
+                        "type": "file",
+                        "size": 308
+                      }
+                    }
+                  }
+                }
+              },
+              "github-hub": {
+                "type": "dir",
+                "children": {
+                  "Dockerfile": {
+                    "type": "file",
+                    "size": 536
+                  },
+                  "app": {
+                    "type": "dir",
+                    "children": {
+                      "github_api.py": {
+                        "type": "file",
+                        "size": 6546
+                      },
+                      "main.py": {
+                        "type": "file",
+                        "size": 5804
+                      },
+                      "store.py": {
+                        "type": "file",
+                        "size": 1953
+                      }
+                    }
+                  },
+                  "data": {
+                    "type": "dir",
+                    "children": {
+                      "config.json": {
+                        "type": "file",
+                        "size": 176
+                      }
+                    }
+                  },
+                  "public": {
+                    "type": "dir",
+                    "children": {
+                      "css": {
+                        "type": "dir",
+                        "children": {
+                          "theme.css": {
+                            "type": "file",
+                            "size": 1863
+                          }
+                        }
+                      },
+                      "index.html": {
+                        "type": "file",
+                        "size": 4795
+                      },
+                      "js": {
+                        "type": "dir",
+                        "children": {
+                          "app.js": {
+                            "type": "file",
+                            "size": 14215
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "requirements.txt": {
+                    "type": "file",
+                    "size": 125
+                  }
+                }
+              },
+              "llm-chat": {
+                "type": "dir",
+                "children": {
+                  "Dockerfile": {
+                    "type": "file",
+                    "size": 352
+                  },
+                  "package.json": {
+                    "type": "file",
+                    "size": 416
+                  },
+                  "public": {
+                    "type": "dir",
+                    "children": {
+                      "config.html": {
+                        "type": "file",
+                        "size": 3672
+                      },
+                      "css": {
+                        "type": "dir",
+                        "children": {
+                          "theme.css": {
+                            "type": "file",
+                            "size": 3948
+                          }
+                        }
+                      },
+                      "index.html": {
+                        "type": "file",
+                        "size": 11942
+                      },
+                      "js": {
+                        "type": "dir",
+                        "children": {
+                          "chat.js": {
+                            "type": "file",
+                            "size": 17828
+                          },
+                          "config.embed.js": {
+                            "type": "file",
+                            "size": 1849
+                          },
+                          "config.page.js": {
+                            "type": "file",
+                            "size": 1385
+                          },
+                          "index.page.js": {
+                            "type": "file",
+                            "size": 4168
+                          },
+                          "profiles.js": {
+                            "type": "file",
+                            "size": 4698
+                          },
+                          "sse.js": {
+                            "type": "file",
+                            "size": 1530
+                          },
+                          "storage.js": {
+                            "type": "file",
+                            "size": 3269
+                          },
+                          "toolbar.js": {
+                            "type": "file",
+                            "size": 1829
+                          },
+                          "ui.js": {
+                            "type": "file",
+                            "size": 1327
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "server.js": {
+                    "type": "file",
+                    "size": 15958
+                  },
+                  "server": {
+                    "type": "dir",
+                    "children": {
+                      "app.js": {
+                        "type": "file",
+                        "size": 1764
+                      },
+                      "index.js": {
+                        "type": "file",
+                        "size": 249
+                      },
+                      "logger.js": {
+                        "type": "file",
+                        "size": 1898
+                      },
+                      "providers": {
+                        "type": "dir",
+                        "children": {
+                          "ollama.js": {
+                            "type": "file",
+                            "size": 1371
+                          },
+                          "openaiCompat.js": {
+                            "type": "file",
+                            "size": 5784
+                          }
+                        }
+                      },
+                      "routes": {
+                        "type": "dir",
+                        "children": {
+                          "chat.js": {
+                            "type": "file",
+                            "size": 2852
+                          },
+                          "health.js": {
+                            "type": "file",
+                            "size": 171
+                          },
+                          "info.js": {
+                            "type": "file",
+                            "size": 205
+                          },
+                          "logs.js": {
+                            "type": "file",
+                            "size": 431
+                          }
+                        }
+                      },
+                      "util": {
+                        "type": "dir",
+                        "children": {
+                          "http.js": {
+                            "type": "file",
+                            "size": 1344
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "openvscode": {
+                "type": "dir",
+                "children": {
+                  "Dockerfile": {
+                    "type": "file",
+                    "size": 1629
+                  },
+                  "server": {
+                    "type": "dir",
+                    "children": {
+                      "index.js": {
+                        "type": "file",
+                        "size": 9406
+                      },
+                      "package.json": {
+                        "type": "file",
+                        "size": 246
+                      }
+                    }
+                  },
+                  "start.sh": {
+                    "type": "file",
+                    "size": 1819
+                  },
+                  "workspaces": {
+                    "type": "dir",
+                    "children": {
+                      ".cache": {
+                        "type": "dir",
+                        "children": {
+                          "Microsoft": {
+                            "type": "dir",
+                            "children": {
+                              "DeveloperTools": {
+                                "type": "dir",
+                                "children": {
+                                  "deviceid": {
+                                    "type": "file",
+                                    "size": 36
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      ".openvscode-server": {
+                        "type": "dir",
+                        "children": {
+                          "extensions": {
+                            "type": "dir",
+                            "children": {
+                              "extensions.json": {
+                                "type": "file",
+                                "size": 2
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "ssh-terminal": {
+                "type": "dir",
+                "children": {
+                  "Dockerfile": {
+                    "type": "file",
+                    "size": 345
+                  },
+                  "package.json": {
+                    "type": "file",
+                    "size": 427
+                  },
+                  "public": {
+                    "type": "dir",
+                    "children": {
+                      "config.html": {
+                        "type": "file",
+                        "size": 9201
+                      },
+                      "index.html": {
+                        "type": "file",
+                        "size": 24186
+                      }
+                    }
+                  },
+                  "server.js": {
+                    "type": "file",
+                    "size": 4742
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "files": {
+    "modular-framework/modules/browser/server/index.js": {
+      "content": "const express = require('express');\nconst cors = require('cors');\nconst path = require('path');\nconst axios = require('axios');\nconst { URL } = require('url');\n\nconst app = express();\nconst PORT = process.env.PORT || 3008;\nconst { WebSocketServer } = require('ws');\n\nconst dns = require('dns').promises;\nconst net = require('net');\nconst http = require('http');\nconst httpProxy = require('http-proxy');\nconst server = http.createServer(app);\n\nconst { v4: uuidv4 } = require('uuid');\nconst puppeteer = require('puppeteer-core');\nconst { createProxyMiddleware } = require('http-proxy-middleware');\nconst fs = require('fs');\nconst wss = new WebSocketServer({ noServer: true });\n\nconst CHROME_BIN_CANDIDATES = ['/usr/bin/chromium-browser', '/usr/bin/chromium', '/usr/bin/google-chrome'];\n// id -> WebSocket\nconst uiClients = new Map();\n\nconst CONTROL_TOKEN = process.env.BROWSER_CONTROL_TOKEN || '';\n//function authOk(req) {\n//  if (!CONTROL_TOKEN) return true; // no auth in dev\n//  const h = req.headers['authorization'] || '';\n//  return h === `Bearer ${CONTROL_TOKEN}`;\n//}\n\nfunction authOk(_req) { return true; } // DEV-ONLY\n\n\n\n\n\nfunction findChrome() {\n  for (const p of CHROME_BIN_CANDIDATES) if (fs.existsSync(p)) return p;\n  return process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser';\n}\n\nconst sessions = new Map(); // id -> { browser, page, debugPort, targetId, eventBus, headers }\n\nasync function launchSession(opts = {}) {\n  const execPath = findChrome();\n  const browser = await puppeteer.launch({\n    executablePath: execPath,\n    headless: true,           // change to false if you ever want a visible X display\n    args: [\n      '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage',\n      '--remote-debugging-port=0', // let Chrome pick a free port; we\u2019ll discover it\n      '--no-first-run', '--no-default-browser-check'\n    ]\n  });\n\n  // Discover the devtools port from wsEndpoint (ws://127.0.0.1:PORT/devtools/\u2026)\n  const m = browser.wsEndpoint().match(/:(\\d+)\\//);\n  const debugPort = m ? Number(m[1]) : 0;\n\n  const page = await browser.newPage();\n  if (opts.viewport) await page.setViewport(opts.viewport);\n  if (opts.headers)  await page.setExtraHTTPHeaders(opts.headers);\n\n  // Basic console/network event stream for SSE\n  const events = [];\n  const push = (type, payload) => {\n    const ev = { id: Date.now() + Math.random(), t: new Date().toISOString(), type, payload };\n    events.push(ev); while (events.length > 500) events.shift();\n  };\n  page.on('console', msg => push('console', { type: msg.type(), text: msg.text() }));\n  page.on('request', r => push('request', { url: r.url(), method: r.method() }));\n  page.on('response', r => push('response', { url: r.url(), status: r.status() }));\n\n  const id = uuidv4();\n  const target = page.target(); // Keep for devtools target id\n  const targetId = target._targetId || ''; // puppeteer private, but works\n\n  sessions.set(id, { browser, page, debugPort, targetId, headers: opts.headers || {}, events });\n  return { id, debugPort, targetId };\n}\n\n\nfunction isPrivateIP(ip) {\n  const b = ip.split('.').map(Number);\n  return (\n    b[0] === 10 ||\n    (b[0] === 172 && b[1] >= 16 && b[1] <= 31) ||\n    (b[0] === 192 && b[1] === 168) ||\n    ip === '127.0.0.1' ||\n    ip === '0.0.0.0'\n  );\n}\n\napp.get('/api/proxy', async (req, res) => {\n  const targetUrl = req.query.url;\n  if (!targetUrl) return res.status(400).json({ error: 'URL parameter required' });\n\n  let u;\n  try {\n    u = new URL(targetUrl);\n  } catch {\n    return res.status(400).json({ error: 'Invalid URL' });\n  }\n  if (!['http:', 'https:'].includes(u.protocol)) {\n    return res.status(400).json({ error: 'Protocol not allowed' });\n  }\n\n  try {\n    // Resolve and block private IPs (basic SSRF protection)\n    const addrs = await dns.lookup(u.hostname, { all: true, family: 4 });\n    if (addrs.some(a => isPrivateIP(a.address))) {\n      return res.status(403).json({ error: 'Target not allowed' });\n    }\n\n    const upstream = await axios.get(u.toString(), {\n      headers: { 'User-Agent': 'Mozilla/5.0 ModularFrameworkBrowser/1.0' },\n      responseType: 'arraybuffer',          // handle any content\n      maxContentLength: 50 * 1024 * 1024,   // 50MB\n      maxBodyLength: 50 * 1024 * 1024,\n      validateStatus: () => true\n    });\n\n    // Pass through non-HTML as-is\n    const contentType = upstream.headers['content-type'] || 'application/octet-stream';\n    if (!/^text\\/html/i.test(contentType)) {\n      res.status(upstream.status);\n      Object.entries(upstream.headers).forEach(([k, v]) => {\n        if (!/^content-security-policy/i.test(k)) res.setHeader(k, v);\n      });\n      return res.send(Buffer.from(upstream.data));\n    }\n\n    // HTML: inject <base> to repair relative URLs\n    const html = Buffer.from(upstream.data).toString('utf8');\n    const base = `${u.protocol}//${u.host}`;\n    const patched = html.replace(/<head([^>]*)>/i, `<head$1><base href=\"${base}/\">`);\n\n    res.status(upstream.status);\n    res.setHeader('Content-Type', 'text/html; charset=utf-8');\n    // Loosen frame-ancestors so it renders inside your pane\n    res.setHeader('Content-Security-Policy', \"frame-ancestors 'self'\");\n    return res.send(patched);\n  } catch (error) {\n    return res.status(500).json({ error: error.message });\n  }\n});\n\napp.use(cors());\napp.use(express.json());\napp.use(express.static(path.join(__dirname, '../public')));\n\n\n// Screenshot endpoint using Puppeteer (optional)\napp.get('/api/screenshot', async (req, res) => {\n  const { url } = req.query;\n  if (!url) return res.status(400).json({ error: 'URL required' });\n\n  try {\n    const browser = await puppeteer.launch({\n      executablePath: findChrome(),\n      args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage']\n    });\n    const page = await browser.newPage();\n    await page.goto(url, { waitUntil: 'networkidle2' });\n    const screenshot = await page.screenshot({ type: 'png' });\n    await browser.close();\n    res.setHeader('Content-Type', 'image/png');\n    res.send(screenshot);\n  } catch (e) {\n    res.status(500).json({ error: e.message });\n  }\n});\n\n// Bookmarks API\nconst bookmarks = [];\n\napp.get('/api/bookmarks', (req, res) => {\n    res.json(bookmarks);\n});\n\napp.post('/api/bookmarks', (req, res) => {\n    const { title, url } = req.body;\n    const bookmark = { id: Date.now(), title, url, created: new Date() };\n    bookmarks.push(bookmark);\n    res.json(bookmark);\n});\n\napp.delete('/api/bookmarks/:id', (req, res) => {\n    const index = bookmarks.findIndex(b => b.id === parseInt(req.params.id));\n    if (index > -1) {\n        bookmarks.splice(index, 1);\n        res.json({ success: true });\n    } else {\n        res.status(404).json({ error: 'Bookmark not found' });\n    }\n});\n\napp.get('/health', (req, res) => {\n    res.json({ status: 'healthy' });\n});\n\nserver.on('upgrade', (req, socket, head) => {\n  if (!req.url.startsWith('/api/ui/ws')) return socket.destroy();\n  if (!authOk(req)) return socket.destroy();\n\n  const qs = new URL(req.url, 'http://x').searchParams;\n  const id = qs.get('id');\n  if (!id) return socket.destroy();\n\n  wss.handleUpgrade(req, socket, head, (ws) => {\n    uiClients.set(id, ws);\n    ws.on('close', () => uiClients.delete(id));\n  });\n});\n\n// helper to push a command to a given client\nfunction sendCmd(id, cmd) {\n  const ws = uiClients.get(id);\n  if (!ws || ws.readyState !== ws.OPEN) throw new Error('UI not connected');\n  ws.send(JSON.stringify(cmd));\n}\n\nserver.listen(PORT, () => {\n  console.log(`Browser module running on port ${PORT}`);\n});\n\napp.post('/api/sessions', async (req, res) => {\n  try {\n    const { viewport, headers } = req.body || {};\n    const s = await launchSession({ viewport, headers });\n    res.json({ sessionId: s.id });\n  } catch (e) {\n    res.status(500).json({ error: e.message });\n  }\n});\n\n// Close session\napp.delete('/api/sessions/:id', async (req, res) => {\n  const s = sessions.get(req.params.id);\n  if (!s) return res.status(404).json({ error: 'not found' });\n  await s.browser.close();\n  sessions.delete(req.params.id);\n  res.json({ ok: true });\n});\n\n// Navigate\napp.post('/api/sessions/:id/navigate', async (req, res) => {\n  const s = sessions.get(req.params.id);\n  if (!s) return res.status(404).json({ error: 'not found' });\n  const { url, waitUntil = 'networkidle2', timeout = 45000 } = req.body || {};\n  if (!url) return res.status(400).json({ error: 'url required' });\n  await s.page.goto(url, { waitUntil, timeout });\n  res.json({ ok: true });\n});\n\n// History ops\napp.post('/api/sessions/:id/reload', async (req, res) => {\n  const s = sessions.get(req.params.id);\n  if (!s) return res.status(404).json({ error: 'not found' });\n  await s.page.reload({ waitUntil: 'networkidle2' });\n  res.json({ ok: true });\n});\napp.post('/api/sessions/:id/back', async (req, res) => {\n  const s = sessions.get(req.params.id); if (!s) return res.status(404).json({ error: 'not found' });\n  await s.page.goBack({ waitUntil: 'networkidle2' }); res.json({ ok: true });\n});\napp.post('/api/sessions/:id/forward', async (req, res) => {\n  const s = sessions.get(req.params.id); if (!s) return res.status(404).json({ error: 'not found' });\n  await s.page.goForward({ waitUntil: 'networkidle2' }); res.json({ ok: true });\n});\n\n// Interactions\napp.post('/api/sessions/:id/click', async (req, res) => {\n  const s = sessions.get(req.params.id);\n  if (!s) return res.status(404).json({ error: 'not found' });\n  const { selector, timeout = 15000 } = req.body || {};\n  if (!selector) return res.status(400).json({ error: 'selector required' });\n  await s.page.waitForSelector(selector, { timeout });\n  await s.page.click(selector);\n  res.json({ ok: true });\n});\napp.post('/api/sessions/:id/type', async (req, res) => {\n  const s = sessions.get(req.params.id);\n  if (!s) return res.status(404).json({ error: 'not found' });\n  const { selector, text, delay = 0, timeout = 15000 } = req.body || {};\n  if (!selector || text == null) return res.status(400).json({ error: 'selector & text required' });\n  await s.page.waitForSelector(selector, { timeout });\n  await s.page.type(selector, text, { delay });\n  res.json({ ok: true });\n});\napp.post('/api/sessions/:id/waitFor', async (req, res) => {\n  const s = sessions.get(req.params.id);\n  if (!s) return res.status(404).json({ error: 'not found' });\n  const { selector, timeout = 30000 } = req.body || {};\n  await s.page.waitForSelector(selector, { timeout });\n  res.json({ ok: true });\n});\n\n// Evaluate JS\napp.post('/api/sessions/:id/eval', async (req, res) => {\n  const s = sessions.get(req.params.id);\n  if (!s) return res.status(404).json({ error: 'not found' });\n  const { script } = req.body || {};\n  if (!script) return res.status(400).json({ error: 'script required' });\n  const result = await s.page.evaluate(new Function(`return (${script});`));\n  res.json({ result });\n});\n\n// Screenshot / PDF\napp.post('/api/sessions/:id/screenshot', async (req, res) => {\n  const s = sessions.get(req.params.id); if (!s) return res.status(404).json({ error: 'not found' });\n  const { fullPage = true, type = 'png' } = req.body || {};\n  const buf = await s.page.screenshot({ fullPage, type });\n  res.setHeader('Content-Type', type === 'jpeg' ? 'image/jpeg' : 'image/png');\n  res.send(buf);\n});\napp.post('/api/sessions/:id/pdf', async (req, res) => {\n  const s = sessions.get(req.params.id); if (!s) return res.status(404).json({ error: 'not found' });\n  const { format = 'A4', printBackground = true } = req.body || {};\n  const pdf = await s.page.pdf({ format, printBackground });\n  res.setHeader('Content-Type', 'application/pdf');\n  res.send(pdf);\n});\n\n// Headers / cookies / viewport\napp.post('/api/sessions/:id/headers', async (req, res) => {\n  const s = sessions.get(req.params.id); if (!s) return res.status(404).json({ error: 'not found' });\n  s.headers = req.body || {};\n  await s.page.setExtraHTTPHeaders(s.headers);\n  res.json({ ok: true });\n});\napp.post('/api/sessions/:id/viewport', async (req, res) => {\n  const s = sessions.get(req.params.id); if (!s) return res.status(404).json({ error: 'not found' });\n  await s.page.setViewport(req.body || { width: 1280, height: 800, deviceScaleFactor: 1 });\n  res.json({ ok: true });\n});\napp.post('/api/sessions/:id/cookies', async (req, res) => {\n  const s = sessions.get(req.params.id); if (!s) return res.status(404).json({ error: 'not found' });\n  const { cookies = [] } = req.body || {};\n  await s.page.setCookie(...cookies);\n  res.json({ ok: true });\n});\n// REST endpoints to drive the visible pane\napp.post('/api/ui/:id/navigate', (req, res) => {\n  if (!authOk(req)) return res.status(401).json({ error: 'unauthorized' });\n  const { url } = req.body || {};\n  if (!url) return res.status(400).json({ error: 'url required' });\n  try { sendCmd(req.params.id, { type: 'navigate', url }); res.json({ ok: true }); }\n  catch (e) { res.status(409).json({ error: e.message }); }\n});\n\napp.post('/api/ui/:id/reload',  (req, res) => { if (!authOk(req)) return res.status(401).json({ error: 'unauthorized' }); try { sendCmd(req.params.id, { type: 'reload'  }); res.json({ ok: true }); } catch (e) { res.status(409).json({ error: e.message }); } });\napp.post('/api/ui/:id/back',    (req, res) => { if (!authOk(req)) return res.status(401).json({ error: 'unauthorized' }); try { sendCmd(req.params.id, { type: 'back'    }); res.json({ ok: true }); } catch (e) { res.status(409).json({ error: e.message }); } });\napp.post('/api/ui/:id/forward', (req, res) => { if (!authOk(req)) return res.status(401).json({ error: 'unauthorized' }); try { sendCmd(req.params.id, { type: 'forward' }); res.json({ ok: true }); } catch (e) { res.status(409).json({ error: e.message }); } });\napp.post('/api/ui/:id/proxy',   (req, res) => { if (!authOk(req)) return res.status(401).json({ error: 'unauthorized' }); try { sendCmd(req.params.id, { type: 'proxy', enable: !!req.body?.enable }); res.json({ ok: true }); } catch (e) { res.status(409).json({ error: e.message }); } });\n\n\napp.get('/api/sessions/:id/cookies', async (req, res) => {\n  const s = sessions.get(req.params.id); if (!s) return res.status(404).json({ error: 'not found' });\n  res.json(await s.page.cookies());\n});\n\n// Event stream (console/network)\napp.get('/api/sessions/:id/events', (req, res) => {\n  const s = sessions.get(req.params.id); if (!s) return res.status(404).end();\n  res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });\n  let last = 0;\n  const timer = setInterval(() => {\n    while (last < s.events.length) {\n      const ev = s.events[last++];\n      res.write(`id: ${ev.id}\\nevent: ${ev.type}\\ndata: ${JSON.stringify(ev)}\\n\\n`);\n    }\n  }, 1000);\n  req.on('close', () => clearInterval(timer));\n});\n\n// DevTools proxy (HTTP + WS) for this session\u2019s Chrome\napp.use('/api/devtools/:id', (req, res, next) => {\n  const s = sessions.get(req.params.id);\n  if (!s) return res.status(404).send('session not found');\n  return createProxyMiddleware({\n    target: `http://127.0.0.1:${s.debugPort}`,\n    changeOrigin: true,\n    ws: true,\n    secure: false,\n    pathRewrite: { [`^/api/devtools/${req.params.id}`]: '' }\n  })(req, res, next);\n});\n\n// Helper to get an embeddable DevTools URL for the current page\napp.get('/api/sessions/:id/devtools', async (req, res) => {\n  const s = sessions.get(req.params.id);\n  if (!s) return res.status(404).json({ error: 'not found' });\n\n  try {\n    const list = await axios.get(`http://127.0.0.1:${s.debugPort}/json`);\n    const pageEntry = list.data.find(x => x.type === 'page' && x.url);\n    const targetId = pageEntry?.id || s.targetId;\n\n    const tail = `/api/sessions/${req.params.id}/devtools`;\n    const prefix = req.originalUrl.endsWith(tail)\n      ? req.originalUrl.slice(0, -tail.length)\n      : ''; // e.g. '/api/browser'\n\n    const base = `${prefix}/api/devtools/${req.params.id}`;\n    const devtoolsUrl =\n      `${base}/devtools/inspector.html?ws=${req.headers.host}${base}/devtools/page/${targetId}`;\n\n    res.json({ devtoolsUrl });\n  } catch (e) {\n    res.status(500).json({ error: e.message });\n  }\n});",
+      "language": "javascript",
+      "symbols": [
+        "express",
+        "cors",
+        "path",
+        "axios",
+        "app",
+        "PORT",
+        "dns",
+        "net",
+        "http",
+        "httpProxy",
+        "server",
+        "puppeteer",
+        "fs",
+        "wss",
+        "CHROME_BIN_CANDIDATES",
+        "uiClients",
+        "CONTROL_TOKEN",
+        "authOk",
+        "h",
+        "findChrome",
+        "p",
+        "sessions",
+        "launchSession",
+        "execPath",
+        "browser",
+        "Chrome",
+        "m",
+        "debugPort",
+        "page",
+        "events",
+        "push",
+        "ev",
+        "id",
+        "target",
+        "targetId",
+        "isPrivateIP",
+        "b",
+        "targetUrl",
+        "u",
+        "addrs",
+        "upstream",
+        "contentType",
+        "html",
+        "base",
+        "patched",
+        "screenshot",
+        "bookmarks",
+        "bookmark",
+        "index",
+        "qs"
+      ]
+    },
+    "modular-framework/modules/github-hub/app/main.py": {
+      "content": "from __future__ import annotations\nimport os\nfrom typing import Optional, List, Dict, Any\nfrom fastapi import FastAPI, HTTPException, Query\nfrom fastapi.middleware.cors import CORSMiddleware\nfrom fastapi.staticfiles import StaticFiles\nfrom fastapi.responses import RedirectResponse\nfrom pydantic import BaseModel, Field\nfrom loguru import logger\nfrom pathlib import Path\n\nfrom .store import load_config, save_config\nfrom .github_api import GHClient\n\napp = FastAPI(title=\"GitHub Hub\", version=\"0.1.0\")\n\napp.add_middleware(\n    CORSMiddleware,\n    allow_origins=[\"*\"], allow_credentials=True, allow_methods=[\"*\"], allow_headers=[\"*\"],\n)\n\n# serve the tiny UI\n# Serve UI at /ui to avoid shadowing /api/*\napp.mount(\"/ui\", StaticFiles(directory=\"public\", html=True), name=\"ui\")\n\ndef _read_token() -> Optional[str]:\n    \"\"\"Read token from env or Docker secret file.\"\"\"\n    token_file = os.getenv(\"GITHUB_TOKEN_FILE\")\n    if token_file and Path(token_file).exists():\n        return Path(token_file).read_text(encoding=\"utf-8\").strip()\n    return os.getenv(\"GITHUB_TOKEN\")\n\ndef _client_from_cfg(cfg: Dict[str, Any]) -> GHClient:\n    token = _read_token()\n    if not token:\n        raise HTTPException(400, \"GITHUB_TOKEN not set (or GITHUB_TOKEN_FILE missing).\")\n    base_url = cfg.get(\"base_url\") or os.getenv(\"GITHUB_API_BASE\", \"https://api.github.com\")\n    return GHClient(token=token, base_url=base_url)\n\n\n@app.get(\"/\")\ndef root():\n    # convenience: / -> /ui/\n    return RedirectResponse(url=\"/ui/\")\ndef _client_from_cfg(cfg: Dict[str, Any]) -> GHClient:\n    token = _read_token()\n    if not token:\n        raise HTTPException(400, \"GITHUB_TOKEN not set (or GITHUB_TOKEN_FILE missing).\")\n    base_url = cfg.get(\"base_url\") or os.getenv(\"GITHUB_API_BASE\", \"https://api.github.com\")\n    return GHClient(token=token, base_url=base_url)\n\ndef _owner_repo_from_cfg(cfg: Dict[str, Any]) -> tuple[str, str]:\n    url = cfg.get(\"repo_url\")\n    if not url:\n        raise HTTPException(400, \"No repo_url in config.\")\n    return GHClient.parse_repo(url)\n\n# --------- models ----------\nclass ConfigIn(BaseModel):\n    repo_url: str = Field(..., examples=[\"https://github.com/owner/repo\"])\n    default_branch: Optional[str] = \"main\"\n    token: Optional[str] = None\n    base_url: Optional[str] = \"https://api.github.com\"  # for GH Enterprise\n\nclass FilePut(BaseModel):\n    path: str\n    message: str\n    content: str\n    branch: Optional[str] = None\n    sha: Optional[str] = None  # include for updates\n\nclass BatchChange(BaseModel):\n    path: str\n    content: str\n    mode: Optional[str] = \"100644\"\n\nclass BatchCommit(BaseModel):\n    branch: str\n    message: str\n    changes: List[BatchChange]\n\n# --------- API ----------\n@app.get(\"/api/health\")\ndef health():\n    return {\"status\": \"ok\"}\n\n@app.get(\"/api/config\")\ndef get_cfg():\n    cfg = load_config()\n    # never return token/plain/enc to UI\n    cfg.pop(\"token\", None)\n    cfg.pop(\"token_plain\", None)\n    cfg.pop(\"token_enc\", None)\n    return cfg\n\n@app.post(\"/api/config\")\ndef set_cfg(body: ConfigIn):\n    cfg = load_config()\n    cfg.update(body.model_dump(exclude_unset=True))\n    out = save_config(cfg)\n    try:\n        # test connectivity + preload branches\n        gh = _client_from_cfg(out)\n        owner, repo = _owner_repo_from_cfg(out)\n        branches = gh.get_branches(owner, repo)\n        out[\"branches\"] = branches\n        out = save_config(out)\n        return {\"ok\": True, \"branches\": branches}\n    except Exception as e:\n        logger.exception(\"Config check failed\")\n        raise HTTPException(400, f\"Saved config but GitHub check failed: {e}\")\n\n@app.get(\"/api/branches\")\ndef branches():\n    cfg = load_config()\n    gh = _client_from_cfg(cfg)\n    owner, repo = _owner_repo_from_cfg(cfg)\n    return {\"branches\": gh.get_branches(owner, repo)}\n\n@app.post(\"/api/branch\")\ndef create_branch(new: str = Query(..., alias=\"new\"), base: str = Query(..., alias=\"from\")):\n    cfg = load_config()\n    gh = _client_from_cfg(cfg)\n    owner, repo = _owner_repo_from_cfg(cfg)\n    return gh.create_branch(owner, repo, new, base)\n\n@app.get(\"/api/tree\")\ndef tree(path: Optional[str] = None, branch: Optional[str] = None, recursive: bool = True):\n    cfg = load_config()\n    gh = _client_from_cfg(cfg)\n    owner, repo = _owner_repo_from_cfg(cfg)\n    b = branch or cfg.get(\"default_branch\") or \"main\"\n    t = gh.get_tree(owner, repo, b, recursive=True if recursive else False)\n    items = t.get(\"tree\", [])\n    if path:\n        prefix = path.strip().rstrip(\"/\") + \"/\"\n        items = [i for i in items if i[\"path\"].startswith(prefix)]\n    return {\"branch\": b, \"items\": items}\n\n@app.get(\"/api/file\")\ndef get_file(path: str, branch: Optional[str] = None):\n    cfg = load_config()\n    gh = _client_from_cfg(cfg)\n    owner, repo = _owner_repo_from_cfg(cfg)\n    ref = branch or cfg.get(\"default_branch\") or \"main\"\n    return gh.get_file(owner, repo, path, ref=ref)\n\n@app.put(\"/api/file\")\ndef put_file(body: FilePut):\n    cfg = load_config()\n    gh = _client_from_cfg(cfg)\n    owner, repo = _owner_repo_from_cfg(cfg)\n    b = body.branch or cfg.get(\"default_branch\") or \"main\"\n    return gh.put_file(owner, repo, body.path, body.message, body.content, b, body.sha)\n\n@app.delete(\"/api/file\")\ndef delete_file(path: str, message: str, sha: str, branch: Optional[str] = None):\n    cfg = load_config()\n    gh = _client_from_cfg(cfg)\n    owner, repo = _owner_repo_from_cfg(cfg)\n    b = branch or cfg.get(\"default_branch\") or \"main\"\n    return gh.delete_file(owner, repo, path, message, sha, b)\n\n@app.post(\"/api/batch/commit\")\ndef batch_commit(body: BatchCommit):\n    cfg = load_config()\n    gh = _client_from_cfg(cfg)\n    owner, repo = _owner_repo_from_cfg(cfg)\n    changes = [c.model_dump() for c in body.changes]\n    return gh.batch_commit(owner, repo, body.branch, body.message, changes)\n",
+      "language": "python",
+      "symbols": [
+        "_read_token",
+        "_client_from_cfg",
+        "root",
+        "_owner_repo_from_cfg",
+        "ConfigIn",
+        "FilePut",
+        "BatchChange",
+        "BatchCommit",
+        "health",
+        "get_cfg",
+        "set_cfg",
+        "branches",
+        "create_branch",
+        "tree",
+        "get_file",
+        "put_file",
+        "delete_file",
+        "batch_commit"
+      ]
+    },
+    "modular-framework/modules/github-hub/public/js/app.js": {
+      "content": "const $ = (id)=>document.getElementById(id);\nconst isSide = new URLSearchParams(location.search).get('embed') === 'side';\n\n// Figure out the module base (works standalone and when proxied)\n// Examples:\n//  - http://host:3005/ui/           -> API = /api\n//  - http://host:3005/              -> API = /api\n//  - http://framework/api/github-hub/ui/ -> API = /api/github-hub/api\n//  - http://framework/api/github-hub/    -> API = /api/github-hub/api\nconst API = (() => {\n  const p = location.pathname;\n\n  // If we\u2019re under /.../ui/..., strip the /ui part\n  const idx = p.indexOf('/ui/');\n  if (idx !== -1) return p.slice(0, idx) + '/api';\n\n  // If we\u2019re already under a proxied prefix like /api/github-hub/...\n  const m = p.match(/^(.*?\\/api\\/github-hub)(?:\\/|$)/);\n  if (m) return `${m[1]}/api`;\n\n  // Standalone (served from module root)\n  return '/api';\n})();\n\n// --- file-content cache (per branch:path) ---\nconst fileCache = new Map();\n\n/** Robust tokenizer loader with local+CDN fallback and safe approximation */\nlet _encPromise = null;\nasync function getEncoder() {\n  if (!_encPromise) {\n    _encPromise = (async () => {\n      try {\n        // Try the lite ESM first\n        const { Tiktoken } = await import('https://cdn.jsdelivr.net/npm/js-tiktoken@1.0.21/lite.js');\n\n        // Prefer a local copy (add one later if you like), else fall back to CDN JSON\n        // Local (optional): place o200k_base.json under /public/js/tiktoken/\n        let ranksRes;\n        try {\n          ranksRes = await fetch('./js/tiktoken/o200k_base.json', { cache: 'force-cache' });\n          if (!ranksRes.ok) throw new Error('local ranks missing');\n        } catch {\n          // CDN fallback\n          ranksRes = await fetch('https://tiktoken.pages.dev/js/o200k_base.json', { cache: 'force-cache' });\n        }\n\n        const ranks = await ranksRes.json();\n        return new Tiktoken(ranks);\n      } catch (e) {\n        console.warn('[github-hub] Tokenizer unavailable, using approximation:', e);\n        return null; // signal fallback\n      }\n    })();\n  }\n  return _encPromise;\n}\n\nasync function countTokensFor(text) {\n  const enc = await getEncoder();\n  if (enc) {\n    try { return enc.encode(text).length; }\n    catch (e) { console.warn('[github-hub] encode failed, approx fallback:', e); }\n  }\n  // Approx fallback: ~4 chars per token (rough heuristic)\n  return Math.ceil(text.length / 4);\n}\n\n/** Fetch file content (cached per branch+path) */\nasync function getFileContent(path, branch) {\n  const key = `${branch}:${path}`;\n  if (fileCache.has(key)) return fileCache.get(key);\n  const data = await api(`/file?path=${encodeURIComponent(path)}&branch=${encodeURIComponent(branch)}`);\n  const content = data.decoded_content || '';\n  fileCache.set(key, content);\n  return content;\n}\n\n/** Build clipboard text with a header line BEFORE EACH file */\nasync function buildClipboardText(paths, branch) {\n  const parts = [];\n  for (const p of paths) {\n    const name = p.split('/').pop() || p;\n    parts.push(`# ${p}\\n`);                       // header for this file\n    const content = await getFileContent(p, branch);\n    parts.push(content.endsWith('\\n') ? content : content + '\\n');\n    // optional extra blank line between files (comment out if undesired)\n    parts.push('\\n');\n  }\n  return parts.join('');\n}\n\n\nasync function api(path, init){\n  const r = await fetch(`${API}${path}`, init);\n  if (!r.ok) throw new Error(await r.text());\n  return r.json();\n}\n\nexport async function loadConfig(){\n  try{\n    const c = await api(\"/config\");\n    $('repoUrl').value = c.repo_url || '';\n    $('baseUrl').value = c.base_url || 'https://api.github.com';\n    await loadBranches();\n  }catch(e){ console.warn(e); }\n}\n\nexport async function saveConfig(){\n  const body = {\n    repo_url: $('repoUrl').value.trim(),\n    default_branch: $('branchSelect').value || 'main',\n  };\n  const tok = $('token').value.trim(); if (tok) body.token = tok;\n  const base = $('baseUrl').value.trim(); if (base) body.base_url = base;\n\n  await api(\"/config\", {\n    method:'POST',\n    headers:{'Content-Type':'application/json'},\n    body: JSON.stringify(body)\n  });\n  $('token').value = '';\n  await loadBranches();\n  await loadTree();\n}\n\nexport async function loadBranches(){\n  const sel = $('branchSelect');\n  sel.innerHTML = '';\n  try{\n    const b = await api(\"/branches\");\n    (b.branches||[]).forEach(name=>{\n      const o = document.createElement('option'); o.value=o.textContent = name; sel.appendChild(o);\n    });\n  }catch(e){\n    // fallback options so first run isn't empty\n    ['main','master'].forEach(n=>{\n      const o = document.createElement('option'); o.value=o.textContent = n; sel.appendChild(o);\n    });\n  }\n}\n\nlet currentFile = null;\nlet currentSha  = null;\n\nexport async function openFile(path){\n  const branch = $('branchSelect').value || 'main';\n  const data = await api(`/file?path=${encodeURIComponent(path)}&branch=${encodeURIComponent(branch)}`);\n  currentFile = path;\n  currentSha  = data.sha;\n  $('fileMeta').textContent = `${path} @ ${branch} (sha ${data.sha?.slice(0,7)})`;\n  $('fileView').textContent = data.decoded_content || '';\n}\n\nexport async function saveFile(){\n  if (!currentFile) return alert('No file open');\n  const branch = $('branchSelect').value || 'main';\n  const message = $('commitMsg').value.trim() || `Update ${currentFile}`;\n  const content = $('fileView').textContent;\n  const payload = { path: currentFile, message, content, branch, sha: currentSha };\n  const res = await api('/file', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });\n  alert(`Committed ${currentFile}\\n${res.commit?.sha || res.content?.sha || ''}`);\n  await loadTree();\n  await openFile(currentFile);\n}\n\n// -------- Tree (collapsed by default, folder-select selects all descendants) ----------\nexport async function loadTree(){\n  const treeEl = $('tree');\n  treeEl.innerHTML = '<div class=\"muted\">Loading\u2026</div>';\n\n  try{\n    const branch = $('branchSelect').value || 'main';\n    const t = await api(`/tree?branch=${encodeURIComponent(branch)}&recursive=true`);\n    const items = (t.items||[]).filter(i => i.type==='blob' || i.type==='tree');\n\n    // Build nested structure (no fake root row)\n    function makeNode(name, type, fullPath){\n      return { name, type, path: fullPath, children: new Map() };\n    }\n    const root = makeNode('', 'tree', '');\n\n    for (const i of items) {\n      const parts = i.path.split('/');\n      let cur = root;\n      for (let p = 0; p < parts.length; p++){\n        const seg = parts[p];\n        const isLast = p === parts.length - 1;\n        const nodeType = isLast ? i.type : 'tree';\n        const childPath = parts.slice(0, p+1).join('/');\n        if (!cur.children.has(seg)) cur.children.set(seg, makeNode(seg, nodeType, childPath));\n        cur = cur.children.get(seg);\n      }\n    }\n\n    function renderNode(node){\n      if (node.type === 'blob') {\n        const li = document.createElement('li');\n        li.className = 'file';\n        li.dataset.path = node.path;\n        li.innerHTML = `\n          <div class=\"row\">\n            <span class=\"twisty\"></span>\n            <input type=\"checkbox\" class=\"sel\" data-path=\"${node.path}\" />\n            <span class=\"icon\">\ud83d\udcc4</span>\n            <a href=\"#\" data-file=\"${node.path}\" class=\"name\">${node.name}</a>\n          </div>`;\n        return li;\n      } else {\n        const li = document.createElement('li');\n        li.className = 'dir collapsed'; /* collapsed by default */\n        li.dataset.path = node.path;\n        const label = node.name || '';\n        li.innerHTML = `\n          <div class=\"row\">\n            <span class=\"twisty\"></span>\n            <input type=\"checkbox\" class=\"sel\" data-path=\"${node.path}\" />\n            <span class=\"icon\">\ud83d\udcc1</span>\n            <span class=\"name\">${label}</span>\n          </div>\n          <ul class=\"children\"></ul>`;\n        const ul = li.querySelector('.children');\n\n        const children = Array.from(node.children.values())\n          .sort((a,b)=>{\n            if (a.type!==b.type) return a.type==='tree' ? -1 : 1;\n            return a.name.localeCompare(b.name);\n          });\n\n        for (const c of children) ul.appendChild(renderNode(c));\n        return li;\n      }\n    }\n\n    const ulRoot = document.createElement('ul');\n    const topChildren = Array.from(root.children.values())\n      .sort((a,b)=>{\n        if (a.type!==b.type) return a.type==='tree' ? -1 : 1;\n        return a.name.localeCompare(b.name);\n      });\n    for (const c of topChildren) ulRoot.appendChild(renderNode(c));\n\n    treeEl.innerHTML = '';\n    treeEl.appendChild(ulRoot);\n\n    // --- Delegated handlers (set once per render using .onclick/.onchange) ---\n    treeEl.onclick = async (e)=>{\n      // Expand/collapse on folder twisty/name\n      const twisty = e.target.closest('.twisty');\n      const name = e.target.closest('.name');\n      const dirLi = (twisty || name) ? (twisty||name).closest('li.dir') : null;\n      if (dirLi) {\n        dirLi.classList.toggle('collapsed');\n        dirLi.classList.toggle('open');\n        return;\n      }\n\n      // File click => open or emit\n      const a = e.target.closest('a[data-file]');\n      if (a) {\n        e.preventDefault();\n        const f = a.dataset.file;\n        if (isSide) {\n          window.parent?.postMessage({ type:'MODULE_EVENT', eventName:'gh:file-selected', payload:{ path: f } }, '*');\n        } else {\n          await openFile(f);\n        }\n      }\n    };\n\n    const selCountChip = $('selCountChip');\n    const copyBtn = $('copyBtn');\n    const tokenCountChip = $('tokenCountChip');\n\n    function setSubtreeChecked(li, checked) {\n      li.querySelectorAll('input.sel').forEach(cb => {\n        cb.checked = checked;\n        cb.indeterminate = false;\n      });\n    }\n    function updateAncestors(fromLi) {\n      const parentDir = fromLi.closest('ul')?.closest('li.dir');\n      if (!parentDir) return;\n\n      const childCbs = Array.from(parentDir.querySelectorAll(':scope > ul > li > .row input.sel'));\n      const allChecked = childCbs.length > 0 && childCbs.every(cb => cb.checked);\n      const noneChecked = childCbs.every(cb => !cb.checked && !cb.indeterminate);\n      const parentCb = parentDir.querySelector(':scope > .row input.sel');\n\n      parentCb.checked = allChecked;\n      parentCb.indeterminate = !allChecked && !noneChecked;\n\n      updateAncestors(parentDir);\n    }\n    function collectSelectedFiles() {\n      return Array.from(treeEl.querySelectorAll('li.file input.sel:checked')).map(cb => cb.dataset.path);\n    }\n\n    /** Recompute token count for the EXACT text that will be copied */\n    async function recalcTokensUI() {\n      if (!tokenCountChip || !copyBtn) return;\n      const files = collectSelectedFiles();\n      const branch = $('branchSelect').value || 'main';\n\n      if (files.length === 0) {\n        tokenCountChip.textContent = '0 tokens';\n        copyBtn.disabled = true;\n        return;\n      }\n\n      copyBtn.disabled = false;\n      tokenCountChip.textContent = '\u2026'; // show work in progress\n      try {\n        const text = await buildClipboardText(files, branch);\n        const n = await countTokensFor(text);\n        tokenCountChip.textContent = `${n} tokens`;\n      } catch (e) {\n        console.warn('[github-hub] token recalc failed:', e);\n        tokenCountChip.textContent = '\u2014';\n      }\n    }\n\n    function updateSelectionBadgeAndEmit() {\n      const files = collectSelectedFiles();\n      if (selCountChip) selCountChip.textContent = `${files.length} selected`;\n      if (isSide) {\n        window.parent?.postMessage(\n          { type:'MODULE_EVENT', eventName:'gh:selection-changed', payload:{ files } },\n          '*'\n        );\n      }\n      // keep tokens in sync\n      recalcTokensUI();\n    }\n\n    treeEl.onchange = (e) => {\n      const cb = e.target;\n      if (!cb.matches('input.sel')) return;\n      const li = cb.closest('li');\n      if (li?.classList.contains('dir')) {\n        setSubtreeChecked(li, cb.checked);\n      }\n      updateAncestors(li);\n      updateSelectionBadgeAndEmit();\n    };\n\n    // Copy to clipboard with headers\n    copyBtn.onclick = async () => {\n      const files = collectSelectedFiles();\n      if (files.length === 0) {\n        alert('Select one or more files in the tree first.');\n        return;\n      }\n      const branch = $('branchSelect').value || 'main';\n      const text = await buildClipboardText(files, branch);\n\n      try {\n        await navigator.clipboard.writeText(text);\n        const old = copyBtn.textContent;\n        copyBtn.textContent = 'Copied!';\n        setTimeout(() => (copyBtn.textContent = old), 1000);\n      } catch {\n        // Fallback for older browsers / HTTP\n        const ta = document.createElement('textarea');\n        ta.value = text;\n        ta.style.position = 'fixed';\n        ta.style.opacity = '0';\n        document.body.appendChild(ta);\n        ta.focus();\n        ta.select();\n        document.execCommand('copy');\n        document.body.removeChild(ta);\n      }\n    };\n\n    // initialize chips on first render\n    updateSelectionBadgeAndEmit();\n\n\n    // Expand/Collapse all (overwrite handlers each render to avoid dupes)\n    $('expandAllBtn').onclick = ()=>{\n      treeEl.querySelectorAll('li.dir').forEach(li=>{\n        li.classList.remove('collapsed'); li.classList.add('open');\n      });\n    };\n    $('collapseAllBtn').onclick = ()=>{\n      treeEl.querySelectorAll('li.dir').forEach(li=>{\n        li.classList.remove('open'); li.classList.add('collapsed');\n      });\n    };\n\n  }catch(e){\n    treeEl.innerHTML = `<div class=\"muted\">Failed to load tree: ${e.message}</div>`;\n  }\n}\n\n// ---------- one-time UI wiring ----------\nlet _wired = false;\nfunction wireUIOnce(){\n  if (_wired) return;\n  _wired = true;\n  $('saveCfgBtn')?.addEventListener('click', saveConfig);\n  $('reloadBtn')?.addEventListener('click', loadTree);\n  $('saveFileBtn')?.addEventListener('click', saveFile);\n  $('branchSelect')?.addEventListener('change', loadTree);\n}\n\n// Init\nwindow.addEventListener('DOMContentLoaded', async ()=>{\n  wireUIOnce();\n  await loadConfig();     // reads saved config (if any)\n  await loadBranches();   // populates branch list\n  await loadTree();       // builds collapsed tree\n});\n",
+      "language": "javascript",
+      "symbols": [
+        "isSide",
+        "API",
+        "p",
+        "idx",
+        "m",
+        "fileCache",
+        "_encPromise",
+        "getEncoder",
+        "ranksRes",
+        "ranks",
+        "countTokensFor",
+        "enc",
+        "getFileContent",
+        "key",
+        "data",
+        "content",
+        "buildClipboardText",
+        "parts",
+        "name",
+        "api",
+        "r",
+        "loadConfig",
+        "c",
+        "saveConfig",
+        "body",
+        "tok",
+        "base",
+        "loadBranches",
+        "sel",
+        "b",
+        "o",
+        "currentFile",
+        "currentSha",
+        "openFile",
+        "branch",
+        "saveFile",
+        "message",
+        "payload",
+        "res",
+        "loadTree",
+        "treeEl",
+        "t",
+        "items",
+        "makeNode",
+        "root",
+        "i",
+        "cur",
+        "seg",
+        "isLast",
+        "nodeType"
+      ]
+    },
+    "modular-framework/modules/llm-chat/server.js": {
+      "content": "// modules/llm-chat/server.js\n// LLM Chat backend: OpenAI / OpenAI-compatible / Ollama with streaming (SSE)\n// GPT-5 friendly: auto-routes GPT-5 models to /v1/responses and supports\n// max_completion_tokens (chat.completions) vs max_output_tokens (responses).\n// Enhanced logging with redaction + in-memory ring buffer and /api/logs endpoints.\n\nconst express = require('express');\nconst cors = require('cors');\nconst path = require('path');\nconst axios = require('axios');\n\nconst app = express();\n\n// ---------- Config ----------\nconst PORT = process.env.PORT || 3004;\nconst LOG_LEVEL = (process.env.LOG_LEVEL || 'info').toLowerCase(); // debug|info|warn|error\nconst LOG_MAX = Number(process.env.LOG_MAX || 1000);               // max entries in ring buffer\n\n// ---------- Simple ring-buffer logger with redaction ----------\nconst logs = [];\nlet reqCounter = 0;\n\nfunction redact(obj) {\n  if (!obj || typeof obj !== 'object') return obj;\n  const clone = JSON.parse(JSON.stringify(obj));\n  if (clone.apiKey) clone.apiKey = '***REDACTED***';\n  if (clone.headers && clone.headers.Authorization) clone.headers.Authorization = '***REDACTED***';\n  if (clone.headers && clone.headers.authorization) clone.headers.authorization = '***REDACTED***';\n  return clone;\n}\nfunction safeStringify(v) {\n  try {\n    const seen = new WeakSet();\n    return JSON.stringify(v, (k, val) => {\n      if (typeof val === 'object' && val !== null) {\n        if (seen.has(val)) return '[Circular]';\n        seen.add(val);\n      }\n      return val;\n    });\n  } catch {\n    return '[unstringifiable]';\n  }\n}\nfunction addLog(level, msg, meta) {\n  const entry = { ts: new Date().toISOString(), level, msg, ...meta };\n  logs.push(entry);\n  if (logs.length > LOG_MAX) logs.shift();\n  const line = `[${entry.ts}] [${level.toUpperCase()}] ${msg} ${meta ? safeStringify(meta) : ''}`;\n  if (level === 'debug' && LOG_LEVEL === 'debug') console.debug(line);\n  else if (level === 'info' && (LOG_LEVEL === 'debug' || LOG_LEVEL === 'info')) console.info(line);\n  else if (level === 'warn' && (LOG_LEVEL !== 'error')) console.warn(line);\n  else if (level === 'error') console.error(line);\n}\nfunction logDebug(msg, meta) { addLog('debug', msg, meta); }\nfunction logInfo(msg, meta)  { addLog('info', msg, meta); }\nfunction logWarn(msg, meta)  { addLog('warn', msg, meta); }\nfunction logError(msg, meta) { addLog('error', msg, meta); }\n\n// ---------- Middleware ----------\napp.use(cors({ origin: true, credentials: true }));\napp.use(express.json({ limit: '2mb' }));\napp.use((req, _res, next) => {\n  req.id = `${Date.now().toString(36)}-${(++reqCounter).toString(36)}`;\n  next();\n});\n\n// Static files (frontend)\napp.use(express.static(path.join(__dirname, 'public')));\n\n// ---------- Health & Info ----------\napp.get('/', (_, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));\napp.get('/config', (_, res) => res.sendFile(path.join(__dirname, 'public', 'config.html')));\napp.get('/health', (_, res) => res.json({ status: 'healthy' }));\napp.get('/api/info', (_, res) => res.json({ module: 'llm-chat', version: '1.5.0', status: 'ready' }));\n\n// ---------- Logs API ----------\napp.get('/api/logs', (req, res) => {\n  const limit = Math.max(1, Math.min(Number(req.query.limit || 200), 2000));\n  const start = Math.max(0, logs.length - limit);\n  res.json(logs.slice(start));\n});\napp.post('/api/logs/clear', (_req, res) => {\n  logs.length = 0;\n  res.json({ ok: true });\n});\n\n// ---------- Helpers: upstream error handling & retries ----------\nfunction isReadable(x) { return x && typeof x.pipe === 'function'; }\nasync function readUpstreamBody(data) {\n  if (!data) return '';\n  if (typeof data === 'string') return data;\n  if (isReadable(data)) {\n    return await new Promise((resolve) => {\n      let buf = '';\n      try {\n        data.setEncoding('utf8');\n        data.on('data', (c) => buf += c);\n        data.on('end', () => resolve(buf));\n        data.on('error', () => resolve('[error reading upstream stream]'));\n      } catch {\n        resolve('[unreadable upstream stream]');\n      }\n    });\n  }\n  try { return safeStringify(data); } catch { return '[unstringifiable upstream data]'; }\n}\nasync function extractErrAsync(err) {\n  const status = err?.response?.status;\n  const body = await readUpstreamBody(err?.response?.data);\n  const baseMsg = err?.message || 'Unknown error';\n  const trimmed = body ? body.slice(0, 4000) : '';\n  return status ? `Upstream ${status}: ${trimmed || baseMsg}` : baseMsg;\n}\nasync function isUnsupportedParamErrorAsync(err, paramName) {\n  const body = await readUpstreamBody(err?.response?.data);\n  const raw = body || err?.message || '';\n  const msg = raw.toLowerCase();\n  return msg.includes('unsupported') && msg.includes(`'${paramName.toLowerCase()}'`);\n}\n\n// ---------- Chat Endpoint ----------\n/**\n * POST /api/chat\n * Body:\n * {\n *   provider: 'openai' | 'openai-compatible' | 'ollama',\n *   baseUrl: string,\n *   apiKey?: string,\n *   model: string,\n *   messages: [{role, content}],\n *   temperature?: number,   // omit or set; GPT-5 will be sent without by default\n *   max_tokens?: number,\n *   stream?: boolean,\n *   useResponses?: boolean, // optional: force OpenAI /v1/responses\n *   reasoning?: boolean     // hint to treat as reasoning model (chat.completions)\n * }\n */\napp.post('/api/chat', async (req, res) => {\n  const rid = req.id;\n  const {\n    provider = 'openai',\n    baseUrl,\n    apiKey,\n    model,\n    messages = [],\n    temperature,  // undefined means \"omit\"\n    max_tokens,\n    stream = true,\n    useResponses = false,\n    reasoning = false\n  } = req.body || {};\n\n  const problems = [];\n  if (!baseUrl) problems.push('baseUrl is required');\n  if (!model) problems.push('model is required');\n  if (!Array.isArray(messages)) problems.push('messages must be an array');\n  if ((provider === 'openai' || provider === 'openai-compatible') && !apiKey) {\n    problems.push('apiKey is required for OpenAI/OpenAI-compatible providers');\n  }\n  if (problems.length) {\n    logWarn('Validation failed', { rid, problems, body: redact(req.body) });\n    return res.status(400).json({ error: 'Validation failed', details: problems });\n  }\n\n  const sseMode = !!stream;\n  if (sseMode) {\n    res.setHeader('Content-Type', 'text/event-stream');\n    res.setHeader('Cache-Control', 'no-cache, no-transform');\n    res.setHeader('Connection', 'keep-alive');\n    res.flushHeaders?.();\n  }\n  const sendSSE = (payload) => {\n    if (!sseMode) return;\n    try { res.write(`data: ${JSON.stringify(payload)}\\n\\n`); } catch { try { res.end(); } catch {} }\n  };\n\n  // Auto-route GPT-5 models to Responses API on OpenAI\n  const isGpt5 = /^gpt-5/i.test(model) || /^o5/i.test(model);\n  const autoResponses = isGpt5 && provider === 'openai';\n\n  logInfo('LLM request', {\n    rid, provider, baseUrl, model,\n    stream: !!stream,\n    useResponses: useResponses || autoResponses,\n    reasoning: !!reasoning,\n    temperature: (typeof temperature === 'number' ? temperature : null),\n    max_tokens: max_tokens ?? null,\n  });\n  logDebug('LLM messages', { rid, messagesCount: messages.length });\n\n  try {\n    if (provider === 'ollama') {\n      return await handleOllama({ res, sendSSE, rid, baseUrl, model, messages, temperature, sseMode });\n    }\n    return await handleOpenAICompat({\n      res, sendSSE, rid,\n      baseUrl, apiKey, model, messages, temperature,\n      max_tokens, useResponses: useResponses || autoResponses, reasoning, sseMode\n    });\n  } catch (err) {\n    const message = await extractErrAsync(err);\n    logError('LLM fatal error', { rid, message });\n    if (sseMode) {\n      sendSSE({ type: 'error', message });\n      try { res.end(); } catch {}\n    } else {\n      res.status(500).json({ error: message });\n    }\n  }\n});\n\n// ---------- Handlers ----------\nasync function handleOllama({ res, sendSSE, rid, baseUrl, model, messages, temperature, sseMode }) {\n  const url = `${baseUrl.replace(/\\/$/, '')}/api/chat`;\n  const body = { model, messages, stream: sseMode };\n  if (typeof temperature === 'number') body.options = { ...(body.options || {}), temperature };\n\n  logDebug('OLLAMA request', { rid, url, body: redact(body) });\n\n  if (sseMode) {\n    const response = await axios.post(url, body, { responseType: 'stream' });\n    response.data.on('data', (chunk) => {\n      const lines = chunk.toString().split('\\n').filter(Boolean);\n      for (const line of lines) {\n        try {\n          const evt = JSON.parse(line);\n          if (evt.message && evt.message.content) sendSSE({ type: 'delta', content: evt.message.content });\n          if (evt.done) sendSSE({ type: 'done' });\n        } catch { /* ignore parse errors */ }\n      }\n    });\n    response.data.on('end', () => { logDebug('OLLAMA stream end', { rid }); res.end(); });\n    response.data.on('error', (e) => { logWarn('OLLAMA stream error', { rid, err: e.message }); sendSSE({ type:'error', message: e.message }); res.end(); });\n  } else {\n    const { data } = await axios.post(url, body);\n    const content = data?.message?.content || '';\n    res.json({ content });\n  }\n}\n\nasync function handleOpenAICompat({\n  res, sendSSE, rid,\n  baseUrl, apiKey, model, messages, temperature,\n  max_tokens, useResponses, reasoning, sseMode\n}) {\n  const headers = { 'Content-Type': 'application/json' };\n  if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;\n\n  const base = baseUrl.replace(/\\/$/, '');\n  const isGpt5 = /^gpt-5/i.test(model) || /^o5/i.test(model);\n\n  // ---- OpenAI Responses API ----\n  if (useResponses) {\n    const url = `${base}/v1/responses`;\n    const rBodyBase = { model, input: messages, stream: sseMode };\n\n    // IMPORTANT: omit temperature for GPT-5 models by default to avoid 400s\n    if (!isGpt5 && typeof temperature === 'number' && !Number.isNaN(temperature)) {\n      rBodyBase.temperature = temperature;\n    }\n    if (max_tokens) rBodyBase.max_output_tokens = max_tokens;\n\n    logDebug('RESPONSES request', { rid, url, body: redact(rBodyBase) });\n\n    async function postResponses(body) {\n      return axios.post(url, body, { headers, responseType: sseMode ? 'stream' : 'json' });\n    }\n\n    try {\n      if (sseMode) {\n        const response = await postResponses(rBodyBase);\n        response.data.on('data', (chunk) => handleResponsesChunk(chunk, sendSSE));\n        response.data.on('end', () => { logDebug('RESPONSES stream end', { rid }); res.end(); });\n        response.data.on('error', (e) => { logWarn('RESPONSES stream error', { rid, err: e.message }); sendSSE({ type:'error', message: e.message }); res.end(); });\n      } else {\n        const { data } = await postResponses(rBodyBase);\n        const content = data?.output_text?.join?.('') || data?.message?.content || data?.content || '';\n        res.json({ content });\n      }\n    } catch (err) {\n      // Auto-retry for unsupported parameters (e.g., temperature)\n      if (await isUnsupportedParamErrorAsync(err, 'temperature') && rBodyBase.temperature !== undefined) {\n        logWarn('RESPONSES retry without temperature', { rid });\n        const rBodyRetry = { ...rBodyBase };\n        delete rBodyRetry.temperature;\n\n        if (sseMode) {\n          try {\n            const response = await axios.post(url, rBodyRetry, { headers, responseType: 'stream' });\n            response.data.on('data', (chunk) => handleResponsesChunk(chunk, sendSSE));\n            response.data.on('end', () => { logDebug('RESPONSES stream end (retry)', { rid }); res.end(); });\n            response.data.on('error', (e) => { logWarn('RESPONSES stream error (retry)', { rid, err: e.message }); sendSSE({ type:'error', message: e.message }); res.end(); });\n            return;\n          } catch (e2) { throw e2; }\n        } else {\n          try {\n            const { data } = await axios.post(url, rBodyRetry, { headers });\n            const content = data?.output_text?.join?.('') || data?.message?.content || data?.content || '';\n            res.json({ content });\n            return;\n          } catch (e2) { throw e2; }\n        }\n      }\n      throw err; // bubble up other errors\n    }\n    return;\n  }\n\n  // ---- Chat Completions API (OpenAI or compatible) ----\n  const url = `${base}/v1/chat/completions`;\n  const body = { model, messages, stream: sseMode };\n\n  // Include temperature only if explicitly provided\n  if (typeof temperature === 'number' && !Number.isNaN(temperature)) {\n    body.temperature = temperature;\n  }\n\n  if (max_tokens) {\n    if (isGpt5 || reasoning === true) body.max_completion_tokens = max_tokens;\n    else body.max_tokens = max_tokens;\n  }\n\n  logDebug('CHAT.COMPLETIONS request', { rid, url, body: redact(body) });\n\n  if (sseMode) {\n    const response = await axios.post(url, body, { headers, responseType: 'stream' });\n    response.data.on('data', (chunk) => handleChatCompletionsChunk(chunk, sendSSE));\n    response.data.on('end', () => { logDebug('CHAT stream end', { rid }); res.end(); });\n    response.data.on('error', (e) => { logWarn('CHAT stream error', { rid, err: e.message }); sendSSE({ type:'error', message: e.message }); res.end(); });\n  } else {\n    const { data } = await axios.post(url, body, { headers });\n    const content = data.choices?.[0]?.message?.content || '';\n    res.json({ content });\n  }\n}\n\n// ---------- Stream chunk parsers ----------\nfunction handleResponsesChunk(chunk, sendSSE) {\n  const text = chunk.toString();\n  for (const line of text.split('\\n')) {\n    if (!line.startsWith('data:')) continue;\n    const payload = line.replace(/^data:\\s*/, '').trim();\n    if (!payload) continue;\n\n    // New-style Responses events use typed objects; completion isn't \"[DONE]\"\n    try {\n      if (payload === '[DONE]') { // legacy guard\n        sendSSE({ type: 'done' });\n        continue;\n      }\n\n      const evt = JSON.parse(payload);\n\n      // Common event kinds observed on /v1/responses streams:\n      // - response.output_text.delta  -> { delta: \"...\" }\n      // - response.output_text        -> final text chunk(s)\n      // - response.completed          -> end of stream\n      // - error                       -> error details\n      // - ping                        -> keepalive (ignore)\n\n      const t = evt.type || evt.event || '';\n\n      if (t === 'response.output_text.delta') {\n        const delta = evt.delta ?? evt.text ?? evt.output_text?.[0]?.content ?? '';\n        if (delta) sendSSE({ type: 'delta', content: String(delta) });\n        continue;\n      }\n\n      if (t === 'response.output_text') {\n        // some providers send consolidated text at the end\n        const textOut = evt.output_text?.join?.('') || evt.text || '';\n        if (textOut) sendSSE({ type: 'delta', content: String(textOut) });\n        continue;\n      }\n\n      if (t === 'response.completed') {\n        sendSSE({ type: 'done' });\n        continue;\n      }\n\n      if (t === 'error' || evt.error) {\n        const message =\n          evt.error?.message || evt.message || 'Unknown error from Responses stream';\n        sendSSE({ type: 'error', message });\n        continue;\n      }\n\n      // Fallbacks (older shapes)\n      const deltaText =\n        evt?.output_text?.[0]?.content ||\n        evt?.delta?.text ||\n        evt?.message?.content ||\n        evt?.content;\n      if (deltaText) {\n        sendSSE({ type: 'delta', content: deltaText });\n      }\n    } catch {\n      // ignore malformed/keepalive lines\n    }\n  }\n}\n\nfunction handleChatCompletionsChunk(chunk, sendSSE) {\n  const str = chunk.toString();\n  for (const line of str.split('\\n')) {\n    if (!line.startsWith('data:')) continue;\n    const payload = line.replace(/^data:\\s*/, '').trim();\n    if (!payload) continue;\n    if (payload === '[DONE]') { sendSSE({ type: 'done' }); continue; }\n    try {\n      const json = JSON.parse(payload);\n      const delta = json.choices?.[0]?.delta?.content;\n      if (delta) sendSSE({ type: 'delta', content: delta });\n    } catch { /* ignore */ }\n  }\n}\n\n// ---------- Start ----------\napp.listen(PORT, () => {\n  console.log(`LLM Chat Module listening on :${PORT} (LOG_LEVEL=${LOG_LEVEL})`);\n});\n",
+      "language": "javascript",
+      "symbols": [
+        "express",
+        "cors",
+        "path",
+        "axios",
+        "app",
+        "PORT",
+        "LOG_LEVEL",
+        "LOG_MAX",
+        "logs",
+        "reqCounter",
+        "redact",
+        "clone",
+        "safeStringify",
+        "seen",
+        "addLog",
+        "entry",
+        "line",
+        "logDebug",
+        "logInfo",
+        "logWarn",
+        "logError",
+        "limit",
+        "start",
+        "isReadable",
+        "readUpstreamBody",
+        "buf",
+        "extractErrAsync",
+        "status",
+        "body",
+        "baseMsg",
+        "trimmed",
+        "isUnsupportedParamErrorAsync",
+        "raw",
+        "msg",
+        "rid",
+        "problems",
+        "sseMode",
+        "sendSSE",
+        "isGpt5",
+        "autoResponses",
+        "message",
+        "handleOllama",
+        "url",
+        "response",
+        "lines",
+        "evt",
+        "content",
+        "handleOpenAICompat",
+        "headers",
+        "base"
+      ]
+    },
+    "modular-framework/modules/llm-chat/server/app.js": {
+      "content": "const express = require('express');\nconst cors = require('cors');\nconst path = require('path');\nconst bodyParser = require('body-parser');\n\nconst { router: logsRouter } = require('./routes/logs');\nconst { router: infoRouter } = require('./routes/info');\nconst { router: healthRouter } = require('./routes/health');\nconst { router: chatRouter } = require('./routes/chat');\n\nconst app = express();\n\nconst BASE_PATH = (process.env.BASE_PATH || '').replace(/\\/$/, ''); // e.g. \"/modules/llm-chat\" or \"\"\n\n// middleware\napp.use(cors({ origin: true, credentials: true }));\napp.use(bodyParser.json({ limit: '2mb' }));\n\n// static UI\nconst pub = path.join(__dirname, '..', 'public');\n\n// Serve both at root and at BASE_PATH to support either proxy style\napp.use(express.static(pub));\nif (BASE_PATH) app.use(BASE_PATH, express.static(pub));\n\napp.get('/', (_req, res) => res.sendFile(path.join(pub, 'index.html')));\nif (BASE_PATH) app.get(`${BASE_PATH}/`, (_req, res) => res.sendFile(path.join(pub, 'index.html')));\n\napp.get('/config', (_req, res) => res.sendFile(path.join(pub, 'config.html')));\nif (BASE_PATH) app.get(`${BASE_PATH}/config`, (_req, res) => res.sendFile(path.join(pub, 'config.html')));\n\n// basic routes\napp.use('/', healthRouter);            // /health (root for Docker healthcheck)\napp.use('/api', infoRouter);           // /api/info\napp.use('/api', logsRouter);           // /api/logs, /api/logs/clear\nif (BASE_PATH) {\n  app.use(`${BASE_PATH}/api`, infoRouter);  // /modules/llm-chat/api/info\n  app.use(`${BASE_PATH}/api`, logsRouter);  // /modules/llm-chat/api/logs\n}\n\n// chat routes (root and prefixed)\napp.use('/api', chatRouter); // /api/chat\nif (BASE_PATH) app.use(`${BASE_PATH}/api`, chatRouter); // /modules/llm-chat/api/chat\n\nmodule.exports = app;\n",
+      "language": "javascript",
+      "symbols": [
+        "express",
+        "cors",
+        "path",
+        "bodyParser",
+        "app",
+        "BASE_PATH",
+        "pub"
+      ]
+    },
+    "modular-framework/modules/llm-chat/server/index.js": {
+      "content": "const app = require('./app');\n\nconst PORT = process.env.PORT || 3004;\napp.listen(PORT, () => {\n  const LOG_LEVEL = (process.env.LOG_LEVEL || 'info').toLowerCase();\n  console.log(`LLM Chat Module listening on :${PORT} (LOG_LEVEL=${LOG_LEVEL})`);\n});\n",
+      "language": "javascript",
+      "symbols": [
+        "app",
+        "PORT",
+        "LOG_LEVEL"
+      ]
+    },
+    "modular-framework/modules/llm-chat/server/routes/chat.js": {
+      "content": "const express = require('express');\nconst router = express.Router();\nconst { logInfo, logWarn, logError, redact } = require('../logger');\nconst { extractErrAsync } = require('../util/http');\nconst { handleOllama } = require('../providers/ollama');\nconst { handleOpenAICompat } = require('../providers/openaiCompat');\n\n// Attach an id to each request\nrouter.use((req, _res, next) => {\n  req.id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2,7)}`;\n  next();\n});\n\n// POST /api/chat (and also mounted under /api/llm-chat)\nrouter.post('/chat', async (req, res) => {\n  const rid = req.id;\n  const {\n    provider = 'openai',\n    baseUrl,\n    apiKey,\n    model,\n    messages = [],\n    temperature,\n    max_tokens,\n    stream = true,\n    useResponses = false,\n    reasoning = false\n  } = req.body || {};\n\n  const problems = [];\n  if (!baseUrl) problems.push('baseUrl is required');\n  if (!model) problems.push('model is required');\n  if (!Array.isArray(messages)) problems.push('messages must be an array');\n  if ((provider === 'openai' || provider === 'openai-compatible') && !apiKey) {\n    problems.push('apiKey is required for OpenAI/OpenAI-compatible providers');\n  }\n  if (problems.length) {\n    logWarn('Validation failed', { rid, problems, body: redact(req.body) });\n    return res.status(400).json({ error: 'Validation failed', details: problems });\n  }\n\n  const sseMode = !!stream;\n  if (sseMode) {\n    res.setHeader('Content-Type', 'text/event-stream');\n    res.setHeader('Cache-Control', 'no-cache, no-transform');\n    res.setHeader('Connection', 'keep-alive');\n    res.flushHeaders?.();\n  }\n  const sendSSE = (payload) => {\n    if (!sseMode) return;\n    try { res.write(`data: ${JSON.stringify(payload)}\\n\\n`); } catch { try { res.end(); } catch {} }\n  };\n\n  const isGpt5 = /^gpt-5/i.test(model) || /^o5/i.test(model);\n  const autoResponses = isGpt5 && provider === 'openai';\n\n  logInfo('LLM request', {\n    rid, provider, baseUrl, model,\n    stream: !!stream,\n    useResponses: useResponses || autoResponses,\n    reasoning: !!reasoning,\n    temperature: (typeof temperature === 'number' ? temperature : null),\n    max_tokens: max_tokens ?? null,\n  });\n\n  try {\n    if (provider === 'ollama') {\n      return await handleOllama({ res, sendSSE, rid, baseUrl, model, messages, temperature, sseMode });\n    }\n    return await handleOpenAICompat({\n      res, sendSSE, rid,\n      baseUrl, apiKey, model, messages, temperature,\n      max_tokens, useResponses: useResponses || autoResponses, reasoning, sseMode\n    });\n  } catch (err) {\n    const message = await extractErrAsync(err);\n    logError('LLM fatal error', { rid, message });\n    if (sseMode) {\n      sendSSE({ type: 'error', message });\n      try { res.end(); } catch {}\n    } else {\n      res.status(500).json({ error: message });\n    }\n  }\n});\n\nmodule.exports = { router };\n",
+      "language": "javascript",
+      "symbols": [
+        "express",
+        "router",
+        "rid",
+        "problems",
+        "sseMode",
+        "sendSSE",
+        "isGpt5",
+        "autoResponses",
+        "message",
+        "temperature"
+      ]
+    },
+    "modular-framework/modules/llm-chat/server/routes/health.js": {
+      "content": "const express = require('express');\nconst router = express.Router();\n\nrouter.get('/health', (_req, res) => res.json({ status: 'healthy' }));\n\nmodule.exports = { router };\n",
+      "language": "javascript",
+      "symbols": [
+        "express",
+        "router"
+      ]
+    },
+    "modular-framework/modules/llm-chat/server/routes/info.js": {
+      "content": "const express = require('express');\nconst router = express.Router();\n\nrouter.get('/info', (_req, res) => res.json({ module: 'llm-chat', version: '1.5.0', status: 'ready' }));\n\nmodule.exports = { router };\n",
+      "language": "javascript",
+      "symbols": [
+        "express",
+        "router"
+      ]
+    },
+    "modular-framework/modules/llm-chat/server/routes/logs.js": {
+      "content": "const express = require('express');\nconst router = express.Router();\nconst { logs } = require('../logger');\n\nrouter.get('/logs', (req, res) => {\n  const limit = Math.max(1, Math.min(Number(req.query.limit || 200), 2000));\n  const start = Math.max(0, logs.length - limit);\n  res.json(logs.slice(start));\n});\n\nrouter.post('/logs/clear', (_req, res) => {\n  logs.length = 0;\n  res.json({ ok: true });\n});\n\nmodule.exports = { router };\n",
+      "language": "javascript",
+      "symbols": [
+        "express",
+        "router",
+        "limit",
+        "start"
+      ]
+    },
+    "modular-framework/modules/openvscode/server/index.js": {
+      "content": "const express = require('express');\nconst cors = require('cors');\nconst bodyParser = require('body-parser');\nconst { exec, spawn } = require('child_process');\nconst fs = require('fs').promises;\nconst path = require('path');\nconst WebSocket = require('ws');\nconst http = require('http');\n\nconst app = express();\nconst server = http.createServer(app);\nconst wss = new WebSocket.Server({ server });\n\nconst API_PORT = process.env.API_PORT || 3007;\nconst WORKSPACE_DIR = process.env.WORKSPACE_DIR || '/home/workspace';\n\n// Middleware\napp.use(cors());\napp.use(bodyParser.json());\n\n// WebSocket connections for real-time updates\nconst clients = new Set();\nwss.on('connection', (ws) => {\n    clients.add(ws);\n    ws.on('close', () => clients.delete(ws));\n    ws.send(JSON.stringify({ type: 'connected', workspace: WORKSPACE_DIR }));\n});\n\nfunction broadcast(data) {\n    const message = JSON.stringify(data);\n    clients.forEach(client => {\n        if (client.readyState === WebSocket.OPEN) {\n            client.send(message);\n        }\n    });\n}\n\n// === WORKSPACE MANAGEMENT API ===\n\n// List workspaces\napp.get('/api/workspaces', async (req, res) => {\n    try {\n        const files = await fs.readdir(WORKSPACE_DIR);\n        const workspaces = [];\n        \n        for (const file of files) {\n            const stat = await fs.stat(path.join(WORKSPACE_DIR, file));\n            if (stat.isDirectory()) {\n                workspaces.push({\n                    name: file,\n                    path: path.join(WORKSPACE_DIR, file),\n                    created: stat.birthtime,\n                    modified: stat.mtime\n                });\n            }\n        }\n        \n        res.json({ workspaces });\n    } catch (error) {\n        res.status(500).json({ error: error.message });\n    }\n});\n\n// Create workspace\napp.post('/api/workspaces', async (req, res) => {\n    const { name, gitUrl } = req.body;\n    \n    if (!name) {\n        return res.status(400).json({ error: 'Workspace name required' });\n    }\n    \n    const workspacePath = path.join(WORKSPACE_DIR, name);\n    \n    try {\n        await fs.mkdir(workspacePath, { recursive: true });\n        \n        if (gitUrl) {\n            // Clone repository if Git URL provided\n            await new Promise((resolve, reject) => {\n                exec(`git clone ${gitUrl} ${workspacePath}`, (error) => {\n                    if (error) reject(error);\n                    else resolve();\n                });\n            });\n        }\n        \n        broadcast({ type: 'workspace-created', name, path: workspacePath });\n        res.json({ success: true, workspace: workspacePath });\n    } catch (error) {\n        res.status(500).json({ error: error.message });\n    }\n});\n\n// Open workspace in VS Code\napp.post('/api/workspaces/:name/open', async (req, res) => {\n    const { name } = req.params;\n    const workspacePath = path.join(WORKSPACE_DIR, name);\n    \n    try {\n        await fs.access(workspacePath);\n        broadcast({ type: 'workspace-opened', name, path: workspacePath });\n        res.json({ \n            success: true, \n            url: `http://localhost:3006/?folder=${encodeURIComponent(workspacePath)}`\n        });\n    } catch (error) {\n        res.status(404).json({ error: 'Workspace not found' });\n    }\n});\n\n// === TERMINAL EXECUTION API ===\n\nconst terminals = new Map();\n\napp.post('/api/terminal/create', (req, res) => {\n    const { workspaceName } = req.body;\n    const terminalId = `term-${Date.now()}`;\n    const workspacePath = workspaceName ? \n        path.join(WORKSPACE_DIR, workspaceName) : WORKSPACE_DIR;\n    \n    const term = spawn('/bin/bash', [], {\n        cwd: workspacePath,\n        env: { ...process.env, TERM: 'xterm-256color' }\n    });\n    \n    terminals.set(terminalId, term);\n    \n    term.stdout.on('data', (data) => {\n        broadcast({ \n            type: 'terminal-output', \n            terminalId, \n            data: data.toString() \n        });\n    });\n    \n    term.stderr.on('data', (data) => {\n        broadcast({ \n            type: 'terminal-error', \n            terminalId, \n            data: data.toString() \n        });\n    });\n    \n    term.on('exit', (code) => {\n        terminals.delete(terminalId);\n        broadcast({ type: 'terminal-exit', terminalId, code });\n    });\n    \n    res.json({ terminalId });\n});\n\napp.post('/api/terminal/:id/exec', (req, res) => {\n    const { id } = req.params;\n    const { command } = req.body;\n    \n    const term = terminals.get(id);\n    if (!term) {\n        return res.status(404).json({ error: 'Terminal not found' });\n    }\n    \n    term.stdin.write(command + '\\n');\n    res.json({ success: true });\n});\n\n// === GITHUB INTEGRATION API ===\n\napp.post('/api/github/clone', async (req, res) => {\n    const { repoUrl, workspaceName } = req.body;\n    \n    if (!repoUrl || !workspaceName) {\n        return res.status(400).json({ error: 'Repository URL and workspace name required' });\n    }\n    \n    try {\n        // Call GitHub Hub module API\n        const githubResponse = await fetch('http://github-hub-module:3005/api/config');\n        const githubConfig = await githubResponse.json();\n        \n        const workspacePath = path.join(WORKSPACE_DIR, workspaceName);\n        await fs.mkdir(workspacePath, { recursive: true });\n        \n        await new Promise((resolve, reject) => {\n            exec(`git clone ${repoUrl} ${workspacePath}`, (error) => {\n                if (error) reject(error);\n                else resolve();\n            });\n        });\n        \n        broadcast({ type: 'repo-cloned', workspace: workspaceName, repo: repoUrl });\n        res.json({ success: true, workspace: workspacePath });\n    } catch (error) {\n        res.status(500).json({ error: error.message });\n    }\n});\n\n// === LLM INTEGRATION API ===\n\napp.post('/api/llm/assist', async (req, res) => {\n    const { code, question, context } = req.body;\n    \n    try {\n        // Call LLM Chat module API\n        const llmResponse = await fetch('http://llm-chat-module:3004/api/chat', {\n            method: 'POST',\n            headers: { 'Content-Type': 'application/json' },\n            body: JSON.stringify({\n                provider: 'openai',\n                baseUrl: 'https://api.openai.com',\n                model: 'gpt-4',\n                messages: [\n                    { role: 'system', content: 'You are a coding assistant integrated with VS Code.' },\n                    { role: 'user', content: `Context:\\n${context}\\n\\nCode:\\n${code}\\n\\nQuestion: ${question}` }\n                ],\n                stream: false\n            })\n        });\n        \n        const result = await llmResponse.json();\n        res.json({ suggestion: result.content });\n    } catch (error) {\n        res.status(500).json({ error: error.message });\n    }\n});\n\n// === FILE OPERATIONS API ===\n\napp.get('/api/files/*', async (req, res) => {\n    const filePath = path.join(WORKSPACE_DIR, req.params[0]);\n    \n    try {\n        const stat = await fs.stat(filePath);\n        \n        if (stat.isDirectory()) {\n            const files = await fs.readdir(filePath);\n            const items = [];\n            \n            for (const file of files) {\n                const itemPath = path.join(filePath, file);\n                const itemStat = await fs.stat(itemPath);\n                items.push({\n                    name: file,\n                    type: itemStat.isDirectory() ? 'directory' : 'file',\n                    size: itemStat.size,\n                    modified: itemStat.mtime\n                });\n            }\n            \n            res.json({ type: 'directory', items });\n        } else {\n            const content = await fs.readFile(filePath, 'utf-8');\n            res.json({ type: 'file', content });\n        }\n    } catch (error) {\n        res.status(404).json({ error: 'File not found' });\n    }\n});\n\napp.put('/api/files/*', async (req, res) => {\n    const filePath = path.join(WORKSPACE_DIR, req.params[0]);\n    const { content } = req.body;\n    \n    try {\n        await fs.writeFile(filePath, content, 'utf-8');\n        broadcast({ type: 'file-saved', path: filePath });\n        res.json({ success: true });\n    } catch (error) {\n        res.status(500).json({ error: error.message });\n    }\n});\n\n// === WORKFLOW AUTOMATION API ===\n\napp.post('/api/workflows/run', async (req, res) => {\n    const { workflow, workspace } = req.body;\n    const workspacePath = path.join(WORKSPACE_DIR, workspace);\n    \n    const workflows = {\n        'test': 'npm test',\n        'build': 'npm run build',\n        'lint': 'npm run lint',\n        'format': 'prettier --write .',\n        'docker-build': 'docker build -t app .',\n        'git-status': 'git status',\n        'git-pull': 'git pull origin main'\n    };\n    \n    const command = workflows[workflow];\n    if (!command) {\n        return res.status(400).json({ error: 'Unknown workflow' });\n    }\n    \n    exec(command, { cwd: workspacePath }, (error, stdout, stderr) => {\n        if (error) {\n            res.status(500).json({ error: error.message, stderr });\n        } else {\n            broadcast({ type: 'workflow-completed', workflow, output: stdout });\n            res.json({ success: true, output: stdout });\n        }\n    });\n});\n\n// Health check\napp.get('/health', (req, res) => {\n    res.json({ status: 'healthy', workspace: WORKSPACE_DIR });\n});\n\nserver.listen(API_PORT, () => {\n    console.log(`OpenVSCode API server running on port ${API_PORT}`);\n});",
+      "language": "javascript",
+      "symbols": [
+        "express",
+        "cors",
+        "bodyParser",
+        "fs",
+        "path",
+        "WebSocket",
+        "http",
+        "app",
+        "server",
+        "wss",
+        "API_PORT",
+        "WORKSPACE_DIR",
+        "clients",
+        "broadcast",
+        "message",
+        "files",
+        "workspaces",
+        "file",
+        "stat",
+        "workspacePath",
+        "terminals",
+        "terminalId",
+        "term",
+        "githubResponse",
+        "githubConfig",
+        "llmResponse",
+        "result",
+        "filePath",
+        "items",
+        "itemPath",
+        "itemStat",
+        "content",
+        "workflows",
+        "command"
+      ]
+    },
+    "modular-framework/modules/ssh-terminal/server.js": {
+      "content": "// modules/ssh-terminal/server.js\nconst express = require('express');\nconst WebSocket = require('ws');\nconst http = require('http');\nconst cors = require('cors');\nconst path = require('path');\nconst { Client } = require('ssh2');\n\nconst app = express();\nconst server = http.createServer(app);\nconst wss = new WebSocket.Server({ server });\n\nconst PORT = process.env.PORT || 3001;\n\n// Middleware\napp.use(cors());\napp.use(express.json());\napp.use(express.static('public'));\n\n// Store active SSH connections\nconst connections = new Map();\n\n// Routes\napp.get('/', (req, res) => {\n    res.sendFile(path.join(__dirname, 'public', 'index.html'));\n});\n\napp.get('/config', (req, res) => {\n    res.sendFile(path.join(__dirname, 'public', 'config.html'));\n});\n\napp.get('/health', (req, res) => {\n    res.json({ status: 'healthy', connections: connections.size });\n});\n\napp.post('/api/connect', (req, res) => {\n    const { host, port, username, password } = req.body;\n    \n    // Validate input\n    if (!host || !username) {\n        return res.status(400).json({ error: 'Host and username are required' });\n    }\n    \n    res.json({ \n        status: 'connection_initiated',\n        connectionId: `${username}@${host}:${port || 22}`\n    });\n});\n\napp.get('/api/info', (req, res) => {\n    res.json({\n        module: 'ssh-terminal',\n        version: '1.0.0',\n        capabilities: ['ssh', 'sftp', 'terminal'],\n        status: 'ready'\n    });\n});\n\n// WebSocket connection for real-time terminal\nwss.on('connection', (ws) => {\n    console.log('New WebSocket connection established');\n    \n    let sshClient = null;\n    let stream = null;\n    \n    ws.on('message', (message) => {\n        try {\n            const data = JSON.parse(message);\n            \n            switch(data.type) {\n                case 'connect':\n                    handleSSHConnection(ws, data.config);\n                    break;\n                    \n                case 'command':\n                    if (stream) {\n                        stream.write(data.command + '\\n');\n                    }\n                    break;\n                    \n                case 'resize':\n                    if (stream) {\n                        stream.setWindow(data.rows, data.cols);\n                    }\n                    break;\n                    \n                case 'disconnect':\n                    if (sshClient) {\n                        sshClient.end();\n                    }\n                    break;\n            }\n        } catch (error) {\n            console.error('WebSocket message error:', error);\n            ws.send(JSON.stringify({\n                type: 'error',\n                message: error.message\n            }));\n        }\n    });\n    \n    ws.on('close', () => {\n        console.log('WebSocket connection closed');\n        if (sshClient) {\n            sshClient.end();\n        }\n    });\n    \n    function handleSSHConnection(ws, config) {\n        sshClient = new Client();\n        \n        sshClient.on('ready', () => {\n            console.log('SSH connection established');\n            \n            ws.send(JSON.stringify({\n                type: 'connected',\n                message: `Connected to ${config.host}`\n            }));\n            \n            sshClient.shell((err, shellStream) => {\n                if (err) {\n                    ws.send(JSON.stringify({\n                        type: 'error',\n                        message: err.message\n                    }));\n                    return;\n                }\n                \n                stream = shellStream;\n                \n                stream.on('data', (data) => {\n                    ws.send(JSON.stringify({\n                        type: 'output',\n                        data: data.toString()\n                    }));\n                });\n                \n                stream.on('close', () => {\n                    ws.send(JSON.stringify({\n                        type: 'disconnected',\n                        message: 'SSH connection closed'\n                    }));\n                });\n            });\n        });\n        \n        sshClient.on('error', (err) => {\n            console.error('SSH connection error:', err);\n            ws.send(JSON.stringify({\n                type: 'error',\n                message: err.message\n            }));\n        });\n        \n        // Connect to SSH server\n        sshClient.connect({\n            host: config.host,\n            port: config.port || 22,\n            username: config.username,\n            password: config.password,\n            // For key-based auth:\n            // privateKey: config.privateKey\n        });\n    }\n});\n\n// Start server\nserver.listen(PORT, () => {\n    console.log(`SSH Terminal Module running on port ${PORT}`);\n});\n",
+      "language": "javascript",
+      "symbols": [
+        "express",
+        "WebSocket",
+        "http",
+        "cors",
+        "path",
+        "app",
+        "server",
+        "wss",
+        "PORT",
+        "connections",
+        "sshClient",
+        "stream",
+        "data",
+        "handleSSHConnection"
+      ]
+    }
+  },
+  "api_specs": {},
+  "configs": {
+    "modular-framework/framework/Dockerfile": "# framework/Dockerfile\nFROM nginx:alpine\n\n# Install necessary packages\nRUN apk add --no-cache curl\n\n# Copy nginx configuration\nCOPY nginx.conf /etc/nginx/nginx.conf\n\n# Copy static files\nCOPY html /usr/share/nginx/html\n\n# Health check\nHEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \\\n    CMD curl -f http://localhost/health || exit 1\n\nEXPOSE 80\n\nCMD [\"nginx\", \"-g\", \"daemon off;\"]\n",
+    "modular-framework/modules/RAG/Dockerfile": "# Multi-stage build for production efficiency\nFROM python:3.11-slim as builder\n\nWORKDIR /app\nCOPY requirements.txt .\nRUN pip install --user --no-cache-dir -r requirements.txt\n\nFROM python:3.11-slim\n\n# Security: create non-root user and install git\nRUN useradd --create-home --shell /bin/bash app \\\n    && apt-get update \\\n    && apt-get install -y --no-install-recommends \\\n        curl \\\n        git \\\n    && rm -rf /var/lib/apt/lists/*\n\nWORKDIR /home/app\n\n# Copy dependencies and application code\nCOPY --from=builder /root/.local /home/app/.local\nCOPY --chown=app:app . .\n\nUSER app\n\n# Add Python packages to PATH\nENV PATH=/home/app/.local/bin:$PATH\n\n# Health check\nHEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \\\n    CMD curl -f http://localhost:8000/health || exit 1\n\nEXPOSE 8000\n\nCMD [\"python\", \"rag_system.py\"]",
+    "modular-framework/modules/browser/Dockerfile": "FROM node:18-alpine\n\nWORKDIR /app\n\n# Install Chrome for headless browsing if needed\nRUN apk add --no-cache \\\n    chromium \\\n    nss \\\n    freetype \\\n    freetype-dev \\\n    harfbuzz \\\n    ca-certificates \\\n    ttf-freefont\n\n# Install dependencies\nCOPY server/package.json ./\nRUN npm install\n\n# Copy application\nCOPY server ./server\nCOPY public ./public\n\nENV PORT=3008\nENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true\nENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser\n\nEXPOSE 3008\n\nCMD [\"node\", \"server/index.js\"]",
+    "modular-framework/modules/github-hub/Dockerfile": "# modules/github-hub/Dockerfile\nFROM python:3.11-slim\n\nENV PYTHONDONTWRITEBYTECODE=1 \\\n    PYTHONUNBUFFERED=1\n\nWORKDIR /app\n\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n    curl ca-certificates && rm -rf /var/lib/apt/lists/*\n\nCOPY requirements.txt .\nRUN pip install --no-cache-dir -r requirements.txt\n\nCOPY app ./app\nCOPY public ./public\n\n# data dir for encrypted config/token\nRUN mkdir -p /data\nENV DATA_DIR=/data\nENV PORT=3005\n\nEXPOSE 3005\nCMD [\"uvicorn\", \"app.main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"3005\"]\n",
+    "modular-framework/modules/llm-chat/Dockerfile": "FROM node:18-alpine\nWORKDIR /app\n\n# Install deps\nCOPY package.json ./\nRUN npm install --production\n\n# Copy source\nCOPY . .\n\nENV NODE_ENV=production\nENV PORT=3004\n\nEXPOSE 3004\n\n# Health check\nHEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \\\n  CMD wget -qO- http://localhost:$PORT/health || exit 1\n\nCMD [\"node\", \"server/index.js\"]\n",
+    "modular-framework/modules/openvscode/Dockerfile": "FROM gitpod/openvscode-server:latest\n\n# --- System setup -------------------------------------------------------------\nUSER root\n\n# Install additional tools\nRUN apt-get update && apt-get install -y \\\n    curl \\\n    git \\\n    nodejs \\\n    npm \\\n    python3 \\\n    python3-pip \\\n    docker.io \\\n    jq \\\n    ca-certificates \\\n    wget \\\n && rm -rf /var/lib/apt/lists/*\n\n# Create workspace directory (owned by the openvscode-server user)\nRUN mkdir -p /home/workspace && \\\n    chown -R openvscode-server:openvscode-server /home/workspace\n\n# --- App setup ----------------------------------------------------------------\n# Work in the openvscode home so paths are predictable\nWORKDIR /home/openvscode-server\n\n# Install API server deps (use caching: copy package manifest first)\nCOPY --chown=openvscode-server:openvscode-server server/package*.json ./server/\n# If there's no package-lock.json, npm ci will fail; fallback to npm install is fine.\nRUN cd server && npm ci || npm install\n\n# Copy API server source and optional config\nCOPY --chown=openvscode-server:openvscode-server server ./server\nCOPY --chown=openvscode-server:openvscode-server config ./config\n\n# Copy the start script\nCOPY --chown=openvscode-server:openvscode-server start.sh /home/openvscode-server/start.sh\nRUN chmod +x /home/openvscode-server/start.sh\n\n# --- Runtime env --------------------------------------------------------------\nUSER openvscode-server\n\nENV WORKSPACE_DIR=/home/workspace\nENV PORT=3006\nENV API_PORT=3007\nENV NODE_ENV=production\n\n# Expose ports\nEXPOSE 3006 3007\n\n# Start both the API and OpenVSCode Server\nCMD [\"/home/openvscode-server/start.sh\"]\n",
+    "modular-framework/modules/ssh-terminal/Dockerfile": "# modules/ssh-terminal/Dockerfile\nFROM node:18-alpine\n\nWORKDIR /app\n\n# Install dependencies\nCOPY package.json .\nRUN npm install\n\n# Copy application files\nCOPY . .\n\nEXPOSE 3001\n\n# Health check\nHEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \\\n    CMD curl -f http://localhost:3001/health || exit 1\n\nCMD [\"node\", \"server.js\"]"
+  },
+  "schemas": {},
+  "tests": []
+}

@@ -12,15 +12,14 @@ from pathlib import Path
 from .store import load_config, save_config
 from .github_api import GHClient
 
-app = FastAPI(title="GitHub Hub", version="0.1.0")
+app = FastAPI(title="GitHub Hub", version="0.2.0")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
 )
 
-# serve the tiny UI
-# Serve UI at /ui to avoid shadowing /api/*
+# Serve UI at /ui
 app.mount("/ui", StaticFiles(directory="public", html=True), name="ui")
 
 def _read_token() -> Optional[str]:
@@ -30,18 +29,6 @@ def _read_token() -> Optional[str]:
         return Path(token_file).read_text(encoding="utf-8").strip()
     return os.getenv("GITHUB_TOKEN")
 
-def _client_from_cfg(cfg: Dict[str, Any]) -> GHClient:
-    token = _read_token()
-    if not token:
-        raise HTTPException(400, "GITHUB_TOKEN not set (or GITHUB_TOKEN_FILE missing).")
-    base_url = cfg.get("base_url") or os.getenv("GITHUB_API_BASE", "https://api.github.com")
-    return GHClient(token=token, base_url=base_url)
-
-
-@app.get("/")
-def root():
-    # convenience: / -> /ui/
-    return RedirectResponse(url="/ui/")
 def _client_from_cfg(cfg: Dict[str, Any]) -> GHClient:
     token = _read_token()
     if not token:
@@ -79,7 +66,19 @@ class BatchCommit(BaseModel):
     message: str
     changes: List[BatchChange]
 
+class PullRequestIn(BaseModel):
+    title: str
+    head: str
+    base: str
+    body: Optional[str] = None
+    draft: Optional[bool] = False
+
 # --------- API ----------
+@app.get("/")
+def root():
+    # convenience: / -> /ui/
+    return RedirectResponse(url="/ui/")
+
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
@@ -99,7 +98,6 @@ def set_cfg(body: ConfigIn):
     cfg.update(body.model_dump(exclude_unset=True))
     out = save_config(cfg)
     try:
-        # test connectivity + preload branches
         gh = _client_from_cfg(out)
         owner, repo = _owner_repo_from_cfg(out)
         branches = gh.get_branches(owner, repo)
@@ -168,3 +166,15 @@ def batch_commit(body: BatchCommit):
     owner, repo = _owner_repo_from_cfg(cfg)
     changes = [c.model_dump() for c in body.changes]
     return gh.batch_commit(owner, repo, body.branch, body.message, changes)
+
+@app.post("/api/pr")
+def create_pr(body: PullRequestIn):
+    cfg = load_config()
+    gh = _client_from_cfg(cfg)
+    owner, repo = _owner_repo_from_cfg(cfg)
+    try:
+        pr = gh.create_pull_request(owner, repo, body.title, body.head, body.base, body.body, body.draft or False)
+        return {"ok": True, "pull_request": pr}
+    except Exception as e:
+        logger.exception("Failed to create PR")
+        raise HTTPException(400, f"PR creation failed: {e}")
