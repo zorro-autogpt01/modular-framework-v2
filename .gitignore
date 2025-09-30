@@ -3,3 +3,4 @@
 /modular-framework/splunk/hec-app
 *.bak
 *.bak.*
+*.md
