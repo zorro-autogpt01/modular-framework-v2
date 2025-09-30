@@ -216,6 +216,28 @@ services:
       - app-network
     restart: unless-stopped
 
+  llm-documentor:
+    build: ./llm-documentor
+    container_name: llm-documentor
+    environment:
+      - PORT=3030
+      - DATA_DIR=/data
+      - GITHUB_HUB_URL=http://github-hub-module:3005/api
+      - LLM_GATEWAY_URL=http://llm-gateway:3010/api
+      - NODE_TLS_REJECT_UNAUTHORIZED=${NODE_TLS_REJECT_UNAUTHORIZED}
+    volumes:
+      - ./llm-documentor/data:/data
+      - ./llm-documentor/templates:/app/templates
+    ports:
+      - "3030:3030"
+    depends_on:
+      - github-hub-module
+      - llm-gateway
+    networks:
+      - app-network
+    restart: unless-stopped
+
+
   splunk:
     image: splunk/splunk:latest
     container_name: splunk

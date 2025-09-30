@@ -1,0 +1,8 @@
+# modules/llm-documentor/requirements.txt
+fastapi==0.112.2
+uvicorn==0.30.6
+pydantic==2.9.2
+aiohttp==3.9.5
+loguru==0.7.2
+pyyaml==6.0.1
+python-multipart==0.0.9

@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Documentation Generator</title>
+    <style>
+        :root {
+            --bg: #0f0f10;
+            --panel: #17181a;
+            --line: #2a2c31;
+            --txt: #e6e6e6;
+            --muted: #a0a0a0;
+            --accent: #0e639c;
+            --success: #4ec9b0;
+            --warning: #f48771;
+            --error: #d16969;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--txt);
+            line-height: 1.6;
+        }
+
+        .header {
+            background: var(--panel);
+            border-bottom: 1px solid var(--line);
+            padding: 16px 24px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .header h1 {
+            font-size: 20px;
+            font-weight: 500;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--success);
+            margin-left: auto;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+
+        .card {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 20px;
+        }
+
+        .card h2 {
+            font-size: 16px;
+            margin-bottom: 16px;
+            color: var(--txt);
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        label {
+            display: block;
+            font-size: 12px;
+            color: var(--muted);
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        input, select, textarea {
+            width: 100%;
+            padding: 10px 12px;
+            background: #111;
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            color: var(--txt);
+            font-size: 14px;
+            font-family: inherit;
+        }
+
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+            background: #161616;
+        }
+
+        .checkbox-group {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-top: 8px;
+        }
+
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px;
+            background: #111;
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .checkbox-item:hover {
+            border-color: var(--accent);
+            background: #161616;
+        }
+
+        .checkbox-item input[type="checkbox"] {
+            width: auto;
+            margin: 0;
+            accent-color: var(--accent);
+        }
+
+        .checkbox-item label {
+            margin: 0;
+            font-size: 13px;
+            color: var(--txt);
+            text-transform: none;
+            letter-spacing: normal;
+            cursor: pointer;
+        }
+
+        .checkbox-item small {
+            display: block;
+            font-size: 11px;
+            color: var(--muted);
+            margin-top: 2px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn:hover:not(:disabled) {
+            background: #1e73ac;
+            transform: translateY(-1px);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn.secondary {
+            background: var(--line);
+        }
+
+        .btn.secondary:hover:not(:disabled) {
+            background: #3a3c41;
+        }
+
+        .jobs-list {
+            margin-top: 24px;
+        }
+
+        .job-item {
+            background: #111;
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            padding: 16px;
+            margin-bottom: 12px;
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 16px;
+            align-items: center;
+        }
+
+        .job-info h3 {
+            font-size: 14px;
+            color: var(--txt);
+            margin-bottom: 4px;
+        }
+
+        .job-info .meta {
+            display: flex;
+            gap: 12px;
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .job-status {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .status-badge.pending { background: var(--warning); color: #111; }
+        .status-badge.extracting { background: var(--accent); color: white; }
+        .status-badge.generating { background: var(--accent); color: white; }
+        .status-badge.verifying { background: var(--accent); color: white; }
+        .status-badge.complete { background: var(--success); color: #111; }
+        .status-badge.failed { background: var(--error); color: white; }
+
+        .progress-bar {
+            height: 4px;
+            background: var(--line);
+            border-radius: 2px;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--accent);
+            transition: width 0.3s;
+        }
+
+        .message {
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin-bottom: 16px;
+            display: none;
+        }
+
+        .message.show { display: block; }
+        .message.info { background: var(--accent); }
+        .message.success { background: var(--success); color: #111; }
+        .message.error { background: var(--error); }
+
+        .loading {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid var(--line);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 768px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+            .checkbox-group {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📚 LLM Documentation Generator</h1>
+        <span style="color: var(--muted); font-size: 14px;">Automated code documentation using AI</span>
+        <div class="status-indicator" id="statusIndicator"></div>
+    </div>
+
+    <div class="container">
+        <div id="message" class="message"></div>
+
+        <div class="grid">
+            <div class="card">
+                <h2>Repository Configuration</h2>
+                <form id="docForm">
+                    <div class="form-group">
+                        <label for="repoUrl">Repository URL</label>
+                        <input type="text" id="repoUrl" name="repoUrl" 
+                               placeholder="https://github.com/owner/repo" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="branch">Branch</label>
+                        <input type="text" id="branch" name="branch" 
+                               value="main" placeholder="main">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="modelKey">LLM Model</label>
+                        <select id="modelKey" name="modelKey">
+                            <option value="openai:gpt-4o-mini">GPT-4O Mini (Fast)</option>
+                            <option value="openai:gpt-4o">GPT-4O (Best)</option>
+                            <option value="anthropic:claude-3-haiku">Claude 3 Haiku</option>
+                            <option value="anthropic:claude-3-sonnet">Claude 3 Sonnet</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="forceRefresh" name="forceRefresh">
+                            Force refresh (ignore cache)
+                        </label>
+                    </div>
+                </form>
+            </div>
+
+            <div class="card">
+                <h2>Documentation Packs</h2>
+                <div class="checkbox-group" id="packsContainer">
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="pack-high-level" value="high-level" checked>
+                        <div>
+                            <label for="pack-high-level">High-Level Overview</label>
+                            <small>Architecture and system design</small>
+                        </div>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="pack-api" value="api" checked>
+                        <div>
+                            <label for="pack-api">API Reference</label>
+                            <small>Endpoint documentation</small>
+                        </div>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="pack-components" value="detailed" checked>
+                        <div>
+                            <label for="pack-components">Components</label>
+                            <small>Module documentation</small>
+                        </div>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="pack-db" value="db">
+                        <div>
+                            <label for="pack-db">Database Schema</label>
+                            <small>Tables and relationships</small>
+                        </div>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="pack-ops" value="ops">
+                        <div>
+                            <label for="pack-ops">Operations</label>
+                            <small>Deployment and DevOps</small>
+                        </div>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="pack-cookbook" value="cookbook">
+                        <div>
+                            <label for="pack-cookbook">Cookbook</label>
+                            <small>How-to guides</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 20px; display: flex; gap: 12px;">
+                    <button type="button" class="btn" id="generateBtn">
+                        Generate Documentation
+                    </button>
+                    <button type="button" class="btn secondary" id="refreshBtn">
+                        Refresh Jobs
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Generation Jobs</h2>
+            <div class="jobs-list" id="jobsList">
+                <p style="color: var(--muted); text-align: center; padding: 20px;">
+                    No jobs yet. Generate documentation to get started.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin + '/api';
+        
+        // UI Elements
+        const message = document.getElementById('message');
+        const generateBtn = document.getElementById('generateBtn');
+        const refreshBtn = document.getElementById('refreshBtn');
+        const jobsList = document.getElementById('jobsList');
+        const statusIndicator = document.getElementById('statusIndicator');
+        
+        // State
+        let jobs = [];
+        let activeJobId = null;
+        
+        // Show message
+        function showMessage(text, type = 'info') {
+            message.textContent = text;
+            message.className = `message show ${type}`;
+            setTimeout(() => message.classList.remove('show'), 5000);
+        }
+        
+        // Get selected packs
+        function getSelectedPacks() {
+            const packs = [];
+            document.querySelectorAll('#packsContainer input[type="checkbox"]:checked').forEach(cb => {
+                packs.push(cb.value);
+            });
+            return packs;
+        }
+        
+        // Generate documentation
+        async function generateDocs() {
+            const repoUrl = document.getElementById('repoUrl').value.trim();
+            const branch = document.getElementById('branch').value.trim() || 'main';
+            const modelKey = document.getElementById('modelKey').value;
+            const forceRefresh = document.getElementById('forceRefresh').checked;
+            const packs = getSelectedPacks();
+            
+            if (!repoUrl) {
+                showMessage('Please enter a repository URL', 'error');
+                return;
+            }
+            
+            if (packs.length === 0) {
+                showMessage('Please select at least one documentation pack', 'error');
+                return;
+            }
+            
+            generateBtn.disabled = true;
+            generateBtn.innerHTML = '<span class="loading"></span> Starting...';
+            
+            try {
+                const response = await fetch(`${API_BASE}/generate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        repo_url: repoUrl,
+                        branch,
+                        packs,
+                        model_key: modelKey,
+                        force_refresh: forceRefresh
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(await response.text());
+                }
+                
+                const result = await response.json();
+                activeJobId = result.job_id;
+                showMessage('Documentation generation started!', 'success');
+                
+                // Start polling for job status
+                pollJobStatus(result.job_id);
+                
+            } catch (error) {
+                showMessage(`Failed to start generation: ${error.message}`, 'error');
+            } finally {
+                generateBtn.disabled = false;
+                generateBtn.textContent = 'Generate Documentation';
+            }
+        }
+        
+        // Poll job status
+        async function pollJobStatus(jobId) {
+            const pollInterval = setInterval(async () => {
+                try {
+                    const response = await fetch(`${API_BASE}/jobs/${jobId}`);
+                    const job = await response.json();
+                    
+                    updateJobInList(job);
+                    
+                    if (job.status === 'complete' || job.status === 'failed') {
+                        clearInterval(pollInterval);
+                        
+                        if (job.status === 'complete') {
+                            showMessage('Documentation generated successfully!', 'success');
+                        } else {
+                            showMessage(`Generation failed: ${job.error}`, 'error');
+                        }
+                    }
+                } catch (error) {
+                    clearInterval(pollInterval);
+                    showMessage(`Error checking job status: ${error.message}`, 'error');
+                }
+            }, 2000);
+        }
+        
+        // Update job in list
+        function updateJobInList(job) {
+            const existingIndex = jobs.findIndex(j => j.id === job.id);
+            if (existingIndex >= 0) {
+                jobs[existingIndex] = job;
+            } else {
+                jobs.unshift(job);
+            }
+            renderJobs();
+        }
+        
+        // Render jobs list
+        function renderJobs() {
+            if (jobs.length === 0) {
+                jobsList.innerHTML = `
+                    <p style="color: var(--muted); text-align: center; padding: 20px;">
+                        No jobs yet. Generate documentation to get started.
+                    </p>
+                `;
+                return;
+            }
+            
+            jobsList.innerHTML = jobs.map(job => `
+                <div class="job-item">
+                    <div class="job-info">
+                        <h3>${job.repo_url.split('/').pop()} @ ${job.branch}</h3>
+                        <div class="meta">
+                            <span>ID: ${job.id.substring(0, 8)}</span>
+                            <span>${new Date(job.started_at).toLocaleString()}</span>
+                            <span>${job.packs.join(', ')}</span>
+                        </div>
+                        ${job.status !== 'complete' && job.status !== 'failed' ? `
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: ${job.progress}%"></div>
+                            </div>
+                            <div style="color: var(--muted); font-size: 12px; margin-top: 4px;">
+                                ${job.message}
+                            </div>
+                        ` : ''}
+                    </div>
+                    <div class="job-status">
+                        <span class="status-badge ${job.status}">${job.status}</span>
+                        ${job.status === 'complete' ? `
+                            <button class="btn secondary" onclick="downloadDocs('${job.id}')">
+                                Download
+                            </button>
+                        ` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        // Download documentation
+        async function downloadDocs(jobId) {
+            window.open(`${API_BASE}/output/${jobId}`, '_blank');
+        }
+        
+        // Load all jobs
+        async function loadJobs() {
+            try {
+                const response = await fetch(`${API_BASE}/jobs`);
+                const data = await response.json();
+                jobs = data.jobs || [];
+                renderJobs();
+                
+                // Check health
+                const healthResponse = await fetch(`${API_BASE}/health`);
+                if (healthResponse.ok) {
+                    statusIndicator.style.background = 'var(--success)';
+                }
+            } catch (error) {
+                showMessage(`Failed to load jobs: ${error.message}`, 'error');
+                statusIndicator.style.background = 'var(--error)';
+            }
+        }
+        
+        // Event listeners
+        generateBtn.addEventListener('click', generateDocs);
+        refreshBtn.addEventListener('click', loadJobs);
+        
+        // Make download function global
+        window.downloadDocs = downloadDocs;
+        
+        // Initial load
+        loadJobs();
+        
+        // Auto-refresh jobs every 10 seconds
+        setInterval(loadJobs, 10000);
+    </script>
+</body>
+</html>
