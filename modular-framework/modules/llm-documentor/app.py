@@ -263,6 +263,36 @@ async def gh_hub_post_json(path: str, payload: Any, timeout: int = 60) -> Any:
             return await resp.json()
 
 
+# --- add this near other helpers in app.py ---
+
+_SECRET_PATTERNS = [
+    # AWS style
+    (re.compile(r'AKIA[0-9A-Z]{16}'), 'AKIA****************'),
+    (re.compile(r'ASIA[0-9A-Z]{16}'), 'ASIA****************'),
+    (re.compile(r'(?i)aws[_-]?secret[_-]?access[_-]?key\s*[:=]\s*([\'"]?)[A-Za-z0-9/+]{30,}([\'"]?)'),
+     'AWS_SECRET_ACCESS_KEY=[REDACTED]'),
+    # GitHub tokens (classic/pat)
+    (re.compile(r'ghp_[A-Za-z0-9]{36,}'), 'ghp_[REDACTED]'),
+    (re.compile(r'github_pat_[A-Za-z0-9_]{20,}'), 'github_pat_[REDACTED]'),
+    # Generic API keys/secrets
+    (re.compile(r'(?i)(api[_-]?key|secret|token|pat|bearer)\s*[:=]\s*([\'"]?)[A-Za-z0-9._\-]{8,}([\'"]?)'),
+     r'\1=[REDACTED]'),
+    (re.compile(r'(?i)(authorization)\s*:\s*bearer\s+[A-Za-z0-9._\-]{8,}'), r'\1: Bearer [REDACTED]'),
+    # ENV style
+    (re.compile(r'(?m)^(?:export\s+)?([A-Z0-9_]*(KEY|TOKEN|SECRET))\s*=\s*([\'"]?).+?\3$'),
+     r'\1=[REDACTED]'),
+]
+
+def scrub_secrets(text: str) -> str:
+    """Lightweight redactor for obvious secrets in generated docs."""
+    if not text:
+        return text
+    out = text
+    for pat, repl in _SECRET_PATTERNS:
+        out = pat.sub(repl, out)
+    return out
+
+
 
 # -----------------------------------------------------------------------------
 # Schedules (simple in-process scheduler)

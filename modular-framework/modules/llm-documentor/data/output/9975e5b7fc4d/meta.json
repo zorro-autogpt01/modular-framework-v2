@@ -1,0 +1,53 @@
+{
+  "job_id": "9975e5b7fc4d",
+  "repo_url": null,
+  "branch": "main",
+  "packs": [
+    "api",
+    "detailed",
+    "db"
+  ],
+  "file_hashes": {
+    "modular-framework/framework/Dockerfile": "f8edaa7d0fe7c9e2d4a2e26054f94a6597545145f1cfcd2d6d424fe6b8f8c1c1",
+    "modular-framework/modules/RAG/Dockerfile": "656106012c193b39d6ab485e9ae8a1c695b6233696f4fe9fff5b8026655e9c95",
+    "modular-framework/modules/RAG/rag_system.py": "a0cd25bf2f2d9ff7ea0fb2f21766e523b66396a0b601a135ef418fd8ec6d3c53",
+    "modular-framework/modules/browser/Dockerfile": "7db90dfaa5270fb7fc4a881c16fc88747d1ec48bc7c4085ea377439f8378bb5d",
+    "modular-framework/modules/browser/server/index.js": "6013b27f5ddde2c34e42fea33a3eba6f3ad2d40def96ad5caa7041275d11107e",
+    "modular-framework/modules/github-hub/Dockerfile": "3833cedf471bbb73e86faca3055330090351dbc11a858ee9f9f143549b6c20f6",
+    "modular-framework/modules/github-hub/app/github_api.py": "98ff3a8828b36b47f9ce6e2dddad1d4da73c43ebb7f4b86648ad4331e13500fd",
+    "modular-framework/modules/github-hub/app/main.py": "576bd28cfb35c00fadaad1244d0081862a41f70f4051d608080109b440a4365b",
+    "modular-framework/modules/github-hub/app/store.py": "ee0a6e8e349651b7939e21e819a5b83484a610a64b3853551f8e3b50d0893d21",
+    "modular-framework/modules/github-hub/public/js/app.js": "f3d024048b3e691d241a60ee7196d412fb37d3d7eebea6522daa9a54e16ebbd5",
+    "modular-framework/modules/llm-chat/Dockerfile": "3919d0a3a41aea9777f8b85254937e2fbbfe73bf9f3d9d0a38d2cf4de5f59129",
+    "modular-framework/modules/llm-chat/server.js": "1394134e363feb7e452883e234f29756a8e465d6e8f91cff76b20de24ab86a6f",
+    "modular-framework/modules/llm-chat/server/app.js": "d1c69a9ac8e5ed0db04c178a0b4d3e1e4522e9d409e228ba05a1d36999b0acb7",
+    "modular-framework/modules/llm-chat/server/index.js": "0e02c04d704378d144d320d4b8bfee7b5c1bac1eaeff99f908dc33cf925e049f",
+    "modular-framework/modules/llm-chat/server/routes/chat.js": "f553ad702a282c730dac713fc83975c3cd98f60c327bd60c093a581458a032d7",
+    "modular-framework/modules/llm-chat/server/routes/health.js": "d9d21e2ec00e934bcb3edbcf8ead0e59a171a45671375a5027f0024f98c6502c",
+    "modular-framework/modules/llm-chat/server/routes/info.js": "ebfda5ed38429ed1a3f5b073d3f8ba28396130d7193ed85da6b872aa5c7be832",
+    "modular-framework/modules/llm-chat/server/routes/logs.js": "804eca579a99c4782bc123cff485e514d24e216cebf16ea816c21bf1af8a7aa9",
+    "modular-framework/modules/openvscode/Dockerfile": "3e1f9336576da84e163087f84682acf9e4179424c6bea1761a25ffbea69523ab",
+    "modular-framework/modules/openvscode/server/index.js": "665501179f4280b78dc837bdd6d35f84c5854bb40afe70fbf422ef66e1a12aae",
+    "modular-framework/modules/ssh-terminal/Dockerfile": "ee12f97c2a42efe8e7f0d51f93bbf852d2cbe67d4d59451f5b4f6baefbaafb59",
+    "modular-framework/modules/ssh-terminal/server.js": "c461d8700c02c28bf03d0e6e466ea82304c7d5834f3c239a5248090b5d4a2327"
+  },
+  "verification": {
+    "checks": [
+      "components/RAG.md: Verified",
+      "components/browser.md: Verified",
+      "components/github-hub.md: Verified",
+      "components/llm-chat.md: Verified",
+      "components/openvscode.md: Verified",
+      "components/ssh-terminal.md: Verified",
+      "db/SCHEMA.md: Verified"
+    ],
+    "warnings": [
+      "components/github-hub.md: Missing header",
+      "components/llm-chat.md: Missing header",
+      "components/openvscode.md: Missing header",
+      "db/SCHEMA.md: Missing header"
+    ],
+    "errors": []
+  },
+  "generated_at": "2025-09-30T17:02:40.718422"
+}

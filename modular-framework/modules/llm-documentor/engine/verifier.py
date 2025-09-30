@@ -23,7 +23,7 @@ class DocVerifier:
                 results['warnings'].append(f"{path}: Missing header")
             file_refs = re.findall(r"`([^`]+\.(py|js|ts|go))`", content)
             for ref, _ext in file_refs:
-                if ref not in self.artifacts.get('files', {}):
-                    results['warnings'].append(f"{path}: References non-existent file {ref}")
+                if ref not in self.artifacts.get("files", {}):
+                    results["warnings"].append(f"{path}: References non-existent file {ref}")
             results['checks'].append(f"{path}: Verified")
         return results

@@ -1,0 +1,823 @@
+{
+  "meta": {
+    "repo": null,
+    "branch": "main",
+    "extracted_at": "2025-09-30T16:34:06.483810"
+  },
+  "structure": {
+    "type": "dir",
+    "children": {
+      "modular-framework": {
+        "type": "dir",
+        "children": {
+          ".gitignore": {
+            "type": "file",
+            "size": 177
+          },
+          "docker-compose.yml": {
+            "type": "file",
+            "size": 3371
+          },
+          "framework": {
+            "type": "dir",
+            "children": {
+              "Dockerfile": {
+                "type": "file",
+                "size": 403
+              },
+              "html": {
+                "type": "dir",
+                "children": {
+                  "index.html": {
+                    "type": "file",
+                    "size": 22737
+                  }
+                }
+              },
+              "nginx.conf": {
+                "type": "file",
+                "size": 5026
+              }
+            }
+          },
+          "modules": {
+            "type": "dir",
+            "children": {
+              "RAG": {
+                "type": "dir",
+                "children": {
+                  "Dockerfile": {
+                    "type": "file",
+                    "size": 840
+                  },
+                  "docker-compose.yml": {
+                    "type": "file",
+                    "size": 607
+                  },
+                  "public": {
+                    "type": "dir",
+                    "children": {
+                      "css": {
+                        "type": "dir",
+                        "children": {
+                          "theme.css": {
+                            "type": "file",
+                            "size": 3948
+                          }
+                        }
+                      },
+                      "index.html": {
+                        "type": "file",
+                        "size": 9556
+                      },
+                      "js": {
+                        "type": "dir",
+                        "children": {
+                          "admin.js": {
+                            "type": "file",
+                            "size": 10067
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "rag_system.py": {
+                    "type": "file",
+                    "size": 43988
+                  },
+                  "requirements.txt": {
+                    "type": "file",
+                    "size": 172
+                  }
+                }
+              },
+              "browser": {
+                "type": "dir",
+                "children": {
+                  "Dockerfile": {
+                    "type": "file",
+                    "size": 510
+                  },
+                  "public": {
+                    "type": "dir",
+                    "children": {
+                      "browser.js": {
+                        "type": "file",
+                        "size": 8903
+                      },
+                      "index.html": {
+                        "type": "file",
+                        "size": 6179
+                      }
+                    }
+                  },
+                  "server": {
+                    "type": "dir",
+                    "children": {
+                      "index.js": {
+                        "type": "file",
+                        "size": 16057
+                      },
+                      "package.json": {
+                        "type": "file",
+                        "size": 308
+                      }
+                    }
+                  }
+                }
+              },
+              "github-hub": {
+                "type": "dir",
+                "children": {
+                  "Dockerfile": {
+                    "type": "file",
+                    "size": 536
+                  },
+                  "app": {
+                    "type": "dir",
+                    "children": {
+                      "github_api.py": {
+                        "type": "file",
+                        "size": 6546
+                      },
+                      "main.py": {
+                        "type": "file",
+                        "size": 5804
+                      },
+                      "store.py": {
+                        "type": "file",
+                        "size": 1953
+                      }
+                    }
+                  },
+                  "data": {
+                    "type": "dir",
+                    "children": {
+                      "config.json": {
+                        "type": "file",
+                        "size": 176
+                      }
+                    }
+                  },
+                  "public": {
+                    "type": "dir",
+                    "children": {
+                      "css": {
+                        "type": "dir",
+                        "children": {
+                          "theme.css": {
+                            "type": "file",
+                            "size": 1863
+                          }
+                        }
+                      },
+                      "index.html": {
+                        "type": "file",
+                        "size": 4795
+                      },
+                      "js": {
+                        "type": "dir",
+                        "children": {
+                          "app.js": {
+                            "type": "file",
+                            "size": 14215
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "requirements.txt": {
+                    "type": "file",
+                    "size": 125
+                  }
+                }
+              },
+              "llm-chat": {
+                "type": "dir",
+                "children": {
+                  "Dockerfile": {
+                    "type": "file",
+                    "size": 352
+                  },
+                  "package.json": {
+                    "type": "file",
+                    "size": 416
+                  },
+                  "public": {
+                    "type": "dir",
+                    "children": {
+                      "config.html": {
+                        "type": "file",
+                        "size": 3672
+                      },
+                      "css": {
+                        "type": "dir",
+                        "children": {
+                          "theme.css": {
+                            "type": "file",
+                            "size": 3948
+                          }
+                        }
+                      },
+                      "index.html": {
+                        "type": "file",
+                        "size": 11942
+                      },
+                      "js": {
+                        "type": "dir",
+                        "children": {
+                          "chat.js": {
+                            "type": "file",
+                            "size": 17828
+                          },
+                          "config.embed.js": {
+                            "type": "file",
+                            "size": 1849
+                          },
+                          "config.page.js": {
+                            "type": "file",
+                            "size": 1385
+                          },
+                          "index.page.js": {
+                            "type": "file",
+                            "size": 4168
+                          },
+                          "profiles.js": {
+                            "type": "file",
+                            "size": 4698
+                          },
+                          "sse.js": {
+                            "type": "file",
+                            "size": 1530
+                          },
+                          "storage.js": {
+                            "type": "file",
+                            "size": 3269
+                          },
+                          "toolbar.js": {
+                            "type": "file",
+                            "size": 1829
+                          },
+                          "ui.js": {
+                            "type": "file",
+                            "size": 1327
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "server.js": {
+                    "type": "file",
+                    "size": 15958
+                  },
+                  "server": {
+                    "type": "dir",
+                    "children": {
+                      "app.js": {
+                        "type": "file",
+                        "size": 1764
+                      },
+                      "index.js": {
+                        "type": "file",
+                        "size": 249
+                      },
+                      "logger.js": {
+                        "type": "file",
+                        "size": 1898
+                      },
+                      "providers": {
+                        "type": "dir",
+                        "children": {
+                          "ollama.js": {
+                            "type": "file",
+                            "size": 1371
+                          },
+                          "openaiCompat.js": {
+                            "type": "file",
+                            "size": 5784
+                          }
+                        }
+                      },
+                      "routes": {
+                        "type": "dir",
+                        "children": {
+                          "chat.js": {
+                            "type": "file",
+                            "size": 2852
+                          },
+                          "health.js": {
+                            "type": "file",
+                            "size": 171
+                          },
+                          "info.js": {
+                            "type": "file",
+                            "size": 205
+                          },
+                          "logs.js": {
+                            "type": "file",
+                            "size": 431
+                          }
+                        }
+                      },
+                      "util": {
+                        "type": "dir",
+                        "children": {
+                          "http.js": {
+                            "type": "file",
+                            "size": 1344
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "openvscode": {
+                "type": "dir",
+                "children": {
+                  "Dockerfile": {
+                    "type": "file",
+                    "size": 1629
+                  },
+                  "server": {
+                    "type": "dir",
+                    "children": {
+                      "index.js": {
+                        "type": "file",
+                        "size": 9406
+                      },
+                      "package.json": {
+                        "type": "file",
+                        "size": 246
+                      }
+                    }
+                  },
+                  "start.sh": {
+                    "type": "file",
+                    "size": 1819
+                  },
+                  "workspaces": {
+                    "type": "dir",
+                    "children": {
+                      ".cache": {
+                        "type": "dir",
+                        "children": {
+                          "Microsoft": {
+                            "type": "dir",
+                            "children": {
+                              "DeveloperTools": {
+                                "type": "dir",
+                                "children": {
+                                  "deviceid": {
+                                    "type": "file",
+                                    "size": 36
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      ".openvscode-server": {
+                        "type": "dir",
+                        "children": {
+                          "extensions": {
+                            "type": "dir",
+                            "children": {
+                              "extensions.json": {
+                                "type": "file",
+                                "size": 2
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "ssh-terminal": {
+                "type": "dir",
+                "children": {
+                  "Dockerfile": {
+                    "type": "file",
+                    "size": 345
+                  },
+                  "package.json": {
+                    "type": "file",
+                    "size": 427
+                  },
+                  "public": {
+                    "type": "dir",
+                    "children": {
+                      "config.html": {
+                        "type": "file",
+                        "size": 9201
+                      },
+                      "index.html": {
+                        "type": "file",
+                        "size": 24186
+                      }
+                    }
+                  },
+                  "server.js": {
+                    "type": "file",
+                    "size": 4742
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "files": {
+    "modular-framework/modules/RAG/rag_system.py": {
+      "content": "# rag_system.py\n\"\"\"\nSimple Production RAG for Small Organizations\n- Ingests: GitHub repos, PDFs, text files\n- Uses OpenAI v1 async client (AsyncOpenAI)\n- Embeddings: text-embedding-3-small (1536 dims by default)\n- Vector store: Qdrant\n- Cache: Redis\n\"\"\"\n\nimport os\nimport io\nimport git\nimport json\nimport hashlib\nimport asyncio\nfrom dataclasses import dataclass\nfrom datetime import datetime\nfrom pathlib import Path\nfrom fastapi.staticfiles import StaticFiles  # NEW\nfrom fnmatch import fnmatch  # NEW\nimport uvicorn\nimport PyPDF2\nimport tiktoken\nimport redis\nimport numpy as np\nfrom loguru import logger\nfrom fastapi import FastAPI, UploadFile, HTTPException, BackgroundTasks\nfrom fastapi.middleware.cors import CORSMiddleware\nfrom pydantic import BaseModel\nfrom typing import List, Dict, Optional, Union  # ensure Optional imported\n\nfrom qdrant_client import QdrantClient\nfrom qdrant_client.models import (\n    Distance,\n    VectorParams,\n    PointStruct,\n    Filter,\n    FieldCondition,\n    MatchValue,\n)\n\n# ---------- Logging ----------\nlogger.add(\"rag_system.log\", rotation=\"500 MB\", retention=\"30 days\", level=\"INFO\")\n\n# ---------- FastAPI ----------\napp = FastAPI(title=\"Simple RAG System\", version=\"1.1.0\")\n\napp.add_middleware(\n    CORSMiddleware,\n    allow_origins=[\"*\"],  # tighten for prod\n    allow_credentials=True,\n    allow_methods=[\"*\"],\n    allow_headers=[\"*\"],\n)\n\n# ---------- Env & Clients ----------\nQDRANT_URL = os.getenv(\"QDRANT_URL\", \"http://localhost:6333\")\nREDIS_HOST = os.getenv(\"REDIS_HOST\", \"localhost\")\n\nADMIN_API_PREFIX = \"/admin-api\"\n\n\n# OpenAI (v1 async client)\nfrom openai import AsyncOpenAI\n\nOPENAI_API_KEY = os.getenv(\"OPENAI_API_KEY\")\noai = AsyncOpenAI(api_key=OPENAI_API_KEY)\n\n# Models (overridable via env)\nRAG_EMBED_MODEL = os.getenv(\"RAG_EMBED_MODEL\", \"text-embedding-3-small\")  # 1536 dims\nRAG_SUMMARY_MODEL = os.getenv(\"RAG_SUMMARY_MODEL\", \"gpt-4o-mini\")\nRAG_ANSWER_MODEL = os.getenv(\"RAG_ANSWER_MODEL\", \"gpt-4o-mini\")\n# --- Chunking & embed safety limits ---\nEMBED_TOKEN_LIMIT = int(os.getenv(\"EMBED_TOKEN_LIMIT\", \"8192\"))  # per-input hard limit of the embed model\nCHUNK_TOKENS_TARGET = int(os.getenv(\"CHUNK_TOKENS_TARGET\", \"700\"))   # aim for ~700 tokens\nCHUNK_TOKENS_HARD = int(os.getenv(\"CHUNK_TOKENS_HARD\", \"1000\"))      # never exceed this per chunk\nEMBED_MICROBATCH = int(os.getenv(\"EMBED_MICROBATCH\", \"64\"))          # micro-batch size for embeddings\nMAX_FILE_TOKENS = int(os.getenv(\"MAX_FILE_TOKENS\", \"50000\"))         # skip absurdly large files\nMINIFIED_LINE_LEN_THRESHOLD = int(os.getenv(\"MINIFIED_LINE_LEN_THRESHOLD\", \"300\"))  # heuristic\n\n\n# Qdrant & Redis\nqdrant = QdrantClient(url=QDRANT_URL)\nredis_client = redis.Redis(host=REDIS_HOST, decode_responses=True)\n\n# Embedding sizes (ensure collection dims match model)\nEMBED_DIMS = {\n    \"text-embedding-3-small\": 1536,\n    \"text-embedding-3-large\": 3072,\n    \"text-embedding-ada-002\": 1536,\n}\nEMBED_DIM = EMBED_DIMS.get(RAG_EMBED_MODEL, 1536)\n\n# Collections (all using the same dim)\nCOLLECTIONS = {\n    \"code\": {\"size\": EMBED_DIM, \"distance\": Distance.COSINE},\n    \"documents\": {\"size\": EMBED_DIM, \"distance\": Distance.COSINE},\n    \"conversations\": {\"size\": EMBED_DIM, \"distance\": Distance.COSINE},\n}\n\n# ---------- Embeddings ----------\nclass EmbeddingService:\n    \"\"\"Handle embeddings using OpenAI API (v1 async) with token truncation & micro-batching.\"\"\"\n    def __init__(self):\n        self._enc = tiktoken.get_encoding(\"cl100k_base\")\n\n    def _truncate(self, text: str) -> str:\n        toks = self._enc.encode(text or \"\")\n        if len(toks) > EMBED_TOKEN_LIMIT:\n            toks = toks[:EMBED_TOKEN_LIMIT]\n        return self._enc.decode(toks)\n\n    async def embed_text(self, text: str) -> List[float]:\n        try:\n            clean = self._truncate(text)\n            resp = await oai.embeddings.create(model=RAG_EMBED_MODEL, input=clean)\n            return resp.data[0].embedding\n        except Exception as e:\n            logger.error(f\"Embedding failed (single): {e}\")\n            return [0.0] * EMBED_DIM\n\n    async def embed_batch(self, texts: List[str]) -> List[List[float]]:\n        \"\"\"Micro-batch + per-item fallback so one oversize/invalid input doesn't kill all.\"\"\"\n        outputs: List[List[float]] = []\n        # pre-truncate\n        cleaned = [self._truncate(t) for t in texts]\n\n        for i in range(0, len(cleaned), EMBED_MICROBATCH):\n            sub = cleaned[i : i + EMBED_MICROBATCH]\n            try:\n                resp = await oai.embeddings.create(model=RAG_EMBED_MODEL, input=sub)\n                outputs.extend([d.embedding for d in resp.data])\n            except Exception as e:\n                logger.error(f\"Embedding micro-batch failed: {e} \u2014 falling back per-item\")\n                # try one-by-one to isolate the offender(s)\n                for t in sub:\n                    try:\n                        r = await oai.embeddings.create(model=RAG_EMBED_MODEL, input=t)\n                        outputs.append(r.data[0].embedding)\n                    except Exception as e2:\n                        logger.error(f\"Embedding item failed, zeroing: {e2}\")\n                        outputs.append([0.0] * EMBED_DIM)\n        return outputs\n\nembedding_service = EmbeddingService()\n\n# ---------- Chunking ----------\n@dataclass\nclass CodeChunk:\n    content: str\n    file_path: str\n    repo_name: str\n    language: str\n    start_line: int\n    end_line: int\n    chunk_type: str\n\n\nclass ChunkingService:\n    \"\"\"Smart chunking for different file types\"\"\"\n\n    def __init__(self, chunk_size: int = 1000, overlap: int = 200):\n        self.chunk_size = chunk_size\n        self.overlap = overlap\n        self.tokenizer = tiktoken.get_encoding(\"cl100k_base\")\n\n    def chunk_code(self, content: str, file_path: str, repo_name: str) -> List[CodeChunk]:\n        chunks: List[CodeChunk] = []\n        lines = content.split(\"\\n\")\n        language = Path(file_path).suffix.lstrip(\".\")\n        enc = self.tokenizer\n\n        buf: List[str] = []\n        buf_start_line = 0\n\n        def buf_text() -> str:\n            return \"\\n\".join(buf)\n\n        def flush(end_line: int):\n            nonlocal buf_start_line, buf\n            if not buf:\n                return\n            text = buf_text()\n            # Hard enforce token cap by forced slicing if needed\n            toks = enc.encode(text)\n            if len(toks) <= CHUNK_TOKENS_HARD:\n                chunks.append(CodeChunk(\n                    content=text, file_path=file_path, repo_name=repo_name,\n                    language=language, start_line=buf_start_line, end_line=end_line,\n                    chunk_type=\"code_block\"\n                ))\n            else:\n                # force split into hard-sized pieces; keep approximate line mapping\n                for j in range(0, len(toks), CHUNK_TOKENS_HARD):\n                    part = enc.decode(toks[j : j + CHUNK_TOKENS_HARD])\n                    part_lines = part.count(\"\\n\") + 1\n                    chunks.append(CodeChunk(\n                        content=part, file_path=file_path, repo_name=repo_name,\n                        language=language, start_line=buf_start_line, end_line=min(end_line, buf_start_line + part_lines),\n                        chunk_type=\"code_block\"\n                    ))\n                    buf_start = buf_start_line + part_lines - 1\n                # adjust next start line roughly\n            # keep small overlap\n            keep = buf[-5:] if len(buf) > 5 else buf[:]\n            buf = keep.copy()\n            buf_start_line = end_line - len(buf) + 1\n\n        for idx, line in enumerate(lines, start=1):\n            buf.append(line)\n            text_now = buf_text()\n            tokens_now = len(enc.encode(text_now))\n\n            boundaryish = (\n                line.lstrip().startswith((\"def \", \"class \", \"function \", \"const \", \"export \"))\n                or (not line.strip())  # blank\n            )\n\n            # Prefer to flush at boundaries once we hit target\n            if tokens_now >= CHUNK_TOKENS_TARGET and boundaryish:\n                flush(idx)\n                continue\n\n            # Hard cap no matter what\n            if tokens_now >= CHUNK_TOKENS_HARD:\n                flush(idx)\n                continue\n\n        # final flush\n        if buf:\n            flush(len(lines))\n\n        return chunks\n\n\n    def chunk_text(self, content: str, metadata: dict) -> List[dict]:\n        chunks: List[dict] = []\n        tokens = self.tokenizer.encode(content or \"\")\n        step = self.chunk_size - self.overlap\n        if step <= 0:\n            step = self.chunk_size\n\n        for i in range(0, len(tokens), step):\n            chunk_tokens = tokens[i : i + self.chunk_size]\n            chunk_text = self.tokenizer.decode(chunk_tokens)\n            chunks.append({\"content\": chunk_text, \"metadata\": metadata, \"chunk_index\": len(chunks)})\n\n        return chunks\n\n\n# ---------- Ingestion ----------\nclass GitHubIngester:\n    \"\"\"Handle GitHub repository ingestion\"\"\"\n\n    def __init__(self, chunking_service: ChunkingService):\n        self.chunking_service = chunking_service\n        self.ignored_extensions = {\n            \".png\",\n            \".jpg\",\n            \".jpeg\",\n            \".gif\",\n            \".ico\",\n            \".svg\",\n            \".exe\",\n            \".dll\",\n            \".so\",\n            \".lock\",\n            \".pdf\",\n        }\n        self.code_extensions = {\n            \".py\",\n            \".js\",\n            \".ts\",\n            \".jsx\",\n            \".tsx\",\n            \".java\",\n            \".cpp\",\n            \".c\",\n            \".go\",\n            \".rs\",\n            \".php\",\n            \".rb\",\n            \".swift\",\n            \".cs\",\n        }\n\n    async def ingest_repo(self, repo_url: str, branch: str = \"main\") -> Dict:\n        repo_name = repo_url.split(\"/\")[-1].replace(\".git\", \"\")\n        repo_path = f\"/tmp/{repo_name}_{datetime.now().timestamp()}\"\n\n        try:\n            logger.info(f\"Cloning repository: {repo_url}\")\n            _ = git.Repo.clone_from(repo_url, repo_path, branch=branch, depth=1)\n\n            processed_files = 0\n            total_chunks = 0\n\n            for root, dirs, files in os.walk(repo_path):\n                dirs[:] = [d for d in dirs if not d.startswith(\".\") and d not in [\"node_modules\", \"vendor\", \"dist\", \"build\", \".git\"]]\n\n                for file in files:\n                    file_path = os.path.join(root, file)\n                    relative_path = os.path.relpath(file_path, repo_path)\n\n                    if Path(file).suffix.lower() in self.ignored_extensions:\n                        continue\n\n                    try:\n                        with open(file_path, \"r\", encoding=\"utf-8\", errors=\"ignore\") as f:\n                            content = f.read()\n                            # Skip absurdly large token count\n                            try:\n                                _tok_count = chunking_service.tokenizer.encode(content or \"\")\n                                if len(_tok_count) > MAX_FILE_TOKENS:\n                                    logger.warning(f\"Skipping very large file (>{MAX_FILE_TOKENS} toks): {relative_path}\")\n                                    continue\n                            except Exception:\n                                pass\n\n                            # Heuristic: skip minified/one-liner-ish JS/CSS (very long average line)\n                            if Path(file).suffix.lower() in {\".js\", \".css\"}:\n                                lines = content.split(\"\\n\")\n                                if lines:\n                                    avg_len = sum(len(l) for l in lines) / max(1, len(lines))\n                                    if avg_len > MINIFIED_LINE_LEN_THRESHOLD:\n                                        logger.info(f\"Skipping likely minified asset: {relative_path} (avg line ~{avg_len:.0f} chars)\")\n                                        continue\n\n                        if not content or len(content) > 1_000_000:\n                            continue\n\n                        if Path(file).suffix.lower() in self.code_extensions:\n                            chunks = self.chunking_service.chunk_code(content, relative_path, repo_name)\n                            await self._store_code_chunks(chunks)\n                        else:\n                            chunks = self.chunking_service.chunk_text(\n                                content,\n                                {\"source\": relative_path, \"repo\": repo_name, \"type\": \"text\"},\n                            )\n                            await self._store_document_chunks(chunks)\n\n                        processed_files += 1\n                        total_chunks += len(chunks)\n\n                    except Exception as e:\n                        logger.warning(f\"Failed to process {file_path}: {e}\")\n                        continue\n\n            import shutil\n\n            shutil.rmtree(repo_path, ignore_errors=True)\n\n            logger.info(f\"Ingested {repo_name}: {processed_files} files, {total_chunks} chunks\")\n            return {\"repo\": repo_name, \"files_processed\": processed_files, \"chunks_created\": total_chunks}\n\n        except Exception as e:\n            logger.error(f\"Failed to ingest repository: {e}\")\n            raise\n\n    async def _store_code_chunks(self, chunks: List[CodeChunk]):\n        points: List[PointStruct] = []\n        texts = [chunk.content for chunk in chunks]\n        embeddings = await embedding_service.embed_batch(texts)\n\n        for chunk, embedding in zip(chunks, embeddings):\n            chunk_id = hashlib.md5(f\"{chunk.repo_name}:{chunk.file_path}:{chunk.start_line}\".encode()).hexdigest()\n            points.append(\n                PointStruct(\n                    id=chunk_id,\n                    vector=embedding,\n                    payload={\n                        \"content\": chunk.content,\n                        \"file_path\": chunk.file_path,\n                        \"repo\": chunk.repo_name,\n                        \"language\": chunk.language,\n                        \"lines\": f\"{chunk.start_line}-{chunk.end_line}\",\n                        \"type\": \"code\",\n                    },\n                )\n            )\n\n        if points:\n            qdrant.upsert(collection_name=\"code\", points=points)\n\n    async def _store_document_chunks(self, chunks: List[dict]):\n        points: List[PointStruct] = []\n        texts = [chunk[\"content\"] for chunk in chunks]\n        embeddings = await embedding_service.embed_batch(texts)\n\n        for chunk, embedding in zip(chunks, embeddings):\n            # Stable id by using sorted metadata + chunk index\n            meta_str = json.dumps(chunk[\"metadata\"], sort_keys=True)\n            chunk_id = hashlib.md5(f\"{meta_str}:{chunk['chunk_index']}\".encode()).hexdigest()\n\n            payload = {\"content\": chunk[\"content\"], **chunk[\"metadata\"]}\n            points.append(PointStruct(id=chunk_id, vector=embedding, payload=payload))\n\n        if points:\n            qdrant.upsert(collection_name=\"documents\", points=points)\n\n\n# NEW: Retrieval models\nclass RetrieveFilters(BaseModel):\n    repos: Optional[List[str]] = None\n    path_prefixes: Optional[List[str]] = None   # matches payload['file_path'] startswith any\n    languages: Optional[List[str]] = None       # for code\n    min_score: float = 0.0\n\nclass RetrieveRequest(BaseModel):\n    query: str\n    top_k: int = 8\n    search_code: bool = True\n    search_docs: bool = True\n    filters: Optional[RetrieveFilters] = None\n    dedupe_by: str = \"file\"        # \"file\" | \"source\" | \"none\"\n    max_snippet_chars: int = 1200  # hard cap per snippet\n    build_prompt: bool = False     # if true, returns \"prompt\" field\n    section_title: str = \"Retrieved context\"\n    token_budget: Optional[int] = None          # approx target tokens for prompt (cl100k)\n\n# ---------- Conversations ----------\nclass ConversationManager:\n\n    def __init__(self):\n        self.collection_name = \"conversations\"\n\n    async def save_conversation(self, conversation_id: str, messages: List[dict], metadata: dict = None) -> dict:\n        \"\"\"\n        Save a complete conversation thread.\n\n        NOTE: if you pass metadata={\"profile\": \"...\", \"tags\": [\"pets\",\"project:omega\"], ...}\n        those fields will be stored on each chunk payload and are later filterable.\n        \"\"\"\n        summary = await self._summarize_conversation(messages)\n\n        chunks = []\n        current_chunk = []\n\n        for msg in messages:\n            current_chunk.append(f\"{msg['role']}: {msg['content']}\")\n            if len(current_chunk) >= 3:\n                chunks.append(\n                    {\n                        \"conversation_id\": conversation_id,\n                        \"chunk_text\": \"\\n\".join(current_chunk),\n                        \"timestamp\": datetime.now().isoformat(),\n                        \"summary\": summary,\n                        \"metadata\": metadata or {},\n                    }\n                )\n                current_chunk = [current_chunk[-1]]\n\n        if current_chunk:\n            chunks.append(\n                {\n                    \"conversation_id\": conversation_id,\n                    \"chunk_text\": \"\\n\".join(current_chunk),\n                    \"timestamp\": datetime.now().isoformat(),\n                    \"summary\": summary,\n                    \"metadata\": metadata or {},\n                }\n            )\n\n        points: List[PointStruct] = []\n        for i, chunk in enumerate(chunks):\n            embedding = await embedding_service.embed_text(chunk[\"chunk_text\"])\n            chunk_key = f\"{conversation_id}_{i}_{datetime.now().timestamp()}\"\n            # Flatten metadata into payload so we can filter by profile/tags\n            payload = {\n                \"content\": chunk[\"chunk_text\"],\n                \"conversation_id\": conversation_id,\n                \"chunk_index\": i,\n                \"timestamp\": chunk[\"timestamp\"],\n                \"summary\": chunk[\"summary\"],\n            }\n            payload.update(chunk[\"metadata\"] or {})\n\n            points.append(\n                PointStruct(\n                    id=hashlib.md5(chunk_key.encode()).hexdigest(),\n                    vector=embedding,\n                    payload=payload,\n                )\n            )\n\n        if points:\n            qdrant.upsert(collection_name=self.collection_name, points=points)\n\n        # cache last 20\n        redis_client.setex(\n            f\"conversation:{conversation_id}\",\n            86400 * 7,\n            json.dumps({\"messages\": messages[-20:], \"summary\": summary, \"chunks_stored\": len(chunks)}),\n        )\n\n        return {\"conversation_id\": conversation_id, \"chunks_saved\": len(chunks), \"summary\": summary}\n\n\n    async def get_conversation_context(self, conversation_id: str, current_query: str = None) -> dict:\n        cached = redis_client.get(f\"conversation:{conversation_id}\")\n        recent_messages = []\n        if cached:\n            data = json.loads(cached)\n            recent_messages = data.get(\"messages\", [])\n\n        relevant_history = []\n        if current_query:\n            query_embedding = await embedding_service.embed_text(current_query)\n            resp = qdrant.query_points(\n                collection_name=self.collection_name,\n                query=query_embedding,\n                limit=5,\n                query_filter=Filter(\n                    must=[FieldCondition(key=\"conversation_id\", match=MatchValue(value=conversation_id))]\n                ),\n            )\n            # Keep only high-scoring chunks\n            for r in getattr(resp, \"points\", []):\n                if r.score is not None and r.score > 0.7:\n                    relevant_history.append(r.payload)\n\n        return {\"recent_messages\": recent_messages, \"relevant_history\": relevant_history, \"conversation_id\": conversation_id}\n\n\n    async def search_all_conversations(\n        self, query: str, limit: int = 5, profile: Optional[str] = None, tags: Optional[List[str]] = None\n    ) -> List[dict]:\n        \"\"\"\n        Vector search across ALL conversations.\n        - If profile is provided, restrict to that profile.\n        - If tags are provided, return results that match ANY of the tags.\n          (We perform one query per tag and merge.)\n        \"\"\"\n        query_embedding = await embedding_service.embed_text(query)\n\n        results_map: Dict[str, Dict] = {}  # id -> best point\n        def add_points(points):\n            for p in points or []:\n                pid = str(p.id)\n                if pid not in results_map or (p.score or 0) > (results_map[pid][\"score\"] or 0):\n                    results_map[pid] = {\n                        \"content\": p.payload.get(\"content\", \"\"),\n                        \"conversation_id\": p.payload.get(\"conversation_id\"),\n                        \"timestamp\": p.payload.get(\"timestamp\"),\n                        \"score\": p.score,\n                    }\n\n        # Build the base MUST filter (profile if provided)\n        base_must = []\n        if profile:\n            base_must.append(FieldCondition(key=\"profile\", match=MatchValue(value=profile)))\n\n        # If tags provided: run one filtered query per tag and merge\n        if tags:\n            for tag in [t for t in tags if t]:\n                must = list(base_must)\n                must.append(FieldCondition(key=\"tags\", match=MatchValue(value=tag)))\n                resp = qdrant.query_points(\n                    collection_name=self.collection_name,\n                    query=query_embedding,\n                    limit=limit,\n                    query_filter=Filter(must=must),\n                )\n                add_points(getattr(resp, \"points\", []))\n        else:\n            # Single query with (optional) profile filter\n            qfilter = Filter(must=base_must) if base_must else None\n            resp = qdrant.query_points(\n                collection_name=self.collection_name,\n                query=query_embedding,\n                limit=limit,\n                query_filter=qfilter,\n            )\n            add_points(getattr(resp, \"points\", []))\n\n        # Sort merged results by score, cap to limit\n        merged = sorted(results_map.values(), key=lambda r: (r[\"score\"] or 0.0), reverse=True)[:limit]\n        return merged\n\n\n    async def _summarize_conversation(self, messages: List[dict]) -> str:\n        if len(messages) < 3:\n            return \"Brief conversation\"\n        conversation_text = \"\\n\".join([f\"{m['role']}: {m['content'][:200]}\" for m in messages[-10:]])\n        try:\n            resp = await oai.chat.completions.create(\n                model=RAG_SUMMARY_MODEL,\n                messages=[\n                    {\"role\": \"system\", \"content\": \"Summarize this conversation in 2-3 sentences.\"},\n                    {\"role\": \"user\", \"content\": conversation_text},\n                ],\n                max_tokens=100,\n            )\n            return resp.choices[0].message.content\n        except Exception as e:\n            logger.warning(f\"Summary failed, falling back: {e}\")\n            return conversation_text[:400]\n\n\n# ---------- Query Engine ----------\nclass QueryEngine:\n    \"\"\"Handle RAG queries with caching\"\"\"\n\n    def __init__(self):\n        self.cache_ttl = 3600\n        self._enc = tiktoken.get_encoding(\"cl100k_base\")  # NEW\n\n    # --- NEW: retrieval-only path ---\n    async def retrieve(self, req: RetrieveRequest) -> Dict:\n        \"\"\"\n        Return top-N snippets (code &/or docs) for client-side prompt assembly.\n        Does NOT call the LLM. Optionally assembles a token-budgeted prompt.\n        \"\"\"\n        # cache key across query + filters\n        cache_key = \"retrieve:\" + hashlib.md5(\n            json.dumps(req.dict(), sort_keys=True).encode()\n        ).hexdigest()\n        cached = redis_client.get(cache_key)\n        if cached:\n            out = json.loads(cached)\n            out[\"usage\"] = {**out.get(\"usage\", {}), \"cached\": True}\n            return out\n\n        # embed\n        query_emb = await embedding_service.embed_text(req.query)\n\n        # helper: query a collection with optional rough filter for repo\n        def _qdrant_query(collection: str, limit: int, repos: Optional[List[str]]):\n            qfilter = None\n            if repos:\n                # build simple OR by doing one query per repo and merge; keep code simple/portable\n                all_pts = []\n                for r in repos:\n                    resp = qdrant.query_points(\n                        collection_name=collection,\n                        query=query_emb,\n                        limit=limit,\n                        query_filter=Filter(must=[FieldCondition(key=\"repo\", match=MatchValue(value=r))]),\n                    )\n                    all_pts.extend(getattr(resp, \"points\", []) or [])\n                return all_pts\n            # no repo filter\n            resp = qdrant.query_points(collection_name=collection, query=query_emb, limit=limit)\n            return getattr(resp, \"points\", []) or []\n\n        # fetch generously, we\u2019ll filter/dedupe locally\n        mult = max(3, 2 * (req.top_k // 5 + 1))\n        code_pts = _qdrant_query(\"code\", req.top_k * mult, (req.filters or RetrieveFilters()).repos) if req.search_code else []\n        doc_pts  = _qdrant_query(\"documents\", req.top_k * mult, (req.filters or RetrieveFilters()).repos) if req.search_docs else []\n\n        def _post_filter(points, is_code: bool):\n            pf = req.filters or RetrieveFilters()\n            out = []\n            for p in points:\n                pl = p.payload or {}\n                if p.score is None:\n                    continue\n                # Qdrant (cosine): LOWER distance is better.\n                # Interpret min_score from API as \"max_distance\" (keep name for backwards-compat).\n                if pf.min_score and (p.score or 0) < pf.min_score:\n                    continue\n                if is_code and pf.languages and (pl.get(\"language\") not in pf.languages):\n                    continue\n                if pf.path_prefixes and is_code:\n                    fp = (pl.get(\"file_path\") or \"\")\n                    if not any(fp.startswith(prefix) for prefix in pf.path_prefixes):\n                        continue\n                out.append(p)\n            return out\n\n        code_pts = _post_filter(code_pts, is_code=True)\n        doc_pts  = _post_filter(doc_pts,  is_code=False)\n\n        # merge and sort by score\n        all_pts = code_pts + doc_pts\n        all_pts.sort(key=lambda x: (x.score or -1), reverse=True)\n\n\n        # dedupe\n        seen = set()\n        snippets = []\n        for p in all_pts:\n            pl = p.payload or {}\n            is_code = (pl.get(\"type\") == \"code\")\n            key = None\n            if req.dedupe_by == \"file\" and is_code:\n                key = f\"code:{pl.get('repo')}:{pl.get('file_path')}\"\n            elif req.dedupe_by == \"source\" and not is_code:\n                key = f\"doc:{pl.get('source')}\"\n            if key and key in seen:\n                continue\n            if key:\n                seen.add(key)\n\n            text = (pl.get(\"content\") or \"\")[: max(0, req.max_snippet_chars)]\n            if not text.strip():\n                continue\n\n            if is_code:\n                snippets.append({\n                    \"type\": \"code\",\n                    \"repo\": pl.get(\"repo\"),\n                    \"file_path\": pl.get(\"file_path\"),\n                    \"language\": pl.get(\"language\"),\n                    \"lines\": pl.get(\"lines\"),\n                    \"score\": p.score,\n                    \"id\": str(p.id),\n                    \"text\": text,\n                })\n            else:\n                snippets.append({\n                    \"type\": \"document\",\n                    \"repo\": pl.get(\"repo\"),\n                    \"source\": pl.get(\"source\"),\n                    \"score\": p.score,\n                    \"id\": str(p.id),\n                    \"text\": text,\n                })\n\n            if len(snippets) >= req.top_k:\n                break\n\n        # optional prompt assembly under token budget\n        prompt = None\n        truncated = False\n        approx_tokens = 0\n        if req.build_prompt:\n            parts = [f\"### {req.section_title}\\n\"]\n            approx_tokens += self._tok(parts[0])\n            for i, s in enumerate(snippets, start=1):\n                if s[\"type\"] == \"code\":\n                    head = f\"[{i}] {s.get('repo','')}/{s.get('file_path','')}\"\n                    if s.get(\"lines\"):\n                        head += f\":{s['lines']}\"\n                    chunk = f\"{head}\\n```{s.get('language','')}\\n{s['text']}\\n```\\n\\n\"\n                else:\n                    head = f\"[{i}] {s.get('source') or s.get('repo') or 'document'}\"\n                    chunk = f\"{head}\\n{s['text']}\\n\\n\"\n\n                need = self._tok(chunk)\n                if req.token_budget and (approx_tokens + need) > req.token_budget:\n                    truncated = True\n                    break\n                parts.append(chunk)\n                approx_tokens += need\n\n            prompt = \"\".join(parts)\n\n        out = {\n            \"query\": req.query,\n            \"snippets\": snippets,\n            \"prompt\": prompt,\n            \"usage\": {\n                \"retrieved\": len(snippets),\n                \"from_code\": sum(1 for s in snippets if s[\"type\"] == \"code\"),\n                \"from_docs\": sum(1 for s in snippets if s[\"type\"] == \"document\"),\n                \"approx_tokens\": approx_tokens if req.build_prompt else None,\n                \"truncated\": truncated if req.build_prompt else None,\n                \"cached\": False,\n            },\n        }\n        # cache\n        redis_client.setex(cache_key, self.cache_ttl, json.dumps(out))\n        return out\n\n    async def query(self, question: str, search_code: bool = True, search_docs: bool = True) -> Dict:\n        \"\"\"\n        Old /query behavior, implemented on top of the new retrieval path.\n        - Runs retrieve() to collect best snippets.\n        - Builds a context block.\n        - Calls the LLM to produce an answer.\n        \"\"\"\n        cache_key = \"rag:\" + hashlib.md5(\n            f\"{question}|{search_code}|{search_docs}\".encode()\n        ).hexdigest()\n        cached = redis_client.get(cache_key)\n        if cached:\n            return json.loads(cached)\n\n        # Pull context via retrieval; keep a generous cap, no dedupe (we want strongest chunks)\n        ret = await self.retrieve(RetrieveRequest(\n            query=question,\n            top_k=7,\n            search_code=search_code,\n            search_docs=search_docs,\n            dedupe_by=\"none\",\n            build_prompt=True,\n            section_title=\"Context from internal code & docs\",\n            token_budget=1800,  # cl100k budget for context\n        ))\n\n        context = ret.get(\"prompt\") or \"No relevant context found.\"\n        sources = []\n        for s in ret.get(\"snippets\", []):\n            if s[\"type\"] == \"code\":\n                sources.append({\n                    \"type\": \"code\",\n                    \"file\": s.get(\"file_path\"),\n                    \"repo\": s.get(\"repo\"),\n                    \"score\": s.get(\"score\"),\n                })\n            else:\n                sources.append({\n                    \"type\": \"document\",\n                    \"source\": s.get(\"source\"),\n                    \"repo\": s.get(\"repo\"),\n                    \"score\": s.get(\"score\"),\n                })\n\n        prompt = f\"\"\"Based on the following context from our internal documents and code, answer the question.\n\n{context}\nQuestion: {question}\n\nInstructions:\n- Answer based primarily on the provided context.\n- If the context doesn't contain enough information, say so explicitly.\n- Be specific and reference filenames or sources when useful.\n- For code questions, prefer examples that appear in the context.\n\"\"\"\n\n        try:\n            resp = await oai.chat.completions.create(\n                model=RAG_ANSWER_MODEL,\n                messages=[\n                    {\"role\": \"system\", \"content\": \"You are a helpful assistant for a small development team. Answer questions based on their internal documentation and codebase.\"},\n                    {\"role\": \"user\", \"content\": prompt},\n                ],\n                max_tokens=1000,\n                temperature=0.3,\n            )\n            answer = resp.choices[0].message.content\n        except Exception as e:\n            logger.error(f\"Answer generation failed: {e}\")\n            answer = \"I couldn't generate an answer right now. Here is the context I found:\\n\\n\" + (context or \"\")\n\n        result = {\n            \"answer\": answer,\n            \"sources\": sources,\n            \"context_used\": len(ret.get(\"snippets\", [])),\n        }\n        redis_client.setex(cache_key, self.cache_ttl, json.dumps(result))\n        return result\n\n\n    # helper: approximate tokens for cl100k (NEW)\n    def _tok(self, text: str) -> int:\n        try:\n            return len(self._enc.encode(text or \"\"))\n        except Exception:\n            # safest fallback\n            return max(1, (len(text or \"\") // 4))\n\n\n# ---------- Services ----------\nchunking_service = ChunkingService()\ngithub_ingester = GitHubIngester(chunking_service)\nquery_engine = QueryEngine()\nconversation_manager = ConversationManager()\n\n\n# ---------- Startup ----------\n@app.on_event(\"startup\")\nasync def startup():\n    # Check embedding dimension vs collection size\n    for name, cfg in COLLECTIONS.items():\n        try:\n            qdrant.create_collection(\n                collection_name=name,\n                vectors_config=VectorParams(size=cfg[\"size\"], distance=cfg[\"distance\"]),\n            )\n            logger.info(f\"Created collection: {name}\")\n        except Exception:\n            logger.info(f\"Collection {name} already exists\")\n\n    if EMBED_DIM != COLLECTIONS[\"code\"][\"size\"]:\n        logger.warning(\n            f\"Embedding model '{RAG_EMBED_MODEL}' has dim {EMBED_DIM}, \"\n            f\"collections are configured for {COLLECTIONS['code']['size']}. \"\n            \"Ensure they match!\"\n        )\n\n@app.post(\"/conversation/search\")\nasync def search_conversations(request: dict):\n    \"\"\"\n    Body:\n    {\n      \"query\": \"...\",\n      \"limit\": 5,\n      \"profile\": \"Frontend Engineer\",\n      \"tags\": [\"pets\",\"project:omega\"]\n    }\n    \"\"\"\n    results = await conversation_manager.search_all_conversations(\n        request[\"query\"],\n        request.get(\"limit\", 5),\n        request.get(\"profile\"),\n        request.get(\"tags\"),\n    )\n    return {\"results\": results}\n\n# ---------- API Models ----------\nclass IngestRepoRequest(BaseModel):\n    repo_url: str\n    branch: str = \"main\"\n\n\nclass QueryRequest(BaseModel):\n    question: str\n    search_code: bool = True\n    search_docs: bool = True\n\n\n# MOUNT STATIC ADMIN UI\napp.mount(\"/admin\", StaticFiles(directory=\"public\", html=True), name=\"admin\")  # NEW\n\n\n# ---------- helpers (NEW) ----------\ndef qdrant_scroll_all(collection: str, with_payload: bool = True):\n    \"\"\"Yield all points (no vectors) for a collection.\"\"\"\n    next_page = None\n    while True:\n        points, next_page = qdrant.scroll(\n            collection_name=collection,\n            limit=512,\n            with_payload=with_payload,\n            with_vectors=False,\n            offset=next_page,\n        )\n        for p in points or []:\n            yield p\n        if not next_page:\n            break\n\n\ndef count_by_payload_field(collection: str, field: str):\n    \"\"\"Return dict counter {value: count} for a given payload field.\"\"\"\n    from collections import Counter\n\n    c = Counter()\n    for pt in qdrant_scroll_all(collection):\n        val = (pt.payload or {}).get(field)\n        # allow list or scalar\n        if isinstance(val, list):\n            for v in val:\n                if v:\n                    c[str(v)] += 1\n        elif val:\n            c[str(val)] += 1\n    return dict(c)\n\n\n# ---------- Endpoints ----------\n@app.post(\"/ingest/repo\")\nasync def ingest_repository(request: IngestRepoRequest, background_tasks: BackgroundTasks):\n    background_tasks.add_task(github_ingester.ingest_repo, request.repo_url, request.branch)\n    return {\"message\": \"Repository ingestion started\", \"repo\": request.repo_url}\n\n\n@app.post(\"/ingest/pdf\")\nasync def ingest_pdf(file: UploadFile):\n    content = await file.read()\n    pdf_reader = PyPDF2.PdfReader(io.BytesIO(content))\n\n    full_text = \"\"\n    for page in pdf_reader.pages:\n        try:\n            full_text += page.extract_text() or \"\"\n        except Exception:\n            continue\n\n    chunks = chunking_service.chunk_text(\n        full_text,\n        {\"source\": file.filename, \"type\": \"pdf\", \"pages\": len(pdf_reader.pages)},\n    )\n\n    texts = [c[\"content\"] for c in chunks]\n    embeddings = await embedding_service.embed_batch(texts)\n\n    points: List[PointStruct] = []\n    for chunk, embedding in zip(chunks, embeddings):\n        chunk_id = hashlib.md5(f\"{file.filename}:{chunk['chunk_index']}\".encode()).hexdigest()\n        payload = {\"content\": chunk[\"content\"], **chunk[\"metadata\"]}\n        points.append(PointStruct(id=chunk_id, vector=embedding, payload=payload))\n\n    if points:\n        qdrant.upsert(collection_name=\"documents\", points=points)\n\n    return {\"message\": f\"Ingested {file.filename}\", \"chunks\": len(chunks)}\n\n\n@app.post(\"/query\")\nasync def query(request: QueryRequest):\n    return await query_engine.query(request.question, request.search_code, request.search_docs)\n\n\n@app.post(\"/conversation/save\")\nasync def save_conversation(request: dict):\n    result = await conversation_manager.save_conversation(\n        conversation_id=request[\"conversation_id\"],\n        messages=request[\"messages\"],\n        metadata=request.get(\"metadata\", {}),\n    )\n    return result\n\n\n@app.get(\"/conversation/{conversation_id}\")\nasync def get_conversation(conversation_id: str, current_query: Optional[str] = None):\n    return await conversation_manager.get_conversation_context(conversation_id, current_query)\n\n\n@app.get(\"/stats\")\nasync def get_stats():\n    stats = {}\n    for collection_name in COLLECTIONS.keys():\n        try:\n            info = qdrant.get_collection(collection_name)\n            stats[f\"{collection_name}_chunks\"] = getattr(info, \"points_count\", 0)\n        except Exception:\n            stats[f\"{collection_name}_chunks\"] = 0\n    stats[\"total_chunks\"] = sum(v for v in stats.values())\n    return stats\n\n\n@app.get(\"/health\")\nasync def health():\n    return {\"status\": \"healthy\"}\n\n\n@app.delete(\"/clear/{collection}\")\nasync def clear_collection(collection: str):\n    if collection in COLLECTIONS:\n        qdrant.delete_collection(collection)\n        qdrant.create_collection(\n            collection_name=collection,\n            vectors_config=VectorParams(size=COLLECTIONS[collection][\"size\"], distance=COLLECTIONS[collection][\"distance\"]),\n        )\n        return {\"message\": f\"Cleared {collection}\"}\n    raise HTTPException(status_code=404, detail=\"Collection not found\")\n\n@app.get(f\"{ADMIN_API_PREFIX}/info\")\nasync def admin_info():\n    \"\"\"Basic config & runtime for the UI.\"\"\"\n    return {\n        \"models\": {\n            \"embed\": RAG_EMBED_MODEL,\n            \"summary\": RAG_SUMMARY_MODEL,\n            \"answer\": RAG_ANSWER_MODEL,\n            \"embed_dim\": EMBED_DIM,\n        },\n        \"chunking\": {\n            \"chunk_size\": chunking_service.chunk_size,\n            \"overlap\": chunking_service.overlap,\n        },\n        \"collections\": list(COLLECTIONS.keys()),\n        \"qdrant_url\": QDRANT_URL,\n        \"redis_host\": REDIS_HOST,\n    }\n\n\n@app.get(f\"{ADMIN_API_PREFIX}/repos\")\nasync def admin_repos():\n    \"\"\"Aggregate repo counts from 'code' + 'documents' payloads.\"\"\"\n    from collections import defaultdict\n\n    counts = defaultdict(lambda: {\"count\": 0, \"collections\": set()})\n    # code\n    for p in qdrant_scroll_all(\"code\"):\n        repo = (p.payload or {}).get(\"repo\")\n        if repo:\n            counts[repo][\"count\"] += 1\n            counts[repo][\"collections\"].add(\"code\")\n    # documents\n    for p in qdrant_scroll_all(\"documents\"):\n        repo = (p.payload or {}).get(\"repo\")\n        if repo:\n            counts[repo][\"count\"] += 1\n            counts[repo][\"collections\"].add(\"documents\")\n\n    items = [\n        {\"repo\": k, \"count\": v[\"count\"], \"collections\": sorted(list(v[\"collections\"]))}\n        for k, v in counts.items()\n    ]\n    items.sort(key=lambda x: x[\"count\"], reverse=True)\n    return {\"items\": items}\n\n\n@app.get(f\"{ADMIN_API_PREFIX}/docs\")\nasync def admin_docs():\n    \"\"\"Aggregate document sources & counts from 'documents' collection.\"\"\"\n    counts = count_by_payload_field(\"documents\", \"source\")\n    items = [{\"source\": k, \"count\": v} for k, v in counts.items()]\n    items.sort(key=lambda x: x[\"count\"], reverse=True)\n    return {\"items\": items}\n\n\n@app.get(f\"{ADMIN_API_PREFIX}/tags\")\nasync def admin_tags():\n    \"\"\"Aggregate tags from conversation payloads.\"\"\"\n    # tags could be a list or string in payloads (metadata you store)\n    from collections import defaultdict\n\n    tag_counts = defaultdict(int)\n    conv_counts = defaultdict(set)  # tag -> set(conversation_id)\n\n    for p in qdrant_scroll_all(\"conversations\"):\n        payload = p.payload or {}\n        cid = payload.get(\"conversation_id\")\n        tags = payload.get(\"tags\")\n        # normalize\n        if isinstance(tags, str):\n            tags = [t.strip() for t in tags.split(\",\") if t.strip()]\n        if isinstance(tags, list):\n            for t in tags:\n                tag_counts[t] += 1\n                if cid:\n                    conv_counts[t].add(cid)\n\n    items = [\n        {\"tag\": t, \"count\": tag_counts[t], \"conversations\": len(conv_counts[t])}\n        for t in tag_counts.keys()\n    ]\n    items.sort(key=lambda x: x[\"count\"], reverse=True)\n    return {\"items\": items}\n\n\n@app.get(f\"{ADMIN_API_PREFIX}/conversations\")\nasync def admin_conversations(profile: Optional[str] = None, tags: Optional[str] = None, limit: int = 100):\n    \"\"\"List conversations with last timestamp, tags (union), chunk count.\"\"\"\n    from collections import defaultdict\n\n    tag_list = [t.strip() for t in (tags or \"\").split(\",\") if t.strip()]\n\n    index = defaultdict(lambda: {\"chunks\": 0, \"tags\": set(), \"last_timestamp\": None})\n    for p in qdrant_scroll_all(\"conversations\"):\n        pl = p.payload or {}\n        cid = pl.get(\"conversation_id\")\n        if not cid:\n            continue\n        if profile and pl.get(\"profile\") != profile:\n            continue\n        # normalize tags for filter + union\n        its_tags = pl.get(\"tags\")\n        if isinstance(its_tags, str):\n            its_tags = [t.strip() for t in its_tags.split(\",\") if t.strip()]\n        if its_tags is None:\n            its_tags = []\n        if tag_list and not set(tag_list).issubset(set(its_tags)):\n            continue\n\n        index[cid][\"chunks\"] += 1\n        index[cid][\"tags\"].update(its_tags)\n        ts = pl.get(\"timestamp\")\n        if ts:\n            # keep max timestamp string (ISO sorts ok) or convert to comparable\n            index[cid][\"last_timestamp\"] = max(index[cid][\"last_timestamp\"] or ts, ts)\n\n    items = [\n        {\n            \"conversation_id\": cid,\n            \"chunks\": data[\"chunks\"],\n            \"tags\": sorted(list(data[\"tags\"])),\n            \"last_timestamp\": data[\"last_timestamp\"],\n        }\n        for cid, data in index.items()\n    ]\n    items.sort(key=lambda x: x[\"last_timestamp\"] or \"\", reverse=True)\n    return {\"items\": items[: max(1, limit)]}\n\n\n@app.post(f\"{ADMIN_API_PREFIX}/cache/clear\")\nasync def admin_cache_clear():\n    \"\"\"Clear common Redis keys used by this service (best-effort).\"\"\"\n    # narrow clear: only keys we know (rag:* and conversation:*). Avoid full FLUSHALL.\n    cleared = 0\n    for pattern in [\"rag:*\", \"conversation:*\"]:\n        for key in redis_client.scan_iter(match=pattern, count=500):\n            redis_client.delete(key)\n            cleared += 1\n    return {\"cleared\": cleared}\n\n@app.post(\"/retrieve\")\nasync def retrieve(req: RetrieveRequest):\n    \"\"\"\n    Retrieval-only endpoint for chat augmentation.\n\n    - Returns snippets (code/docs) + optional assembled prompt.\n    - Does NOT call the LLM.\n    \"\"\"\n    return await query_engine.retrieve(req)\n\nif __name__ == \"__main__\":\n    uvicorn.run(app, host=\"0.0.0.0\", port=int(os.getenv(\"PORT\", \"8000\")))\n",
+      "language": "python",
+      "symbols": [
+        "EmbeddingService",
+        "CodeChunk",
+        "ChunkingService",
+        "GitHubIngester",
+        "RetrieveFilters",
+        "RetrieveRequest",
+        "ConversationManager",
+        "QueryEngine",
+        "IngestRepoRequest",
+        "QueryRequest",
+        "qdrant_scroll_all",
+        "count_by_payload_field"
+      ]
+    },
+    "modular-framework/modules/browser/server/index.js": {
+      "content": "const express = require('express');\nconst cors = require('cors');\nconst path = require('path');\nconst axios = require('axios');\nconst { URL } = require('url');\n\nconst app = express();\nconst PORT = process.env.PORT || 3008;\nconst { WebSocketServer } = require('ws');\n\nconst dns = require('dns').promises;\nconst net = require('net');\nconst http = require('http');\nconst httpProxy = require('http-proxy');\nconst server = http.createServer(app);\n\nconst { v4: uuidv4 } = require('uuid');\nconst puppeteer = require('puppeteer-core');\nconst { createProxyMiddleware } = require('http-proxy-middleware');\nconst fs = require('fs');\nconst wss = new WebSocketServer({ noServer: true });\n\nconst CHROME_BIN_CANDIDATES = ['/usr/bin/chromium-browser', '/usr/bin/chromium', '/usr/bin/google-chrome'];\n// id -> WebSocket\nconst uiClients = new Map();\n\nconst CONTROL_TOKEN = process.env.BROWSER_CONTROL_TOKEN || '';\n//function authOk(req) {\n//  if (!CONTROL_TOKEN) return true; // no auth in dev\n//  const h = req.headers['authorization'] || '';\n//  return h === `Bearer ${CONTROL_TOKEN}`;\n//}\n\nfunction authOk(_req) { return true; } // DEV-ONLY\n\n\n\n\n\nfunction findChrome() {\n  for (const p of CHROME_BIN_CANDIDATES) if (fs.existsSync(p)) return p;\n  return process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser';\n}\n\nconst sessions = new Map(); // id -> { browser, page, debugPort, targetId, eventBus, headers }\n\nasync function launchSession(opts = {}) {\n  const execPath = findChrome();\n  const browser = await puppeteer.launch({\n    executablePath: execPath,\n    headless: true,           // change to false if you ever want a visible X display\n    args: [\n      '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage',\n      '--remote-debugging-port=0', // let Chrome pick a free port; we\u2019ll discover it\n      '--no-first-run', '--no-default-browser-check'\n    ]\n  });\n\n  // Discover the devtools port from wsEndpoint (ws://127.0.0.1:PORT/devtools/\u2026)\n  const m = browser.wsEndpoint().match(/:(\\d+)\\//);\n  const debugPort = m ? Number(m[1]) : 0;\n\n  const page = await browser.newPage();\n  if (opts.viewport) await page.setViewport(opts.viewport);\n  if (opts.headers)  await page.setExtraHTTPHeaders(opts.headers);\n\n  // Basic console/network event stream for SSE\n  const events = [];\n  const push = (type, payload) => {\n    const ev = { id: Date.now() + Math.random(), t: new Date().toISOString(), type, payload };\n    events.push(ev); while (events.length > 500) events.shift();\n  };\n  page.on('console', msg => push('console', { type: msg.type(), text: msg.text() }));\n  page.on('request', r => push('request', { url: r.url(), method: r.method() }));\n  page.on('response', r => push('response', { url: r.url(), status: r.status() }));\n\n  const id = uuidv4();\n  const target = page.target(); // Keep for devtools target id\n  const targetId = target._targetId || ''; // puppeteer private, but works\n\n  sessions.set(id, { browser, page, debugPort, targetId, headers: opts.headers || {}, events });\n  return { id, debugPort, targetId };\n}\n\n\nfunction isPrivateIP(ip) {\n  const b = ip.split('.').map(Number);\n  return (\n    b[0] === 10 ||\n    (b[0] === 172 && b[1] >= 16 && b[1] <= 31) ||\n    (b[0] === 192 && b[1] === 168) ||\n    ip === '127.0.0.1' ||\n    ip === '0.0.0.0'\n  );\n}\n\napp.get('/api/proxy', async (req, res) => {\n  const targetUrl = req.query.url;\n  if (!targetUrl) return res.status(400).json({ error: 'URL parameter required' });\n\n  let u;\n  try {\n    u = new URL(targetUrl);\n  } catch {\n    return res.status(400).json({ error: 'Invalid URL' });\n  }\n  if (!['http:', 'https:'].includes(u.protocol)) {\n    return res.status(400).json({ error: 'Protocol not allowed' });\n  }\n\n  try {\n    // Resolve and block private IPs (basic SSRF protection)\n    const addrs = await dns.lookup(u.hostname, { all: true, family: 4 });\n    if (addrs.some(a => isPrivateIP(a.address))) {\n      return res.status(403).json({ error: 'Target not allowed' });\n    }\n\n    const upstream = await axios.get(u.toString(), {\n      headers: { 'User-Agent': 'Mozilla/5.0 ModularFrameworkBrowser/1.0' },\n      responseType: 'arraybuffer',          // handle any content\n      maxContentLength: 50 * 1024 * 1024,   // 50MB\n      maxBodyLength: 50 * 1024 * 1024,\n      validateStatus: () => true\n    });\n\n    // Pass through non-HTML as-is\n    const contentType = upstream.headers['content-type'] || 'application/octet-stream';\n    if (!/^text\\/html/i.test(contentType)) {\n      res.status(upstream.status);\n      Object.entries(upstream.headers).forEach(([k, v]) => {\n        if (!/^content-security-policy/i.test(k)) res.setHeader(k, v);\n      });\n      return res.send(Buffer.from(upstream.data));\n    }\n\n    // HTML: inject <base> to repair relative URLs\n    const html = Buffer.from(upstream.data).toString('utf8');\n    const base = `${u.protocol}//${u.host}`;\n    const patched = html.replace(/<head([^>]*)>/i, `<head$1><base href=\"${base}/\">`);\n\n    res.status(upstream.status);\n    res.setHeader('Content-Type', 'text/html; charset=utf-8');\n    // Loosen frame-ancestors so it renders inside your pane\n    res.setHeader('Content-Security-Policy', \"frame-ancestors 'self'\");\n    return res.send(patched);\n  } catch (error) {\n    return res.status(500).json({ error: error.message });\n  }\n});\n\napp.use(cors());\napp.use(express.json());\napp.use(express.static(path.join(__dirname, '../public')));\n\n\n// Screenshot endpoint using Puppeteer (optional)\napp.get('/api/screenshot', async (req, res) => {\n  const { url } = req.query;\n  if (!url) return res.status(400).json({ error: 'URL required' });\n\n  try {\n    const browser = await puppeteer.launch({\n      executablePath: findChrome(),\n      args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage']\n    });\n    const page = await browser.newPage();\n    await page.goto(url, { waitUntil: 'networkidle2' });\n    const screenshot = await page.screenshot({ type: 'png' });\n    await browser.close();\n    res.setHeader('Content-Type', 'image/png');\n    res.send(screenshot);\n  } catch (e) {\n    res.status(500).json({ error: e.message });\n  }\n});\n\n// Bookmarks API\nconst bookmarks = [];\n\napp.get('/api/bookmarks', (req, res) => {\n    res.json(bookmarks);\n});\n\napp.post('/api/bookmarks', (req, res) => {\n    const { title, url } = req.body;\n    const bookmark = { id: Date.now(), title, url, created: new Date() };\n    bookmarks.push(bookmark);\n    res.json(bookmark);\n});\n\napp.delete('/api/bookmarks/:id', (req, res) => {\n    const index = bookmarks.findIndex(b => b.id === parseInt(req.params.id));\n    if (index > -1) {\n        bookmarks.splice(index, 1);\n        res.json({ success: true });\n    } else {\n        res.status(404).json({ error: 'Bookmark not found' });\n    }\n});\n\napp.get('/health', (req, res) => {\n    res.json({ status: 'healthy' });\n});\n\nserver.on('upgrade', (req, socket, head) => {\n  if (!req.url.startsWith('/api/ui/ws')) return socket.destroy();\n  if (!authOk(req)) return socket.destroy();\n\n  const qs = new URL(req.url, 'http://x').searchParams;\n  const id = qs.get('id');\n  if (!id) return socket.destroy();\n\n  wss.handleUpgrade(req, socket, head, (ws) => {\n    uiClients.set(id, ws);\n    ws.on('close', () => uiClients.delete(id));\n  });\n});\n\n// helper to push a command to a given client\nfunction sendCmd(id, cmd) {\n  const ws = uiClients.get(id);\n  if (!ws || ws.readyState !== ws.OPEN) throw new Error('UI not connected');\n  ws.send(JSON.stringify(cmd));\n}\n\nserver.listen(PORT, () => {\n  console.log(`Browser module running on port ${PORT}`);\n});\n\napp.post('/api/sessions', async (req, res) => {\n  try {\n    const { viewport, headers } = req.body || {};\n    const s = await launchSession({ viewport, headers });\n    res.json({ sessionId: s.id });\n  } catch (e) {\n    res.status(500).json({ error: e.message });\n  }\n});\n\n// Close session\napp.delete('/api/sessions/:id', async (req, res) => {\n  const s = sessions.get(req.params.id);\n  if (!s) return res.status(404).json({ error: 'not found' });\n  await s.browser.close();\n  sessions.delete(req.params.id);\n  res.json({ ok: true });\n});\n\n// Navigate\napp.post('/api/sessions/:id/navigate', async (req, res) => {\n  const s = sessions.get(req.params.id);\n  if (!s) return res.status(404).json({ error: 'not found' });\n  const { url, waitUntil = 'networkidle2', timeout = 45000 } = req.body || {};\n  if (!url) return res.status(400).json({ error: 'url required' });\n  await s.page.goto(url, { waitUntil, timeout });\n  res.json({ ok: true });\n});\n\n// History ops\napp.post('/api/sessions/:id/reload', async (req, res) => {\n  const s = sessions.get(req.params.id);\n  if (!s) return res.status(404).json({ error: 'not found' });\n  await s.page.reload({ waitUntil: 'networkidle2' });\n  res.json({ ok: true });\n});\napp.post('/api/sessions/:id/back', async (req, res) => {\n  const s = sessions.get(req.params.id); if (!s) return res.status(404).json({ error: 'not found' });\n  await s.page.goBack({ waitUntil: 'networkidle2' }); res.json({ ok: true });\n});\napp.post('/api/sessions/:id/forward', async (req, res) => {\n  const s = sessions.get(req.params.id); if (!s) return res.status(404).json({ error: 'not found' });\n  await s.page.goForward({ waitUntil: 'networkidle2' }); res.json({ ok: true });\n});\n\n// Interactions\napp.post('/api/sessions/:id/click', async (req, res) => {\n  const s = sessions.get(req.params.id);\n  if (!s) return res.status(404).json({ error: 'not found' });\n  const { selector, timeout = 15000 } = req.body || {};\n  if (!selector) return res.status(400).json({ error: 'selector required' });\n  await s.page.waitForSelector(selector, { timeout });\n  await s.page.click(selector);\n  res.json({ ok: true });\n});\napp.post('/api/sessions/:id/type', async (req, res) => {\n  const s = sessions.get(req.params.id);\n  if (!s) return res.status(404).json({ error: 'not found' });\n  const { selector, text, delay = 0, timeout = 15000 } = req.body || {};\n  if (!selector || text == null) return res.status(400).json({ error: 'selector & text required' });\n  await s.page.waitForSelector(selector, { timeout });\n  await s.page.type(selector, text, { delay });\n  res.json({ ok: true });\n});\napp.post('/api/sessions/:id/waitFor', async (req, res) => {\n  const s = sessions.get(req.params.id);\n  if (!s) return res.status(404).json({ error: 'not found' });\n  const { selector, timeout = 30000 } = req.body || {};\n  await s.page.waitForSelector(selector, { timeout });\n  res.json({ ok: true });\n});\n\n// Evaluate JS\napp.post('/api/sessions/:id/eval', async (req, res) => {\n  const s = sessions.get(req.params.id);\n  if (!s) return res.status(404).json({ error: 'not found' });\n  const { script } = req.body || {};\n  if (!script) return res.status(400).json({ error: 'script required' });\n  const result = await s.page.evaluate(new Function(`return (${script});`));\n  res.json({ result });\n});\n\n// Screenshot / PDF\napp.post('/api/sessions/:id/screenshot', async (req, res) => {\n  const s = sessions.get(req.params.id); if (!s) return res.status(404).json({ error: 'not found' });\n  const { fullPage = true, type = 'png' } = req.body || {};\n  const buf = await s.page.screenshot({ fullPage, type });\n  res.setHeader('Content-Type', type === 'jpeg' ? 'image/jpeg' : 'image/png');\n  res.send(buf);\n});\napp.post('/api/sessions/:id/pdf', async (req, res) => {\n  const s = sessions.get(req.params.id); if (!s) return res.status(404).json({ error: 'not found' });\n  const { format = 'A4', printBackground = true } = req.body || {};\n  const pdf = await s.page.pdf({ format, printBackground });\n  res.setHeader('Content-Type', 'application/pdf');\n  res.send(pdf);\n});\n\n// Headers / cookies / viewport\napp.post('/api/sessions/:id/headers', async (req, res) => {\n  const s = sessions.get(req.params.id); if (!s) return res.status(404).json({ error: 'not found' });\n  s.headers = req.body || {};\n  await s.page.setExtraHTTPHeaders(s.headers);\n  res.json({ ok: true });\n});\napp.post('/api/sessions/:id/viewport', async (req, res) => {\n  const s = sessions.get(req.params.id); if (!s) return res.status(404).json({ error: 'not found' });\n  await s.page.setViewport(req.body || { width: 1280, height: 800, deviceScaleFactor: 1 });\n  res.json({ ok: true });\n});\napp.post('/api/sessions/:id/cookies', async (req, res) => {\n  const s = sessions.get(req.params.id); if (!s) return res.status(404).json({ error: 'not found' });\n  const { cookies = [] } = req.body || {};\n  await s.page.setCookie(...cookies);\n  res.json({ ok: true });\n});\n// REST endpoints to drive the visible pane\napp.post('/api/ui/:id/navigate', (req, res) => {\n  if (!authOk(req)) return res.status(401).json({ error: 'unauthorized' });\n  const { url } = req.body || {};\n  if (!url) return res.status(400).json({ error: 'url required' });\n  try { sendCmd(req.params.id, { type: 'navigate', url }); res.json({ ok: true }); }\n  catch (e) { res.status(409).json({ error: e.message }); }\n});\n\napp.post('/api/ui/:id/reload',  (req, res) => { if (!authOk(req)) return res.status(401).json({ error: 'unauthorized' }); try { sendCmd(req.params.id, { type: 'reload'  }); res.json({ ok: true }); } catch (e) { res.status(409).json({ error: e.message }); } });\napp.post('/api/ui/:id/back',    (req, res) => { if (!authOk(req)) return res.status(401).json({ error: 'unauthorized' }); try { sendCmd(req.params.id, { type: 'back'    }); res.json({ ok: true }); } catch (e) { res.status(409).json({ error: e.message }); } });\napp.post('/api/ui/:id/forward', (req, res) => { if (!authOk(req)) return res.status(401).json({ error: 'unauthorized' }); try { sendCmd(req.params.id, { type: 'forward' }); res.json({ ok: true }); } catch (e) { res.status(409).json({ error: e.message }); } });\napp.post('/api/ui/:id/proxy',   (req, res) => { if (!authOk(req)) return res.status(401).json({ error: 'unauthorized' }); try { sendCmd(req.params.id, { type: 'proxy', enable: !!req.body?.enable }); res.json({ ok: true }); } catch (e) { res.status(409).json({ error: e.message }); } });\n\n\napp.get('/api/sessions/:id/cookies', async (req, res) => {\n  const s = sessions.get(req.params.id); if (!s) return res.status(404).json({ error: 'not found' });\n  res.json(await s.page.cookies());\n});\n\n// Event stream (console/network)\napp.get('/api/sessions/:id/events', (req, res) => {\n  const s = sessions.get(req.params.id); if (!s) return res.status(404).end();\n  res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });\n  let last = 0;\n  const timer = setInterval(() => {\n    while (last < s.events.length) {\n      const ev = s.events[last++];\n      res.write(`id: ${ev.id}\\nevent: ${ev.type}\\ndata: ${JSON.stringify(ev)}\\n\\n`);\n    }\n  }, 1000);\n  req.on('close', () => clearInterval(timer));\n});\n\n// DevTools proxy (HTTP + WS) for this session\u2019s Chrome\napp.use('/api/devtools/:id', (req, res, next) => {\n  const s = sessions.get(req.params.id);\n  if (!s) return res.status(404).send('session not found');\n  return createProxyMiddleware({\n    target: `http://127.0.0.1:${s.debugPort}`,\n    changeOrigin: true,\n    ws: true,\n    secure: false,\n    pathRewrite: { [`^/api/devtools/${req.params.id}`]: '' }\n  })(req, res, next);\n});\n\n// Helper to get an embeddable DevTools URL for the current page\napp.get('/api/sessions/:id/devtools', async (req, res) => {\n  const s = sessions.get(req.params.id);\n  if (!s) return res.status(404).json({ error: 'not found' });\n\n  try {\n    const list = await axios.get(`http://127.0.0.1:${s.debugPort}/json`);\n    const pageEntry = list.data.find(x => x.type === 'page' && x.url);\n    const targetId = pageEntry?.id || s.targetId;\n\n    const tail = `/api/sessions/${req.params.id}/devtools`;\n    const prefix = req.originalUrl.endsWith(tail)\n      ? req.originalUrl.slice(0, -tail.length)\n      : ''; // e.g. '/api/browser'\n\n    const base = `${prefix}/api/devtools/${req.params.id}`;\n    const devtoolsUrl =\n      `${base}/devtools/inspector.html?ws=${req.headers.host}${base}/devtools/page/${targetId}`;\n\n    res.json({ devtoolsUrl });\n  } catch (e) {\n    res.status(500).json({ error: e.message });\n  }\n});",
+      "language": "javascript",
+      "symbols": [
+        "express",
+        "cors",
+        "path",
+        "axios",
+        "app",
+        "PORT",
+        "dns",
+        "net",
+        "http",
+        "httpProxy",
+        "server",
+        "puppeteer",
+        "fs",
+        "wss",
+        "CHROME_BIN_CANDIDATES",
+        "uiClients",
+        "CONTROL_TOKEN",
+        "authOk",
+        "h",
+        "findChrome",
+        "p",
+        "sessions",
+        "launchSession",
+        "execPath",
+        "browser",
+        "Chrome",
+        "m",
+        "debugPort",
+        "page",
+        "events",
+        "push",
+        "ev",
+        "id",
+        "target",
+        "targetId",
+        "isPrivateIP",
+        "b",
+        "targetUrl",
+        "u",
+        "addrs",
+        "upstream",
+        "contentType",
+        "html",
+        "base",
+        "patched",
+        "screenshot",
+        "bookmarks",
+        "bookmark",
+        "index",
+        "qs"
+      ]
+    },
+    "modular-framework/modules/github-hub/app/github_api.py": {
+      "content": "from __future__ import annotations\nimport base64, json\nfrom typing import Dict, Any, List, Optional, Tuple\nimport requests\nfrom loguru import logger\n\nclass GHClient:\n    def __init__(self, token: str, base_url: str = \"https://api.github.com\"):\n        self.token = token\n        self.base_url = base_url.rstrip(\"/\")\n\n    def _h(self):\n        return {\n            \"Authorization\": f\"Bearer {self.token}\",\n            \"Accept\": \"application/vnd.github+json\",\n            \"X-GitHub-Api-Version\": \"2022-11-28\",\n        }\n\n    @staticmethod\n    def parse_repo(url: str) -> Tuple[str, str]:\n        # supports https://github.com/owner/repo(.git)\n        parts = url.strip().rstrip(\"/\").split(\"/\")\n        owner, repo = parts[-2], parts[-1].removesuffix(\".git\")\n        return owner, repo\n\n    # ----- simple endpoints -----\n    def get_branches(self, owner: str, repo: str) -> List[str]:\n        r = requests.get(f\"{self.base_url}/repos/{owner}/{repo}/branches\", headers=self._h(), timeout=20)\n        r.raise_for_status()\n        return [b[\"name\"] for b in r.json()]\n\n    def get_branch_sha(self, owner: str, repo: str, branch: str) -> str:\n        r = requests.get(f\"{self.base_url}/repos/{owner}/{repo}/branches/{branch}\", headers=self._h(), timeout=20)\n        r.raise_for_status()\n        return r.json()[\"commit\"][\"sha\"]\n\n    def get_tree(self, owner: str, repo: str, branch: str, recursive: bool = True) -> Dict[str, Any]:\n        sha = self.get_branch_sha(owner, repo, branch)\n        url = f\"{self.base_url}/repos/{owner}/{repo}/git/trees/{sha}\"\n        if recursive:\n            url += \"?recursive=1\"\n        r = requests.get(url, headers=self._h(), timeout=30)\n        r.raise_for_status()\n        return r.json()\n\n    def get_file(self, owner: str, repo: str, path: str, ref: Optional[str] = None) -> Dict[str, Any]:\n        params = {\"ref\": ref} if ref else None\n        r = requests.get(f\"{self.base_url}/repos/{owner}/{repo}/contents/{path}\", headers=self._h(), params=params, timeout=20)\n        r.raise_for_status()\n        data = r.json()\n        content_b64 = data.get(\"content\") or \"\"\n        decoded = base64.b64decode(content_b64.encode(\"utf-8\")).decode(\"utf-8\", errors=\"ignore\") if content_b64 else \"\"\n        return {**data, \"decoded_content\": decoded}\n\n    def put_file(self, owner: str, repo: str, path: str, message: str, content: str, branch: Optional[str], sha: Optional[str]) -> Dict[str, Any]:\n        payload = {\n            \"message\": message,\n            \"content\": base64.b64encode(content.encode(\"utf-8\")).decode(\"utf-8\"),\n        }\n        if branch: payload[\"branch\"] = branch\n        if sha: payload[\"sha\"] = sha\n        r = requests.put(f\"{self.base_url}/repos/{owner}/{repo}/contents/{path}\", headers=self._h(), json=payload, timeout=30)\n        r.raise_for_status()\n        return r.json()\n\n    def delete_file(self, owner: str, repo: str, path: str, message: str, sha: str, branch: Optional[str]) -> Dict[str, Any]:\n        payload = {\"message\": message, \"sha\": sha}\n        if branch: payload[\"branch\"] = branch\n        r = requests.delete(f\"{self.base_url}/repos/{owner}/{repo}/contents/{path}\", headers=self._h(), json=payload, timeout=30)\n        r.raise_for_status()\n        return r.json()\n\n    def create_branch(self, owner: str, repo: str, new_branch: str, from_branch: str) -> Dict[str, Any]:\n        base_sha = self.get_branch_sha(owner, repo, from_branch)\n        payload = {\"ref\": f\"refs/heads/{new_branch}\", \"sha\": base_sha}\n        r = requests.post(f\"{self.base_url}/repos/{owner}/{repo}/git/refs\", headers=self._h(), json=payload, timeout=20)\n        r.raise_for_status()\n        return r.json()\n\n    # ----- batch commit (single commit for many files) -----\n    def get_commit_and_tree(self, owner: str, repo: str, branch: str) -> tuple[str, str]:\n        ref = requests.get(f\"{self.base_url}/repos/{owner}/{repo}/git/ref/heads/{branch}\", headers=self._h(), timeout=20)\n        ref.raise_for_status()\n        commit_sha = ref.json()[\"object\"][\"sha\"]\n        commit = requests.get(f\"{self.base_url}/repos/{owner}/{repo}/git/commits/{commit_sha}\", headers=self._h(), timeout=20)\n        commit.raise_for_status()\n        tree_sha = commit.json()[\"tree\"][\"sha\"]\n        return commit_sha, tree_sha\n\n    def create_blob(self, owner: str, repo: str, content: str, encoding: str = \"utf-8\") -> str:\n        payload = {\"content\": content, \"encoding\": encoding}\n        r = requests.post(f\"{self.base_url}/repos/{owner}/{repo}/git/blobs\", headers=self._h(), json=payload, timeout=20)\n        r.raise_for_status()\n        return r.json()[\"sha\"]\n\n    def create_tree(self, owner: str, repo: str, base_tree: str, entries: List[Dict[str, Any]]) -> str:\n        payload = {\"base_tree\": base_tree, \"tree\": entries}\n        r = requests.post(f\"{self.base_url}/repos/{owner}/{repo}/git/trees\", headers=self._h(), json=payload, timeout=20)\n        r.raise_for_status()\n        return r.json()[\"sha\"]\n\n    def create_commit(self, owner: str, repo: str, message: str, tree_sha: str, parents: List[str]) -> str:\n        payload = {\"message\": message, \"tree\": tree_sha, \"parents\": parents}\n        r = requests.post(f\"{self.base_url}/repos/{owner}/{repo}/git/commits\", headers=self._h(), json=payload, timeout=20)\n        r.raise_for_status()\n        return r.json()[\"sha\"]\n\n    def update_ref(self, owner: str, repo: str, branch: str, new_sha: str) -> Dict[str, Any]:\n        payload = {\"sha\": new_sha, \"force\": False}\n        r = requests.patch(f\"{self.base_url}/repos/{owner}/{repo}/git/refs/heads/{branch}\", headers=self._h(), json=payload, timeout=20)\n        r.raise_for_status()\n        return r.json()\n\n    def batch_commit(self, owner: str, repo: str, branch: str, message: str, changes: List[Dict[str, str]]) -> Dict[str, Any]:\n        \"\"\"\n        changes: [{ \"path\": \"dir/file.txt\", \"content\": \"string\", \"mode\": \"100644\" }]\n        \"\"\"\n        commit_sha, base_tree = self.get_commit_and_tree(owner, repo, branch)\n        tree_entries = []\n        for ch in changes:\n            blob_sha = self.create_blob(owner, repo, ch[\"content\"], \"utf-8\")\n            tree_entries.append({\n                \"path\": ch[\"path\"],\n                \"mode\": ch.get(\"mode\", \"100644\"),\n                \"type\": \"blob\",\n                \"sha\": blob_sha\n            })\n        new_tree = self.create_tree(owner, repo, base_tree, tree_entries)\n        new_commit = self.create_commit(owner, repo, message, new_tree, [commit_sha])\n        self.update_ref(owner, repo, branch, new_commit)\n        return {\"commit_sha\": new_commit}\n",
+      "language": "python",
+      "symbols": [
+        "GHClient"
+      ]
+    },
+    "modular-framework/modules/github-hub/app/main.py": {
+      "content": "from __future__ import annotations\nimport os\nfrom typing import Optional, List, Dict, Any\nfrom fastapi import FastAPI, HTTPException, Query\nfrom fastapi.middleware.cors import CORSMiddleware\nfrom fastapi.staticfiles import StaticFiles\nfrom fastapi.responses import RedirectResponse\nfrom pydantic import BaseModel, Field\nfrom loguru import logger\nfrom pathlib import Path\n\nfrom .store import load_config, save_config\nfrom .github_api import GHClient\n\napp = FastAPI(title=\"GitHub Hub\", version=\"0.1.0\")\n\napp.add_middleware(\n    CORSMiddleware,\n    allow_origins=[\"*\"], allow_credentials=True, allow_methods=[\"*\"], allow_headers=[\"*\"],\n)\n\n# serve the tiny UI\n# Serve UI at /ui to avoid shadowing /api/*\napp.mount(\"/ui\", StaticFiles(directory=\"public\", html=True), name=\"ui\")\n\ndef _read_token() -> Optional[str]:\n    \"\"\"Read token from env or Docker secret file.\"\"\"\n    token_file = os.getenv(\"GITHUB_TOKEN_FILE\")\n    if token_file and Path(token_file).exists():\n        return Path(token_file).read_text(encoding=\"utf-8\").strip()\n    return os.getenv(\"GITHUB_TOKEN\")\n\ndef _client_from_cfg(cfg: Dict[str, Any]) -> GHClient:\n    token = _read_token()\n    if not token:\n        raise HTTPException(400, \"GITHUB_TOKEN not set (or GITHUB_TOKEN_FILE missing).\")\n    base_url = cfg.get(\"base_url\") or os.getenv(\"GITHUB_API_BASE\", \"https://api.github.com\")\n    return GHClient(token=token, base_url=base_url)\n\n\n@app.get(\"/\")\ndef root():\n    # convenience: / -> /ui/\n    return RedirectResponse(url=\"/ui/\")\ndef _client_from_cfg(cfg: Dict[str, Any]) -> GHClient:\n    token = _read_token()\n    if not token:\n        raise HTTPException(400, \"GITHUB_TOKEN not set (or GITHUB_TOKEN_FILE missing).\")\n    base_url = cfg.get(\"base_url\") or os.getenv(\"GITHUB_API_BASE\", \"https://api.github.com\")\n    return GHClient(token=token, base_url=base_url)\n\ndef _owner_repo_from_cfg(cfg: Dict[str, Any]) -> tuple[str, str]:\n    url = cfg.get(\"repo_url\")\n    if not url:\n        raise HTTPException(400, \"No repo_url in config.\")\n    return GHClient.parse_repo(url)\n\n# --------- models ----------\nclass ConfigIn(BaseModel):\n    repo_url: str = Field(..., examples=[\"https://github.com/owner/repo\"])\n    default_branch: Optional[str] = \"main\"\n    token: Optional[str] = None\n    base_url: Optional[str] = \"https://api.github.com\"  # for GH Enterprise\n\nclass FilePut(BaseModel):\n    path: str\n    message: str\n    content: str\n    branch: Optional[str] = None\n    sha: Optional[str] = None  # include for updates\n\nclass BatchChange(BaseModel):\n    path: str\n    content: str\n    mode: Optional[str] = \"100644\"\n\nclass BatchCommit(BaseModel):\n    branch: str\n    message: str\n    changes: List[BatchChange]\n\n# --------- API ----------\n@app.get(\"/api/health\")\ndef health():\n    return {\"status\": \"ok\"}\n\n@app.get(\"/api/config\")\ndef get_cfg():\n    cfg = load_config()\n    # never return token/plain/enc to UI\n    cfg.pop(\"token\", None)\n    cfg.pop(\"token_plain\", None)\n    cfg.pop(\"token_enc\", None)\n    return cfg\n\n@app.post(\"/api/config\")\ndef set_cfg(body: ConfigIn):\n    cfg = load_config()\n    cfg.update(body.model_dump(exclude_unset=True))\n    out = save_config(cfg)\n    try:\n        # test connectivity + preload branches\n        gh = _client_from_cfg(out)\n        owner, repo = _owner_repo_from_cfg(out)\n        branches = gh.get_branches(owner, repo)\n        out[\"branches\"] = branches\n        out = save_config(out)\n        return {\"ok\": True, \"branches\": branches}\n    except Exception as e:\n        logger.exception(\"Config check failed\")\n        raise HTTPException(400, f\"Saved config but GitHub check failed: {e}\")\n\n@app.get(\"/api/branches\")\ndef branches():\n    cfg = load_config()\n    gh = _client_from_cfg(cfg)\n    owner, repo = _owner_repo_from_cfg(cfg)\n    return {\"branches\": gh.get_branches(owner, repo)}\n\n@app.post(\"/api/branch\")\ndef create_branch(new: str = Query(..., alias=\"new\"), base: str = Query(..., alias=\"from\")):\n    cfg = load_config()\n    gh = _client_from_cfg(cfg)\n    owner, repo = _owner_repo_from_cfg(cfg)\n    return gh.create_branch(owner, repo, new, base)\n\n@app.get(\"/api/tree\")\ndef tree(path: Optional[str] = None, branch: Optional[str] = None, recursive: bool = True):\n    cfg = load_config()\n    gh = _client_from_cfg(cfg)\n    owner, repo = _owner_repo_from_cfg(cfg)\n    b = branch or cfg.get(\"default_branch\") or \"main\"\n    t = gh.get_tree(owner, repo, b, recursive=True if recursive else False)\n    items = t.get(\"tree\", [])\n    if path:\n        prefix = path.strip().rstrip(\"/\") + \"/\"\n        items = [i for i in items if i[\"path\"].startswith(prefix)]\n    return {\"branch\": b, \"items\": items}\n\n@app.get(\"/api/file\")\ndef get_file(path: str, branch: Optional[str] = None):\n    cfg = load_config()\n    gh = _client_from_cfg(cfg)\n    owner, repo = _owner_repo_from_cfg(cfg)\n    ref = branch or cfg.get(\"default_branch\") or \"main\"\n    return gh.get_file(owner, repo, path, ref=ref)\n\n@app.put(\"/api/file\")\ndef put_file(body: FilePut):\n    cfg = load_config()\n    gh = _client_from_cfg(cfg)\n    owner, repo = _owner_repo_from_cfg(cfg)\n    b = body.branch or cfg.get(\"default_branch\") or \"main\"\n    return gh.put_file(owner, repo, body.path, body.message, body.content, b, body.sha)\n\n@app.delete(\"/api/file\")\ndef delete_file(path: str, message: str, sha: str, branch: Optional[str] = None):\n    cfg = load_config()\n    gh = _client_from_cfg(cfg)\n    owner, repo = _owner_repo_from_cfg(cfg)\n    b = branch or cfg.get(\"default_branch\") or \"main\"\n    return gh.delete_file(owner, repo, path, message, sha, b)\n\n@app.post(\"/api/batch/commit\")\ndef batch_commit(body: BatchCommit):\n    cfg = load_config()\n    gh = _client_from_cfg(cfg)\n    owner, repo = _owner_repo_from_cfg(cfg)\n    changes = [c.model_dump() for c in body.changes]\n    return gh.batch_commit(owner, repo, body.branch, body.message, changes)\n",
+      "language": "python",
+      "symbols": [
+        "_read_token",
+        "_client_from_cfg",
+        "root",
+        "_owner_repo_from_cfg",
+        "ConfigIn",
+        "FilePut",
+        "BatchChange",
+        "BatchCommit",
+        "health",
+        "get_cfg",
+        "set_cfg",
+        "branches",
+        "create_branch",
+        "tree",
+        "get_file",
+        "put_file",
+        "delete_file",
+        "batch_commit"
+      ]
+    },
+    "modular-framework/modules/github-hub/app/store.py": {
+      "content": "from __future__ import annotations\nimport os, json, base64\nfrom pathlib import Path\nfrom typing import Optional, Dict, Any\nfrom loguru import logger\n\nDATA_DIR = Path(os.getenv(\"DATA_DIR\", \"/data\"))\nCONFIG_PATH = DATA_DIR / \"config.json\"\n\n# Optional encryption\n_FERNET = None\n_KEY_SRC = \"GH_TOKEN_KEY\"  # base64 urlsafe 32 bytes (Fernet key)\ntry:\n    from cryptography.fernet import Fernet, InvalidToken\n    _k = os.getenv(_KEY_SRC)\n    if _k:\n        _FERNET = Fernet(_k.encode(\"utf-8\"))\nexcept Exception as e:\n    logger.warning(f\"Fernet not available: {e}\")\n\ndef _ensure_dir():\n    DATA_DIR.mkdir(parents=True, exist_ok=True)\n\ndef load_config() -> Dict[str, Any]:\n    _ensure_dir()\n    if CONFIG_PATH.exists():\n        try:\n            with open(CONFIG_PATH, \"r\", encoding=\"utf-8\") as f:\n                cfg = json.load(f)\n        except Exception:\n            return {}\n        # decrypt token if present\n        tok_enc = cfg.get(\"token_enc\")\n        if tok_enc and _FERNET:\n            try:\n                tok = _FERNET.decrypt(base64.b64decode(tok_enc)).decode(\"utf-8\")\n                cfg[\"token\"] = tok\n            except Exception as e:\n                logger.error(f\"Failed to decrypt token: {e}\")\n        elif \"token_plain\" in cfg:\n            cfg[\"token\"] = cfg[\"token_plain\"]\n        return cfg\n    return {}\n\ndef save_config(cfg: Dict[str, Any]) -> Dict[str, Any]:\n    _ensure_dir()\n    out = dict(cfg)\n    tok = out.pop(\"token\", None)\n    if tok:\n        if _FERNET:\n            ct = _FERNET.encrypt(tok.encode(\"utf-8\"))\n            out[\"token_enc\"] = base64.b64encode(ct).decode(\"utf-8\")\n            out.pop(\"token_plain\", None)\n        else:\n            # fallback (no key provided) \u2013 store plaintext\n            out[\"token_plain\"] = tok\n    with open(CONFIG_PATH, \"w\", encoding=\"utf-8\") as f:\n        json.dump(out, f, indent=2)\n    # return hydrated (includes token in-memory)\n    if tok:\n        out[\"token\"] = tok\n    return out\n",
+      "language": "python",
+      "symbols": [
+        "_ensure_dir",
+        "load_config",
+        "save_config"
+      ]
+    },
+    "modular-framework/modules/github-hub/public/js/app.js": {
+      "content": "const $ = (id)=>document.getElementById(id);\nconst isSide = new URLSearchParams(location.search).get('embed') === 'side';\n\n// Figure out the module base (works standalone and when proxied)\n// Examples:\n//  - http://host:3005/ui/           -> API = /api\n//  - http://host:3005/              -> API = /api\n//  - http://framework/api/github-hub/ui/ -> API = /api/github-hub/api\n//  - http://framework/api/github-hub/    -> API = /api/github-hub/api\nconst API = (() => {\n  const p = location.pathname;\n\n  // If we\u2019re under /.../ui/..., strip the /ui part\n  const idx = p.indexOf('/ui/');\n  if (idx !== -1) return p.slice(0, idx) + '/api';\n\n  // If we\u2019re already under a proxied prefix like /api/github-hub/...\n  const m = p.match(/^(.*?\\/api\\/github-hub)(?:\\/|$)/);\n  if (m) return `${m[1]}/api`;\n\n  // Standalone (served from module root)\n  return '/api';\n})();\n\n// --- file-content cache (per branch:path) ---\nconst fileCache = new Map();\n\n/** Robust tokenizer loader with local+CDN fallback and safe approximation */\nlet _encPromise = null;\nasync function getEncoder() {\n  if (!_encPromise) {\n    _encPromise = (async () => {\n      try {\n        // Try the lite ESM first\n        const { Tiktoken } = await import('https://cdn.jsdelivr.net/npm/js-tiktoken@1.0.21/lite.js');\n\n        // Prefer a local copy (add one later if you like), else fall back to CDN JSON\n        // Local (optional): place o200k_base.json under /public/js/tiktoken/\n        let ranksRes;\n        try {\n          ranksRes = await fetch('./js/tiktoken/o200k_base.json', { cache: 'force-cache' });\n          if (!ranksRes.ok) throw new Error('local ranks missing');\n        } catch {\n          // CDN fallback\n          ranksRes = await fetch('https://tiktoken.pages.dev/js/o200k_base.json', { cache: 'force-cache' });\n        }\n\n        const ranks = await ranksRes.json();\n        return new Tiktoken(ranks);\n      } catch (e) {\n        console.warn('[github-hub] Tokenizer unavailable, using approximation:', e);\n        return null; // signal fallback\n      }\n    })();\n  }\n  return _encPromise;\n}\n\nasync function countTokensFor(text) {\n  const enc = await getEncoder();\n  if (enc) {\n    try { return enc.encode(text).length; }\n    catch (e) { console.warn('[github-hub] encode failed, approx fallback:', e); }\n  }\n  // Approx fallback: ~4 chars per token (rough heuristic)\n  return Math.ceil(text.length / 4);\n}\n\n/** Fetch file content (cached per branch+path) */\nasync function getFileContent(path, branch) {\n  const key = `${branch}:${path}`;\n  if (fileCache.has(key)) return fileCache.get(key);\n  const data = await api(`/file?path=${encodeURIComponent(path)}&branch=${encodeURIComponent(branch)}`);\n  const content = data.decoded_content || '';\n  fileCache.set(key, content);\n  return content;\n}\n\n/** Build clipboard text with a header line BEFORE EACH file */\nasync function buildClipboardText(paths, branch) {\n  const parts = [];\n  for (const p of paths) {\n    const name = p.split('/').pop() || p;\n    parts.push(`# ${p}\\n`);                       // header for this file\n    const content = await getFileContent(p, branch);\n    parts.push(content.endsWith('\\n') ? content : content + '\\n');\n    // optional extra blank line between files (comment out if undesired)\n    parts.push('\\n');\n  }\n  return parts.join('');\n}\n\n\nasync function api(path, init){\n  const r = await fetch(`${API}${path}`, init);\n  if (!r.ok) throw new Error(await r.text());\n  return r.json();\n}\n\nexport async function loadConfig(){\n  try{\n    const c = await api(\"/config\");\n    $('repoUrl').value = c.repo_url || '';\n    $('baseUrl').value = c.base_url || 'https://api.github.com';\n    await loadBranches();\n  }catch(e){ console.warn(e); }\n}\n\nexport async function saveConfig(){\n  const body = {\n    repo_url: $('repoUrl').value.trim(),\n    default_branch: $('branchSelect').value || 'main',\n  };\n  const tok = $('token').value.trim(); if (tok) body.token = tok;\n  const base = $('baseUrl').value.trim(); if (base) body.base_url = base;\n\n  await api(\"/config\", {\n    method:'POST',\n    headers:{'Content-Type':'application/json'},\n    body: JSON.stringify(body)\n  });\n  $('token').value = '';\n  await loadBranches();\n  await loadTree();\n}\n\nexport async function loadBranches(){\n  const sel = $('branchSelect');\n  sel.innerHTML = '';\n  try{\n    const b = await api(\"/branches\");\n    (b.branches||[]).forEach(name=>{\n      const o = document.createElement('option'); o.value=o.textContent = name; sel.appendChild(o);\n    });\n  }catch(e){\n    // fallback options so first run isn't empty\n    ['main','master'].forEach(n=>{\n      const o = document.createElement('option'); o.value=o.textContent = n; sel.appendChild(o);\n    });\n  }\n}\n\nlet currentFile = null;\nlet currentSha  = null;\n\nexport async function openFile(path){\n  const branch = $('branchSelect').value || 'main';\n  const data = await api(`/file?path=${encodeURIComponent(path)}&branch=${encodeURIComponent(branch)}`);\n  currentFile = path;\n  currentSha  = data.sha;\n  $('fileMeta').textContent = `${path} @ ${branch} (sha ${data.sha?.slice(0,7)})`;\n  $('fileView').textContent = data.decoded_content || '';\n}\n\nexport async function saveFile(){\n  if (!currentFile) return alert('No file open');\n  const branch = $('branchSelect').value || 'main';\n  const message = $('commitMsg').value.trim() || `Update ${currentFile}`;\n  const content = $('fileView').textContent;\n  const payload = { path: currentFile, message, content, branch, sha: currentSha };\n  const res = await api('/file', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });\n  alert(`Committed ${currentFile}\\n${res.commit?.sha || res.content?.sha || ''}`);\n  await loadTree();\n  await openFile(currentFile);\n}\n\n// -------- Tree (collapsed by default, folder-select selects all descendants) ----------\nexport async function loadTree(){\n  const treeEl = $('tree');\n  treeEl.innerHTML = '<div class=\"muted\">Loading\u2026</div>';\n\n  try{\n    const branch = $('branchSelect').value || 'main';\n    const t = await api(`/tree?branch=${encodeURIComponent(branch)}&recursive=true`);\n    const items = (t.items||[]).filter(i => i.type==='blob' || i.type==='tree');\n\n    // Build nested structure (no fake root row)\n    function makeNode(name, type, fullPath){\n      return { name, type, path: fullPath, children: new Map() };\n    }\n    const root = makeNode('', 'tree', '');\n\n    for (const i of items) {\n      const parts = i.path.split('/');\n      let cur = root;\n      for (let p = 0; p < parts.length; p++){\n        const seg = parts[p];\n        const isLast = p === parts.length - 1;\n        const nodeType = isLast ? i.type : 'tree';\n        const childPath = parts.slice(0, p+1).join('/');\n        if (!cur.children.has(seg)) cur.children.set(seg, makeNode(seg, nodeType, childPath));\n        cur = cur.children.get(seg);\n      }\n    }\n\n    function renderNode(node){\n      if (node.type === 'blob') {\n        const li = document.createElement('li');\n        li.className = 'file';\n        li.dataset.path = node.path;\n        li.innerHTML = `\n          <div class=\"row\">\n            <span class=\"twisty\"></span>\n            <input type=\"checkbox\" class=\"sel\" data-path=\"${node.path}\" />\n            <span class=\"icon\">\ud83d\udcc4</span>\n            <a href=\"#\" data-file=\"${node.path}\" class=\"name\">${node.name}</a>\n          </div>`;\n        return li;\n      } else {\n        const li = document.createElement('li');\n        li.className = 'dir collapsed'; /* collapsed by default */\n        li.dataset.path = node.path;\n        const label = node.name || '';\n        li.innerHTML = `\n          <div class=\"row\">\n            <span class=\"twisty\"></span>\n            <input type=\"checkbox\" class=\"sel\" data-path=\"${node.path}\" />\n            <span class=\"icon\">\ud83d\udcc1</span>\n            <span class=\"name\">${label}</span>\n          </div>\n          <ul class=\"children\"></ul>`;\n        const ul = li.querySelector('.children');\n\n        const children = Array.from(node.children.values())\n          .sort((a,b)=>{\n            if (a.type!==b.type) return a.type==='tree' ? -1 : 1;\n            return a.name.localeCompare(b.name);\n          });\n\n        for (const c of children) ul.appendChild(renderNode(c));\n        return li;\n      }\n    }\n\n    const ulRoot = document.createElement('ul');\n    const topChildren = Array.from(root.children.values())\n      .sort((a,b)=>{\n        if (a.type!==b.type) return a.type==='tree' ? -1 : 1;\n        return a.name.localeCompare(b.name);\n      });\n    for (const c of topChildren) ulRoot.appendChild(renderNode(c));\n\n    treeEl.innerHTML = '';\n    treeEl.appendChild(ulRoot);\n\n    // --- Delegated handlers (set once per render using .onclick/.onchange) ---\n    treeEl.onclick = async (e)=>{\n      // Expand/collapse on folder twisty/name\n      const twisty = e.target.closest('.twisty');\n      const name = e.target.closest('.name');\n      const dirLi = (twisty || name) ? (twisty||name).closest('li.dir') : null;\n      if (dirLi) {\n        dirLi.classList.toggle('collapsed');\n        dirLi.classList.toggle('open');\n        return;\n      }\n\n      // File click => open or emit\n      const a = e.target.closest('a[data-file]');\n      if (a) {\n        e.preventDefault();\n        const f = a.dataset.file;\n        if (isSide) {\n          window.parent?.postMessage({ type:'MODULE_EVENT', eventName:'gh:file-selected', payload:{ path: f } }, '*');\n        } else {\n          await openFile(f);\n        }\n      }\n    };\n\n    const selCountChip = $('selCountChip');\n    const copyBtn = $('copyBtn');\n    const tokenCountChip = $('tokenCountChip');\n\n    function setSubtreeChecked(li, checked) {\n      li.querySelectorAll('input.sel').forEach(cb => {\n        cb.checked = checked;\n        cb.indeterminate = false;\n      });\n    }\n    function updateAncestors(fromLi) {\n      const parentDir = fromLi.closest('ul')?.closest('li.dir');\n      if (!parentDir) return;\n\n      const childCbs = Array.from(parentDir.querySelectorAll(':scope > ul > li > .row input.sel'));\n      const allChecked = childCbs.length > 0 && childCbs.every(cb => cb.checked);\n      const noneChecked = childCbs.every(cb => !cb.checked && !cb.indeterminate);\n      const parentCb = parentDir.querySelector(':scope > .row input.sel');\n\n      parentCb.checked = allChecked;\n      parentCb.indeterminate = !allChecked && !noneChecked;\n\n      updateAncestors(parentDir);\n    }\n    function collectSelectedFiles() {\n      return Array.from(treeEl.querySelectorAll('li.file input.sel:checked')).map(cb => cb.dataset.path);\n    }\n\n    /** Recompute token count for the EXACT text that will be copied */\n    async function recalcTokensUI() {\n      if (!tokenCountChip || !copyBtn) return;\n      const files = collectSelectedFiles();\n      const branch = $('branchSelect').value || 'main';\n\n      if (files.length === 0) {\n        tokenCountChip.textContent = '0 tokens';\n        copyBtn.disabled = true;\n        return;\n      }\n\n      copyBtn.disabled = false;\n      tokenCountChip.textContent = '\u2026'; // show work in progress\n      try {\n        const text = await buildClipboardText(files, branch);\n        const n = await countTokensFor(text);\n        tokenCountChip.textContent = `${n} tokens`;\n      } catch (e) {\n        console.warn('[github-hub] token recalc failed:', e);\n        tokenCountChip.textContent = '\u2014';\n      }\n    }\n\n    function updateSelectionBadgeAndEmit() {\n      const files = collectSelectedFiles();\n      if (selCountChip) selCountChip.textContent = `${files.length} selected`;\n      if (isSide) {\n        window.parent?.postMessage(\n          { type:'MODULE_EVENT', eventName:'gh:selection-changed', payload:{ files } },\n          '*'\n        );\n      }\n      // keep tokens in sync\n      recalcTokensUI();\n    }\n\n    treeEl.onchange = (e) => {\n      const cb = e.target;\n      if (!cb.matches('input.sel')) return;\n      const li = cb.closest('li');\n      if (li?.classList.contains('dir')) {\n        setSubtreeChecked(li, cb.checked);\n      }\n      updateAncestors(li);\n      updateSelectionBadgeAndEmit();\n    };\n\n    // Copy to clipboard with headers\n    copyBtn.onclick = async () => {\n      const files = collectSelectedFiles();\n      if (files.length === 0) {\n        alert('Select one or more files in the tree first.');\n        return;\n      }\n      const branch = $('branchSelect').value || 'main';\n      const text = await buildClipboardText(files, branch);\n\n      try {\n        await navigator.clipboard.writeText(text);\n        const old = copyBtn.textContent;\n        copyBtn.textContent = 'Copied!';\n        setTimeout(() => (copyBtn.textContent = old), 1000);\n      } catch {\n        // Fallback for older browsers / HTTP\n        const ta = document.createElement('textarea');\n        ta.value = text;\n        ta.style.position = 'fixed';\n        ta.style.opacity = '0';\n        document.body.appendChild(ta);\n        ta.focus();\n        ta.select();\n        document.execCommand('copy');\n        document.body.removeChild(ta);\n      }\n    };\n\n    // initialize chips on first render\n    updateSelectionBadgeAndEmit();\n\n\n    // Expand/Collapse all (overwrite handlers each render to avoid dupes)\n    $('expandAllBtn').onclick = ()=>{\n      treeEl.querySelectorAll('li.dir').forEach(li=>{\n        li.classList.remove('collapsed'); li.classList.add('open');\n      });\n    };\n    $('collapseAllBtn').onclick = ()=>{\n      treeEl.querySelectorAll('li.dir').forEach(li=>{\n        li.classList.remove('open'); li.classList.add('collapsed');\n      });\n    };\n\n  }catch(e){\n    treeEl.innerHTML = `<div class=\"muted\">Failed to load tree: ${e.message}</div>`;\n  }\n}\n\n// ---------- one-time UI wiring ----------\nlet _wired = false;\nfunction wireUIOnce(){\n  if (_wired) return;\n  _wired = true;\n  $('saveCfgBtn')?.addEventListener('click', saveConfig);\n  $('reloadBtn')?.addEventListener('click', loadTree);\n  $('saveFileBtn')?.addEventListener('click', saveFile);\n  $('branchSelect')?.addEventListener('change', loadTree);\n}\n\n// Init\nwindow.addEventListener('DOMContentLoaded', async ()=>{\n  wireUIOnce();\n  await loadConfig();     // reads saved config (if any)\n  await loadBranches();   // populates branch list\n  await loadTree();       // builds collapsed tree\n});\n",
+      "language": "javascript",
+      "symbols": [
+        "isSide",
+        "API",
+        "p",
+        "idx",
+        "m",
+        "fileCache",
+        "_encPromise",
+        "getEncoder",
+        "ranksRes",
+        "ranks",
+        "countTokensFor",
+        "enc",
+        "getFileContent",
+        "key",
+        "data",
+        "content",
+        "buildClipboardText",
+        "parts",
+        "name",
+        "api",
+        "r",
+        "loadConfig",
+        "c",
+        "saveConfig",
+        "body",
+        "tok",
+        "base",
+        "loadBranches",
+        "sel",
+        "b",
+        "o",
+        "currentFile",
+        "currentSha",
+        "openFile",
+        "branch",
+        "saveFile",
+        "message",
+        "payload",
+        "res",
+        "loadTree",
+        "treeEl",
+        "t",
+        "items",
+        "makeNode",
+        "root",
+        "i",
+        "cur",
+        "seg",
+        "isLast",
+        "nodeType"
+      ]
+    },
+    "modular-framework/modules/llm-chat/server.js": {
+      "content": "// modules/llm-chat/server.js\n// LLM Chat backend: OpenAI / OpenAI-compatible / Ollama with streaming (SSE)\n// GPT-5 friendly: auto-routes GPT-5 models to /v1/responses and supports\n// max_completion_tokens (chat.completions) vs max_output_tokens (responses).\n// Enhanced logging with redaction + in-memory ring buffer and /api/logs endpoints.\n\nconst express = require('express');\nconst cors = require('cors');\nconst path = require('path');\nconst axios = require('axios');\n\nconst app = express();\n\n// ---------- Config ----------\nconst PORT = process.env.PORT || 3004;\nconst LOG_LEVEL = (process.env.LOG_LEVEL || 'info').toLowerCase(); // debug|info|warn|error\nconst LOG_MAX = Number(process.env.LOG_MAX || 1000);               // max entries in ring buffer\n\n// ---------- Simple ring-buffer logger with redaction ----------\nconst logs = [];\nlet reqCounter = 0;\n\nfunction redact(obj) {\n  if (!obj || typeof obj !== 'object') return obj;\n  const clone = JSON.parse(JSON.stringify(obj));\n  if (clone.apiKey) clone.apiKey = '***REDACTED***';\n  if (clone.headers && clone.headers.Authorization) clone.headers.Authorization = '***REDACTED***';\n  if (clone.headers && clone.headers.authorization) clone.headers.authorization = '***REDACTED***';\n  return clone;\n}\nfunction safeStringify(v) {\n  try {\n    const seen = new WeakSet();\n    return JSON.stringify(v, (k, val) => {\n      if (typeof val === 'object' && val !== null) {\n        if (seen.has(val)) return '[Circular]';\n        seen.add(val);\n      }\n      return val;\n    });\n  } catch {\n    return '[unstringifiable]';\n  }\n}\nfunction addLog(level, msg, meta) {\n  const entry = { ts: new Date().toISOString(), level, msg, ...meta };\n  logs.push(entry);\n  if (logs.length > LOG_MAX) logs.shift();\n  const line = `[${entry.ts}] [${level.toUpperCase()}] ${msg} ${meta ? safeStringify(meta) : ''}`;\n  if (level === 'debug' && LOG_LEVEL === 'debug') console.debug(line);\n  else if (level === 'info' && (LOG_LEVEL === 'debug' || LOG_LEVEL === 'info')) console.info(line);\n  else if (level === 'warn' && (LOG_LEVEL !== 'error')) console.warn(line);\n  else if (level === 'error') console.error(line);\n}\nfunction logDebug(msg, meta) { addLog('debug', msg, meta); }\nfunction logInfo(msg, meta)  { addLog('info', msg, meta); }\nfunction logWarn(msg, meta)  { addLog('warn', msg, meta); }\nfunction logError(msg, meta) { addLog('error', msg, meta); }\n\n// ---------- Middleware ----------\napp.use(cors({ origin: true, credentials: true }));\napp.use(express.json({ limit: '2mb' }));\napp.use((req, _res, next) => {\n  req.id = `${Date.now().toString(36)}-${(++reqCounter).toString(36)}`;\n  next();\n});\n\n// Static files (frontend)\napp.use(express.static(path.join(__dirname, 'public')));\n\n// ---------- Health & Info ----------\napp.get('/', (_, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));\napp.get('/config', (_, res) => res.sendFile(path.join(__dirname, 'public', 'config.html')));\napp.get('/health', (_, res) => res.json({ status: 'healthy' }));\napp.get('/api/info', (_, res) => res.json({ module: 'llm-chat', version: '1.5.0', status: 'ready' }));\n\n// ---------- Logs API ----------\napp.get('/api/logs', (req, res) => {\n  const limit = Math.max(1, Math.min(Number(req.query.limit || 200), 2000));\n  const start = Math.max(0, logs.length - limit);\n  res.json(logs.slice(start));\n});\napp.post('/api/logs/clear', (_req, res) => {\n  logs.length = 0;\n  res.json({ ok: true });\n});\n\n// ---------- Helpers: upstream error handling & retries ----------\nfunction isReadable(x) { return x && typeof x.pipe === 'function'; }\nasync function readUpstreamBody(data) {\n  if (!data) return '';\n  if (typeof data === 'string') return data;\n  if (isReadable(data)) {\n    return await new Promise((resolve) => {\n      let buf = '';\n      try {\n        data.setEncoding('utf8');\n        data.on('data', (c) => buf += c);\n        data.on('end', () => resolve(buf));\n        data.on('error', () => resolve('[error reading upstream stream]'));\n      } catch {\n        resolve('[unreadable upstream stream]');\n      }\n    });\n  }\n  try { return safeStringify(data); } catch { return '[unstringifiable upstream data]'; }\n}\nasync function extractErrAsync(err) {\n  const status = err?.response?.status;\n  const body = await readUpstreamBody(err?.response?.data);\n  const baseMsg = err?.message || 'Unknown error';\n  const trimmed = body ? body.slice(0, 4000) : '';\n  return status ? `Upstream ${status}: ${trimmed || baseMsg}` : baseMsg;\n}\nasync function isUnsupportedParamErrorAsync(err, paramName) {\n  const body = await readUpstreamBody(err?.response?.data);\n  const raw = body || err?.message || '';\n  const msg = raw.toLowerCase();\n  return msg.includes('unsupported') && msg.includes(`'${paramName.toLowerCase()}'`);\n}\n\n// ---------- Chat Endpoint ----------\n/**\n * POST /api/chat\n * Body:\n * {\n *   provider: 'openai' | 'openai-compatible' | 'ollama',\n *   baseUrl: string,\n *   apiKey?: string,\n *   model: string,\n *   messages: [{role, content}],\n *   temperature?: number,   // omit or set; GPT-5 will be sent without by default\n *   max_tokens?: number,\n *   stream?: boolean,\n *   useResponses?: boolean, // optional: force OpenAI /v1/responses\n *   reasoning?: boolean     // hint to treat as reasoning model (chat.completions)\n * }\n */\napp.post('/api/chat', async (req, res) => {\n  const rid = req.id;\n  const {\n    provider = 'openai',\n    baseUrl,\n    apiKey,\n    model,\n    messages = [],\n    temperature,  // undefined means \"omit\"\n    max_tokens,\n    stream = true,\n    useResponses = false,\n    reasoning = false\n  } = req.body || {};\n\n  const problems = [];\n  if (!baseUrl) problems.push('baseUrl is required');\n  if (!model) problems.push('model is required');\n  if (!Array.isArray(messages)) problems.push('messages must be an array');\n  if ((provider === 'openai' || provider === 'openai-compatible') && !apiKey) {\n    problems.push('apiKey is required for OpenAI/OpenAI-compatible providers');\n  }\n  if (problems.length) {\n    logWarn('Validation failed', { rid, problems, body: redact(req.body) });\n    return res.status(400).json({ error: 'Validation failed', details: problems });\n  }\n\n  const sseMode = !!stream;\n  if (sseMode) {\n    res.setHeader('Content-Type', 'text/event-stream');\n    res.setHeader('Cache-Control', 'no-cache, no-transform');\n    res.setHeader('Connection', 'keep-alive');\n    res.flushHeaders?.();\n  }\n  const sendSSE = (payload) => {\n    if (!sseMode) return;\n    try { res.write(`data: ${JSON.stringify(payload)}\\n\\n`); } catch { try { res.end(); } catch {} }\n  };\n\n  // Auto-route GPT-5 models to Responses API on OpenAI\n  const isGpt5 = /^gpt-5/i.test(model) || /^o5/i.test(model);\n  const autoResponses = isGpt5 && provider === 'openai';\n\n  logInfo('LLM request', {\n    rid, provider, baseUrl, model,\n    stream: !!stream,\n    useResponses: useResponses || autoResponses,\n    reasoning: !!reasoning,\n    temperature: (typeof temperature === 'number' ? temperature : null),\n    max_tokens: max_tokens ?? null,\n  });\n  logDebug('LLM messages', { rid, messagesCount: messages.length });\n\n  try {\n    if (provider === 'ollama') {\n      return await handleOllama({ res, sendSSE, rid, baseUrl, model, messages, temperature, sseMode });\n    }\n    return await handleOpenAICompat({\n      res, sendSSE, rid,\n      baseUrl, apiKey, model, messages, temperature,\n      max_tokens, useResponses: useResponses || autoResponses, reasoning, sseMode\n    });\n  } catch (err) {\n    const message = await extractErrAsync(err);\n    logError('LLM fatal error', { rid, message });\n    if (sseMode) {\n      sendSSE({ type: 'error', message });\n      try { res.end(); } catch {}\n    } else {\n      res.status(500).json({ error: message });\n    }\n  }\n});\n\n// ---------- Handlers ----------\nasync function handleOllama({ res, sendSSE, rid, baseUrl, model, messages, temperature, sseMode }) {\n  const url = `${baseUrl.replace(/\\/$/, '')}/api/chat`;\n  const body = { model, messages, stream: sseMode };\n  if (typeof temperature === 'number') body.options = { ...(body.options || {}), temperature };\n\n  logDebug('OLLAMA request', { rid, url, body: redact(body) });\n\n  if (sseMode) {\n    const response = await axios.post(url, body, { responseType: 'stream' });\n    response.data.on('data', (chunk) => {\n      const lines = chunk.toString().split('\\n').filter(Boolean);\n      for (const line of lines) {\n        try {\n          const evt = JSON.parse(line);\n          if (evt.message && evt.message.content) sendSSE({ type: 'delta', content: evt.message.content });\n          if (evt.done) sendSSE({ type: 'done' });\n        } catch { /* ignore parse errors */ }\n      }\n    });\n    response.data.on('end', () => { logDebug('OLLAMA stream end', { rid }); res.end(); });\n    response.data.on('error', (e) => { logWarn('OLLAMA stream error', { rid, err: e.message }); sendSSE({ type:'error', message: e.message }); res.end(); });\n  } else {\n    const { data } = await axios.post(url, body);\n    const content = data?.message?.content || '';\n    res.json({ content });\n  }\n}\n\nasync function handleOpenAICompat({\n  res, sendSSE, rid,\n  baseUrl, apiKey, model, messages, temperature,\n  max_tokens, useResponses, reasoning, sseMode\n}) {\n  const headers = { 'Content-Type': 'application/json' };\n  if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;\n\n  const base = baseUrl.replace(/\\/$/, '');\n  const isGpt5 = /^gpt-5/i.test(model) || /^o5/i.test(model);\n\n  // ---- OpenAI Responses API ----\n  if (useResponses) {\n    const url = `${base}/v1/responses`;\n    const rBodyBase = { model, input: messages, stream: sseMode };\n\n    // IMPORTANT: omit temperature for GPT-5 models by default to avoid 400s\n    if (!isGpt5 && typeof temperature === 'number' && !Number.isNaN(temperature)) {\n      rBodyBase.temperature = temperature;\n    }\n    if (max_tokens) rBodyBase.max_output_tokens = max_tokens;\n\n    logDebug('RESPONSES request', { rid, url, body: redact(rBodyBase) });\n\n    async function postResponses(body) {\n      return axios.post(url, body, { headers, responseType: sseMode ? 'stream' : 'json' });\n    }\n\n    try {\n      if (sseMode) {\n        const response = await postResponses(rBodyBase);\n        response.data.on('data', (chunk) => handleResponsesChunk(chunk, sendSSE));\n        response.data.on('end', () => { logDebug('RESPONSES stream end', { rid }); res.end(); });\n        response.data.on('error', (e) => { logWarn('RESPONSES stream error', { rid, err: e.message }); sendSSE({ type:'error', message: e.message }); res.end(); });\n      } else {\n        const { data } = await postResponses(rBodyBase);\n        const content = data?.output_text?.join?.('') || data?.message?.content || data?.content || '';\n        res.json({ content });\n      }\n    } catch (err) {\n      // Auto-retry for unsupported parameters (e.g., temperature)\n      if (await isUnsupportedParamErrorAsync(err, 'temperature') && rBodyBase.temperature !== undefined) {\n        logWarn('RESPONSES retry without temperature', { rid });\n        const rBodyRetry = { ...rBodyBase };\n        delete rBodyRetry.temperature;\n\n        if (sseMode) {\n          try {\n            const response = await axios.post(url, rBodyRetry, { headers, responseType: 'stream' });\n            response.data.on('data', (chunk) => handleResponsesChunk(chunk, sendSSE));\n            response.data.on('end', () => { logDebug('RESPONSES stream end (retry)', { rid }); res.end(); });\n            response.data.on('error', (e) => { logWarn('RESPONSES stream error (retry)', { rid, err: e.message }); sendSSE({ type:'error', message: e.message }); res.end(); });\n            return;\n          } catch (e2) { throw e2; }\n        } else {\n          try {\n            const { data } = await axios.post(url, rBodyRetry, { headers });\n            const content = data?.output_text?.join?.('') || data?.message?.content || data?.content || '';\n            res.json({ content });\n            return;\n          } catch (e2) { throw e2; }\n        }\n      }\n      throw err; // bubble up other errors\n    }\n    return;\n  }\n\n  // ---- Chat Completions API (OpenAI or compatible) ----\n  const url = `${base}/v1/chat/completions`;\n  const body = { model, messages, stream: sseMode };\n\n  // Include temperature only if explicitly provided\n  if (typeof temperature === 'number' && !Number.isNaN(temperature)) {\n    body.temperature = temperature;\n  }\n\n  if (max_tokens) {\n    if (isGpt5 || reasoning === true) body.max_completion_tokens = max_tokens;\n    else body.max_tokens = max_tokens;\n  }\n\n  logDebug('CHAT.COMPLETIONS request', { rid, url, body: redact(body) });\n\n  if (sseMode) {\n    const response = await axios.post(url, body, { headers, responseType: 'stream' });\n    response.data.on('data', (chunk) => handleChatCompletionsChunk(chunk, sendSSE));\n    response.data.on('end', () => { logDebug('CHAT stream end', { rid }); res.end(); });\n    response.data.on('error', (e) => { logWarn('CHAT stream error', { rid, err: e.message }); sendSSE({ type:'error', message: e.message }); res.end(); });\n  } else {\n    const { data } = await axios.post(url, body, { headers });\n    const content = data.choices?.[0]?.message?.content || '';\n    res.json({ content });\n  }\n}\n\n// ---------- Stream chunk parsers ----------\nfunction handleResponsesChunk(chunk, sendSSE) {\n  const text = chunk.toString();\n  for (const line of text.split('\\n')) {\n    if (!line.startsWith('data:')) continue;\n    const payload = line.replace(/^data:\\s*/, '').trim();\n    if (!payload) continue;\n\n    // New-style Responses events use typed objects; completion isn't \"[DONE]\"\n    try {\n      if (payload === '[DONE]') { // legacy guard\n        sendSSE({ type: 'done' });\n        continue;\n      }\n\n      const evt = JSON.parse(payload);\n\n      // Common event kinds observed on /v1/responses streams:\n      // - response.output_text.delta  -> { delta: \"...\" }\n      // - response.output_text        -> final text chunk(s)\n      // - response.completed          -> end of stream\n      // - error                       -> error details\n      // - ping                        -> keepalive (ignore)\n\n      const t = evt.type || evt.event || '';\n\n      if (t === 'response.output_text.delta') {\n        const delta = evt.delta ?? evt.text ?? evt.output_text?.[0]?.content ?? '';\n        if (delta) sendSSE({ type: 'delta', content: String(delta) });\n        continue;\n      }\n\n      if (t === 'response.output_text') {\n        // some providers send consolidated text at the end\n        const textOut = evt.output_text?.join?.('') || evt.text || '';\n        if (textOut) sendSSE({ type: 'delta', content: String(textOut) });\n        continue;\n      }\n\n      if (t === 'response.completed') {\n        sendSSE({ type: 'done' });\n        continue;\n      }\n\n      if (t === 'error' || evt.error) {\n        const message =\n          evt.error?.message || evt.message || 'Unknown error from Responses stream';\n        sendSSE({ type: 'error', message });\n        continue;\n      }\n\n      // Fallbacks (older shapes)\n      const deltaText =\n        evt?.output_text?.[0]?.content ||\n        evt?.delta?.text ||\n        evt?.message?.content ||\n        evt?.content;\n      if (deltaText) {\n        sendSSE({ type: 'delta', content: deltaText });\n      }\n    } catch {\n      // ignore malformed/keepalive lines\n    }\n  }\n}\n\nfunction handleChatCompletionsChunk(chunk, sendSSE) {\n  const str = chunk.toString();\n  for (const line of str.split('\\n')) {\n    if (!line.startsWith('data:')) continue;\n    const payload = line.replace(/^data:\\s*/, '').trim();\n    if (!payload) continue;\n    if (payload === '[DONE]') { sendSSE({ type: 'done' }); continue; }\n    try {\n      const json = JSON.parse(payload);\n      const delta = json.choices?.[0]?.delta?.content;\n      if (delta) sendSSE({ type: 'delta', content: delta });\n    } catch { /* ignore */ }\n  }\n}\n\n// ---------- Start ----------\napp.listen(PORT, () => {\n  console.log(`LLM Chat Module listening on :${PORT} (LOG_LEVEL=${LOG_LEVEL})`);\n});\n",
+      "language": "javascript",
+      "symbols": [
+        "express",
+        "cors",
+        "path",
+        "axios",
+        "app",
+        "PORT",
+        "LOG_LEVEL",
+        "LOG_MAX",
+        "logs",
+        "reqCounter",
+        "redact",
+        "clone",
+        "safeStringify",
+        "seen",
+        "addLog",
+        "entry",
+        "line",
+        "logDebug",
+        "logInfo",
+        "logWarn",
+        "logError",
+        "limit",
+        "start",
+        "isReadable",
+        "readUpstreamBody",
+        "buf",
+        "extractErrAsync",
+        "status",
+        "body",
+        "baseMsg",
+        "trimmed",
+        "isUnsupportedParamErrorAsync",
+        "raw",
+        "msg",
+        "rid",
+        "problems",
+        "sseMode",
+        "sendSSE",
+        "isGpt5",
+        "autoResponses",
+        "message",
+        "handleOllama",
+        "url",
+        "response",
+        "lines",
+        "evt",
+        "content",
+        "handleOpenAICompat",
+        "headers",
+        "base"
+      ]
+    },
+    "modular-framework/modules/llm-chat/server/app.js": {
+      "content": "const express = require('express');\nconst cors = require('cors');\nconst path = require('path');\nconst bodyParser = require('body-parser');\n\nconst { router: logsRouter } = require('./routes/logs');\nconst { router: infoRouter } = require('./routes/info');\nconst { router: healthRouter } = require('./routes/health');\nconst { router: chatRouter } = require('./routes/chat');\n\nconst app = express();\n\nconst BASE_PATH = (process.env.BASE_PATH || '').replace(/\\/$/, ''); // e.g. \"/modules/llm-chat\" or \"\"\n\n// middleware\napp.use(cors({ origin: true, credentials: true }));\napp.use(bodyParser.json({ limit: '2mb' }));\n\n// static UI\nconst pub = path.join(__dirname, '..', 'public');\n\n// Serve both at root and at BASE_PATH to support either proxy style\napp.use(express.static(pub));\nif (BASE_PATH) app.use(BASE_PATH, express.static(pub));\n\napp.get('/', (_req, res) => res.sendFile(path.join(pub, 'index.html')));\nif (BASE_PATH) app.get(`${BASE_PATH}/`, (_req, res) => res.sendFile(path.join(pub, 'index.html')));\n\napp.get('/config', (_req, res) => res.sendFile(path.join(pub, 'config.html')));\nif (BASE_PATH) app.get(`${BASE_PATH}/config`, (_req, res) => res.sendFile(path.join(pub, 'config.html')));\n\n// basic routes\napp.use('/', healthRouter);            // /health (root for Docker healthcheck)\napp.use('/api', infoRouter);           // /api/info\napp.use('/api', logsRouter);           // /api/logs, /api/logs/clear\nif (BASE_PATH) {\n  app.use(`${BASE_PATH}/api`, infoRouter);  // /modules/llm-chat/api/info\n  app.use(`${BASE_PATH}/api`, logsRouter);  // /modules/llm-chat/api/logs\n}\n\n// chat routes (root and prefixed)\napp.use('/api', chatRouter); // /api/chat\nif (BASE_PATH) app.use(`${BASE_PATH}/api`, chatRouter); // /modules/llm-chat/api/chat\n\nmodule.exports = app;\n",
+      "language": "javascript",
+      "symbols": [
+        "express",
+        "cors",
+        "path",
+        "bodyParser",
+        "app",
+        "BASE_PATH",
+        "pub"
+      ]
+    },
+    "modular-framework/modules/llm-chat/server/index.js": {
+      "content": "const app = require('./app');\n\nconst PORT = process.env.PORT || 3004;\napp.listen(PORT, () => {\n  const LOG_LEVEL = (process.env.LOG_LEVEL || 'info').toLowerCase();\n  console.log(`LLM Chat Module listening on :${PORT} (LOG_LEVEL=${LOG_LEVEL})`);\n});\n",
+      "language": "javascript",
+      "symbols": [
+        "app",
+        "PORT",
+        "LOG_LEVEL"
+      ]
+    },
+    "modular-framework/modules/llm-chat/server/routes/chat.js": {
+      "content": "const express = require('express');\nconst router = express.Router();\nconst { logInfo, logWarn, logError, redact } = require('../logger');\nconst { extractErrAsync } = require('../util/http');\nconst { handleOllama } = require('../providers/ollama');\nconst { handleOpenAICompat } = require('../providers/openaiCompat');\n\n// Attach an id to each request\nrouter.use((req, _res, next) => {\n  req.id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2,7)}`;\n  next();\n});\n\n// POST /api/chat (and also mounted under /api/llm-chat)\nrouter.post('/chat', async (req, res) => {\n  const rid = req.id;\n  const {\n    provider = 'openai',\n    baseUrl,\n    apiKey,\n    model,\n    messages = [],\n    temperature,\n    max_tokens,\n    stream = true,\n    useResponses = false,\n    reasoning = false\n  } = req.body || {};\n\n  const problems = [];\n  if (!baseUrl) problems.push('baseUrl is required');\n  if (!model) problems.push('model is required');\n  if (!Array.isArray(messages)) problems.push('messages must be an array');\n  if ((provider === 'openai' || provider === 'openai-compatible') && !apiKey) {\n    problems.push('apiKey is required for OpenAI/OpenAI-compatible providers');\n  }\n  if (problems.length) {\n    logWarn('Validation failed', { rid, problems, body: redact(req.body) });\n    return res.status(400).json({ error: 'Validation failed', details: problems });\n  }\n\n  const sseMode = !!stream;\n  if (sseMode) {\n    res.setHeader('Content-Type', 'text/event-stream');\n    res.setHeader('Cache-Control', 'no-cache, no-transform');\n    res.setHeader('Connection', 'keep-alive');\n    res.flushHeaders?.();\n  }\n  const sendSSE = (payload) => {\n    if (!sseMode) return;\n    try { res.write(`data: ${JSON.stringify(payload)}\\n\\n`); } catch { try { res.end(); } catch {} }\n  };\n\n  const isGpt5 = /^gpt-5/i.test(model) || /^o5/i.test(model);\n  const autoResponses = isGpt5 && provider === 'openai';\n\n  logInfo('LLM request', {\n    rid, provider, baseUrl, model,\n    stream: !!stream,\n    useResponses: useResponses || autoResponses,\n    reasoning: !!reasoning,\n    temperature: (typeof temperature === 'number' ? temperature : null),\n    max_tokens: max_tokens ?? null,\n  });\n\n  try {\n    if (provider === 'ollama') {\n      return await handleOllama({ res, sendSSE, rid, baseUrl, model, messages, temperature, sseMode });\n    }\n    return await handleOpenAICompat({\n      res, sendSSE, rid,\n      baseUrl, apiKey, model, messages, temperature,\n      max_tokens, useResponses: useResponses || autoResponses, reasoning, sseMode\n    });\n  } catch (err) {\n    const message = await extractErrAsync(err);\n    logError('LLM fatal error', { rid, message });\n    if (sseMode) {\n      sendSSE({ type: 'error', message });\n      try { res.end(); } catch {}\n    } else {\n      res.status(500).json({ error: message });\n    }\n  }\n});\n\nmodule.exports = { router };\n",
+      "language": "javascript",
+      "symbols": [
+        "express",
+        "router",
+        "rid",
+        "problems",
+        "sseMode",
+        "sendSSE",
+        "isGpt5",
+        "autoResponses",
+        "message",
+        "temperature"
+      ]
+    },
+    "modular-framework/modules/llm-chat/server/routes/health.js": {
+      "content": "const express = require('express');\nconst router = express.Router();\n\nrouter.get('/health', (_req, res) => res.json({ status: 'healthy' }));\n\nmodule.exports = { router };\n",
+      "language": "javascript",
+      "symbols": [
+        "express",
+        "router"
+      ]
+    },
+    "modular-framework/modules/llm-chat/server/routes/info.js": {
+      "content": "const express = require('express');\nconst router = express.Router();\n\nrouter.get('/info', (_req, res) => res.json({ module: 'llm-chat', version: '1.5.0', status: 'ready' }));\n\nmodule.exports = { router };\n",
+      "language": "javascript",
+      "symbols": [
+        "express",
+        "router"
+      ]
+    },
+    "modular-framework/modules/llm-chat/server/routes/logs.js": {
+      "content": "const express = require('express');\nconst router = express.Router();\nconst { logs } = require('../logger');\n\nrouter.get('/logs', (req, res) => {\n  const limit = Math.max(1, Math.min(Number(req.query.limit || 200), 2000));\n  const start = Math.max(0, logs.length - limit);\n  res.json(logs.slice(start));\n});\n\nrouter.post('/logs/clear', (_req, res) => {\n  logs.length = 0;\n  res.json({ ok: true });\n});\n\nmodule.exports = { router };\n",
+      "language": "javascript",
+      "symbols": [
+        "express",
+        "router",
+        "limit",
+        "start"
+      ]
+    },
+    "modular-framework/modules/openvscode/server/index.js": {
+      "content": "const express = require('express');\nconst cors = require('cors');\nconst bodyParser = require('body-parser');\nconst { exec, spawn } = require('child_process');\nconst fs = require('fs').promises;\nconst path = require('path');\nconst WebSocket = require('ws');\nconst http = require('http');\n\nconst app = express();\nconst server = http.createServer(app);\nconst wss = new WebSocket.Server({ server });\n\nconst API_PORT = process.env.API_PORT || 3007;\nconst WORKSPACE_DIR = process.env.WORKSPACE_DIR || '/home/workspace';\n\n// Middleware\napp.use(cors());\napp.use(bodyParser.json());\n\n// WebSocket connections for real-time updates\nconst clients = new Set();\nwss.on('connection', (ws) => {\n    clients.add(ws);\n    ws.on('close', () => clients.delete(ws));\n    ws.send(JSON.stringify({ type: 'connected', workspace: WORKSPACE_DIR }));\n});\n\nfunction broadcast(data) {\n    const message = JSON.stringify(data);\n    clients.forEach(client => {\n        if (client.readyState === WebSocket.OPEN) {\n            client.send(message);\n        }\n    });\n}\n\n// === WORKSPACE MANAGEMENT API ===\n\n// List workspaces\napp.get('/api/workspaces', async (req, res) => {\n    try {\n        const files = await fs.readdir(WORKSPACE_DIR);\n        const workspaces = [];\n        \n        for (const file of files) {\n            const stat = await fs.stat(path.join(WORKSPACE_DIR, file));\n            if (stat.isDirectory()) {\n                workspaces.push({\n                    name: file,\n                    path: path.join(WORKSPACE_DIR, file),\n                    created: stat.birthtime,\n                    modified: stat.mtime\n                });\n            }\n        }\n        \n        res.json({ workspaces });\n    } catch (error) {\n        res.status(500).json({ error: error.message });\n    }\n});\n\n// Create workspace\napp.post('/api/workspaces', async (req, res) => {\n    const { name, gitUrl } = req.body;\n    \n    if (!name) {\n        return res.status(400).json({ error: 'Workspace name required' });\n    }\n    \n    const workspacePath = path.join(WORKSPACE_DIR, name);\n    \n    try {\n        await fs.mkdir(workspacePath, { recursive: true });\n        \n        if (gitUrl) {\n            // Clone repository if Git URL provided\n            await new Promise((resolve, reject) => {\n                exec(`git clone ${gitUrl} ${workspacePath}`, (error) => {\n                    if (error) reject(error);\n                    else resolve();\n                });\n            });\n        }\n        \n        broadcast({ type: 'workspace-created', name, path: workspacePath });\n        res.json({ success: true, workspace: workspacePath });\n    } catch (error) {\n        res.status(500).json({ error: error.message });\n    }\n});\n\n// Open workspace in VS Code\napp.post('/api/workspaces/:name/open', async (req, res) => {\n    const { name } = req.params;\n    const workspacePath = path.join(WORKSPACE_DIR, name);\n    \n    try {\n        await fs.access(workspacePath);\n        broadcast({ type: 'workspace-opened', name, path: workspacePath });\n        res.json({ \n            success: true, \n            url: `http://localhost:3006/?folder=${encodeURIComponent(workspacePath)}`\n        });\n    } catch (error) {\n        res.status(404).json({ error: 'Workspace not found' });\n    }\n});\n\n// === TERMINAL EXECUTION API ===\n\nconst terminals = new Map();\n\napp.post('/api/terminal/create', (req, res) => {\n    const { workspaceName } = req.body;\n    const terminalId = `term-${Date.now()}`;\n    const workspacePath = workspaceName ? \n        path.join(WORKSPACE_DIR, workspaceName) : WORKSPACE_DIR;\n    \n    const term = spawn('/bin/bash', [], {\n        cwd: workspacePath,\n        env: { ...process.env, TERM: 'xterm-256color' }\n    });\n    \n    terminals.set(terminalId, term);\n    \n    term.stdout.on('data', (data) => {\n        broadcast({ \n            type: 'terminal-output', \n            terminalId, \n            data: data.toString() \n        });\n    });\n    \n    term.stderr.on('data', (data) => {\n        broadcast({ \n            type: 'terminal-error', \n            terminalId, \n            data: data.toString() \n        });\n    });\n    \n    term.on('exit', (code) => {\n        terminals.delete(terminalId);\n        broadcast({ type: 'terminal-exit', terminalId, code });\n    });\n    \n    res.json({ terminalId });\n});\n\napp.post('/api/terminal/:id/exec', (req, res) => {\n    const { id } = req.params;\n    const { command } = req.body;\n    \n    const term = terminals.get(id);\n    if (!term) {\n        return res.status(404).json({ error: 'Terminal not found' });\n    }\n    \n    term.stdin.write(command + '\\n');\n    res.json({ success: true });\n});\n\n// === GITHUB INTEGRATION API ===\n\napp.post('/api/github/clone', async (req, res) => {\n    const { repoUrl, workspaceName } = req.body;\n    \n    if (!repoUrl || !workspaceName) {\n        return res.status(400).json({ error: 'Repository URL and workspace name required' });\n    }\n    \n    try {\n        // Call GitHub Hub module API\n        const githubResponse = await fetch('http://github-hub-module:3005/api/config');\n        const githubConfig = await githubResponse.json();\n        \n        const workspacePath = path.join(WORKSPACE_DIR, workspaceName);\n        await fs.mkdir(workspacePath, { recursive: true });\n        \n        await new Promise((resolve, reject) => {\n            exec(`git clone ${repoUrl} ${workspacePath}`, (error) => {\n                if (error) reject(error);\n                else resolve();\n            });\n        });\n        \n        broadcast({ type: 'repo-cloned', workspace: workspaceName, repo: repoUrl });\n        res.json({ success: true, workspace: workspacePath });\n    } catch (error) {\n        res.status(500).json({ error: error.message });\n    }\n});\n\n// === LLM INTEGRATION API ===\n\napp.post('/api/llm/assist', async (req, res) => {\n    const { code, question, context } = req.body;\n    \n    try {\n        // Call LLM Chat module API\n        const llmResponse = await fetch('http://llm-chat-module:3004/api/chat', {\n            method: 'POST',\n            headers: { 'Content-Type': 'application/json' },\n            body: JSON.stringify({\n                provider: 'openai',\n                baseUrl: 'https://api.openai.com',\n                model: 'gpt-4',\n                messages: [\n                    { role: 'system', content: 'You are a coding assistant integrated with VS Code.' },\n                    { role: 'user', content: `Context:\\n${context}\\n\\nCode:\\n${code}\\n\\nQuestion: ${question}` }\n                ],\n                stream: false\n            })\n        });\n        \n        const result = await llmResponse.json();\n        res.json({ suggestion: result.content });\n    } catch (error) {\n        res.status(500).json({ error: error.message });\n    }\n});\n\n// === FILE OPERATIONS API ===\n\napp.get('/api/files/*', async (req, res) => {\n    const filePath = path.join(WORKSPACE_DIR, req.params[0]);\n    \n    try {\n        const stat = await fs.stat(filePath);\n        \n        if (stat.isDirectory()) {\n            const files = await fs.readdir(filePath);\n            const items = [];\n            \n            for (const file of files) {\n                const itemPath = path.join(filePath, file);\n                const itemStat = await fs.stat(itemPath);\n                items.push({\n                    name: file,\n                    type: itemStat.isDirectory() ? 'directory' : 'file',\n                    size: itemStat.size,\n                    modified: itemStat.mtime\n                });\n            }\n            \n            res.json({ type: 'directory', items });\n        } else {\n            const content = await fs.readFile(filePath, 'utf-8');\n            res.json({ type: 'file', content });\n        }\n    } catch (error) {\n        res.status(404).json({ error: 'File not found' });\n    }\n});\n\napp.put('/api/files/*', async (req, res) => {\n    const filePath = path.join(WORKSPACE_DIR, req.params[0]);\n    const { content } = req.body;\n    \n    try {\n        await fs.writeFile(filePath, content, 'utf-8');\n        broadcast({ type: 'file-saved', path: filePath });\n        res.json({ success: true });\n    } catch (error) {\n        res.status(500).json({ error: error.message });\n    }\n});\n\n// === WORKFLOW AUTOMATION API ===\n\napp.post('/api/workflows/run', async (req, res) => {\n    const { workflow, workspace } = req.body;\n    const workspacePath = path.join(WORKSPACE_DIR, workspace);\n    \n    const workflows = {\n        'test': 'npm test',\n        'build': 'npm run build',\n        'lint': 'npm run lint',\n        'format': 'prettier --write .',\n        'docker-build': 'docker build -t app .',\n        'git-status': 'git status',\n        'git-pull': 'git pull origin main'\n    };\n    \n    const command = workflows[workflow];\n    if (!command) {\n        return res.status(400).json({ error: 'Unknown workflow' });\n    }\n    \n    exec(command, { cwd: workspacePath }, (error, stdout, stderr) => {\n        if (error) {\n            res.status(500).json({ error: error.message, stderr });\n        } else {\n            broadcast({ type: 'workflow-completed', workflow, output: stdout });\n            res.json({ success: true, output: stdout });\n        }\n    });\n});\n\n// Health check\napp.get('/health', (req, res) => {\n    res.json({ status: 'healthy', workspace: WORKSPACE_DIR });\n});\n\nserver.listen(API_PORT, () => {\n    console.log(`OpenVSCode API server running on port ${API_PORT}`);\n});",
+      "language": "javascript",
+      "symbols": [
+        "express",
+        "cors",
+        "bodyParser",
+        "fs",
+        "path",
+        "WebSocket",
+        "http",
+        "app",
+        "server",
+        "wss",
+        "API_PORT",
+        "WORKSPACE_DIR",
+        "clients",
+        "broadcast",
+        "message",
+        "files",
+        "workspaces",
+        "file",
+        "stat",
+        "workspacePath",
+        "terminals",
+        "terminalId",
+        "term",
+        "githubResponse",
+        "githubConfig",
+        "llmResponse",
+        "result",
+        "filePath",
+        "items",
+        "itemPath",
+        "itemStat",
+        "content",
+        "workflows",
+        "command"
+      ]
+    },
+    "modular-framework/modules/ssh-terminal/server.js": {
+      "content": "// modules/ssh-terminal/server.js\nconst express = require('express');\nconst WebSocket = require('ws');\nconst http = require('http');\nconst cors = require('cors');\nconst path = require('path');\nconst { Client } = require('ssh2');\n\nconst app = express();\nconst server = http.createServer(app);\nconst wss = new WebSocket.Server({ server });\n\nconst PORT = process.env.PORT || 3001;\n\n// Middleware\napp.use(cors());\napp.use(express.json());\napp.use(express.static('public'));\n\n// Store active SSH connections\nconst connections = new Map();\n\n// Routes\napp.get('/', (req, res) => {\n    res.sendFile(path.join(__dirname, 'public', 'index.html'));\n});\n\napp.get('/config', (req, res) => {\n    res.sendFile(path.join(__dirname, 'public', 'config.html'));\n});\n\napp.get('/health', (req, res) => {\n    res.json({ status: 'healthy', connections: connections.size });\n});\n\napp.post('/api/connect', (req, res) => {\n    const { host, port, username, password } = req.body;\n    \n    // Validate input\n    if (!host || !username) {\n        return res.status(400).json({ error: 'Host and username are required' });\n    }\n    \n    res.json({ \n        status: 'connection_initiated',\n        connectionId: `${username}@${host}:${port || 22}`\n    });\n});\n\napp.get('/api/info', (req, res) => {\n    res.json({\n        module: 'ssh-terminal',\n        version: '1.0.0',\n        capabilities: ['ssh', 'sftp', 'terminal'],\n        status: 'ready'\n    });\n});\n\n// WebSocket connection for real-time terminal\nwss.on('connection', (ws) => {\n    console.log('New WebSocket connection established');\n    \n    let sshClient = null;\n    let stream = null;\n    \n    ws.on('message', (message) => {\n        try {\n            const data = JSON.parse(message);\n            \n            switch(data.type) {\n                case 'connect':\n                    handleSSHConnection(ws, data.config);\n                    break;\n                    \n                case 'command':\n                    if (stream) {\n                        stream.write(data.command + '\\n');\n                    }\n                    break;\n                    \n                case 'resize':\n                    if (stream) {\n                        stream.setWindow(data.rows, data.cols);\n                    }\n                    break;\n                    \n                case 'disconnect':\n                    if (sshClient) {\n                        sshClient.end();\n                    }\n                    break;\n            }\n        } catch (error) {\n            console.error('WebSocket message error:', error);\n            ws.send(JSON.stringify({\n                type: 'error',\n                message: error.message\n            }));\n        }\n    });\n    \n    ws.on('close', () => {\n        console.log('WebSocket connection closed');\n        if (sshClient) {\n            sshClient.end();\n        }\n    });\n    \n    function handleSSHConnection(ws, config) {\n        sshClient = new Client();\n        \n        sshClient.on('ready', () => {\n            console.log('SSH connection established');\n            \n            ws.send(JSON.stringify({\n                type: 'connected',\n                message: `Connected to ${config.host}`\n            }));\n            \n            sshClient.shell((err, shellStream) => {\n                if (err) {\n                    ws.send(JSON.stringify({\n                        type: 'error',\n                        message: err.message\n                    }));\n                    return;\n                }\n                \n                stream = shellStream;\n                \n                stream.on('data', (data) => {\n                    ws.send(JSON.stringify({\n                        type: 'output',\n                        data: data.toString()\n                    }));\n                });\n                \n                stream.on('close', () => {\n                    ws.send(JSON.stringify({\n                        type: 'disconnected',\n                        message: 'SSH connection closed'\n                    }));\n                });\n            });\n        });\n        \n        sshClient.on('error', (err) => {\n            console.error('SSH connection error:', err);\n            ws.send(JSON.stringify({\n                type: 'error',\n                message: err.message\n            }));\n        });\n        \n        // Connect to SSH server\n        sshClient.connect({\n            host: config.host,\n            port: config.port || 22,\n            username: config.username,\n            password: config.password,\n            // For key-based auth:\n            // privateKey: config.privateKey\n        });\n    }\n});\n\n// Start server\nserver.listen(PORT, () => {\n    console.log(`SSH Terminal Module running on port ${PORT}`);\n});\n",
+      "language": "javascript",
+      "symbols": [
+        "express",
+        "WebSocket",
+        "http",
+        "cors",
+        "path",
+        "app",
+        "server",
+        "wss",
+        "PORT",
+        "connections",
+        "sshClient",
+        "stream",
+        "data",
+        "handleSSHConnection"
+      ]
+    }
+  },
+  "api_specs": {},
+  "configs": {
+    "modular-framework/framework/Dockerfile": "# framework/Dockerfile\nFROM nginx:alpine\n\n# Install necessary packages\nRUN apk add --no-cache curl\n\n# Copy nginx configuration\nCOPY nginx.conf /etc/nginx/nginx.conf\n\n# Copy static files\nCOPY html /usr/share/nginx/html\n\n# Health check\nHEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \\\n    CMD curl -f http://localhost/health || exit 1\n\nEXPOSE 80\n\nCMD [\"nginx\", \"-g\", \"daemon off;\"]\n",
+    "modular-framework/modules/RAG/Dockerfile": "# Multi-stage build for production efficiency\nFROM python:3.11-slim as builder\n\nWORKDIR /app\nCOPY requirements.txt .\nRUN pip install --user --no-cache-dir -r requirements.txt\n\nFROM python:3.11-slim\n\n# Security: create non-root user and install git\nRUN useradd --create-home --shell /bin/bash app \\\n    && apt-get update \\\n    && apt-get install -y --no-install-recommends \\\n        curl \\\n        git \\\n    && rm -rf /var/lib/apt/lists/*\n\nWORKDIR /home/app\n\n# Copy dependencies and application code\nCOPY --from=builder /root/.local /home/app/.local\nCOPY --chown=app:app . .\n\nUSER app\n\n# Add Python packages to PATH\nENV PATH=/home/app/.local/bin:$PATH\n\n# Health check\nHEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \\\n    CMD curl -f http://localhost:8000/health || exit 1\n\nEXPOSE 8000\n\nCMD [\"python\", \"rag_system.py\"]",
+    "modular-framework/modules/browser/Dockerfile": "FROM node:18-alpine\n\nWORKDIR /app\n\n# Install Chrome for headless browsing if needed\nRUN apk add --no-cache \\\n    chromium \\\n    nss \\\n    freetype \\\n    freetype-dev \\\n    harfbuzz \\\n    ca-certificates \\\n    ttf-freefont\n\n# Install dependencies\nCOPY server/package.json ./\nRUN npm install\n\n# Copy application\nCOPY server ./server\nCOPY public ./public\n\nENV PORT=3008\nENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true\nENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser\n\nEXPOSE 3008\n\nCMD [\"node\", \"server/index.js\"]",
+    "modular-framework/modules/github-hub/Dockerfile": "# modules/github-hub/Dockerfile\nFROM python:3.11-slim\n\nENV PYTHONDONTWRITEBYTECODE=1 \\\n    PYTHONUNBUFFERED=1\n\nWORKDIR /app\n\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n    curl ca-certificates && rm -rf /var/lib/apt/lists/*\n\nCOPY requirements.txt .\nRUN pip install --no-cache-dir -r requirements.txt\n\nCOPY app ./app\nCOPY public ./public\n\n# data dir for encrypted config/token\nRUN mkdir -p /data\nENV DATA_DIR=/data\nENV PORT=3005\n\nEXPOSE 3005\nCMD [\"uvicorn\", \"app.main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"3005\"]\n",
+    "modular-framework/modules/llm-chat/Dockerfile": "FROM node:18-alpine\nWORKDIR /app\n\n# Install deps\nCOPY package.json ./\nRUN npm install --production\n\n# Copy source\nCOPY . .\n\nENV NODE_ENV=production\nENV PORT=3004\n\nEXPOSE 3004\n\n# Health check\nHEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \\\n  CMD wget -qO- http://localhost:$PORT/health || exit 1\n\nCMD [\"node\", \"server/index.js\"]\n",
+    "modular-framework/modules/openvscode/Dockerfile": "FROM gitpod/openvscode-server:latest\n\n# --- System setup -------------------------------------------------------------\nUSER root\n\n# Install additional tools\nRUN apt-get update && apt-get install -y \\\n    curl \\\n    git \\\n    nodejs \\\n    npm \\\n    python3 \\\n    python3-pip \\\n    docker.io \\\n    jq \\\n    ca-certificates \\\n    wget \\\n && rm -rf /var/lib/apt/lists/*\n\n# Create workspace directory (owned by the openvscode-server user)\nRUN mkdir -p /home/workspace && \\\n    chown -R openvscode-server:openvscode-server /home/workspace\n\n# --- App setup ----------------------------------------------------------------\n# Work in the openvscode home so paths are predictable\nWORKDIR /home/openvscode-server\n\n# Install API server deps (use caching: copy package manifest first)\nCOPY --chown=openvscode-server:openvscode-server server/package*.json ./server/\n# If there's no package-lock.json, npm ci will fail; fallback to npm install is fine.\nRUN cd server && npm ci || npm install\n\n# Copy API server source and optional config\nCOPY --chown=openvscode-server:openvscode-server server ./server\nCOPY --chown=openvscode-server:openvscode-server config ./config\n\n# Copy the start script\nCOPY --chown=openvscode-server:openvscode-server start.sh /home/openvscode-server/start.sh\nRUN chmod +x /home/openvscode-server/start.sh\n\n# --- Runtime env --------------------------------------------------------------\nUSER openvscode-server\n\nENV WORKSPACE_DIR=/home/workspace\nENV PORT=3006\nENV API_PORT=3007\nENV NODE_ENV=production\n\n# Expose ports\nEXPOSE 3006 3007\n\n# Start both the API and OpenVSCode Server\nCMD [\"/home/openvscode-server/start.sh\"]\n",
+    "modular-framework/modules/ssh-terminal/Dockerfile": "# modules/ssh-terminal/Dockerfile\nFROM node:18-alpine\n\nWORKDIR /app\n\n# Install dependencies\nCOPY package.json .\nRUN npm install\n\n# Copy application files\nCOPY . .\n\nEXPOSE 3001\n\n# Health check\nHEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \\\n    CMD curl -f http://localhost:3001/health || exit 1\n\nCMD [\"node\", \"server.js\"]"
+  },
+  "schemas": {},
+  "tests": [],
+  "file_hashes": {
+    "modular-framework/framework/Dockerfile": "f8edaa7d0fe7c9e2d4a2e26054f94a6597545145f1cfcd2d6d424fe6b8f8c1c1",
+    "modular-framework/modules/RAG/Dockerfile": "656106012c193b39d6ab485e9ae8a1c695b6233696f4fe9fff5b8026655e9c95",
+    "modular-framework/modules/RAG/rag_system.py": "a0cd25bf2f2d9ff7ea0fb2f21766e523b66396a0b601a135ef418fd8ec6d3c53",
+    "modular-framework/modules/browser/Dockerfile": "7db90dfaa5270fb7fc4a881c16fc88747d1ec48bc7c4085ea377439f8378bb5d",
+    "modular-framework/modules/browser/server/index.js": "6013b27f5ddde2c34e42fea33a3eba6f3ad2d40def96ad5caa7041275d11107e",
+    "modular-framework/modules/github-hub/Dockerfile": "3833cedf471bbb73e86faca3055330090351dbc11a858ee9f9f143549b6c20f6",
+    "modular-framework/modules/github-hub/app/github_api.py": "98ff3a8828b36b47f9ce6e2dddad1d4da73c43ebb7f4b86648ad4331e13500fd",
+    "modular-framework/modules/github-hub/app/main.py": "576bd28cfb35c00fadaad1244d0081862a41f70f4051d608080109b440a4365b",
+    "modular-framework/modules/github-hub/app/store.py": "ee0a6e8e349651b7939e21e819a5b83484a610a64b3853551f8e3b50d0893d21",
+    "modular-framework/modules/github-hub/public/js/app.js": "f3d024048b3e691d241a60ee7196d412fb37d3d7eebea6522daa9a54e16ebbd5",
+    "modular-framework/modules/llm-chat/Dockerfile": "3919d0a3a41aea9777f8b85254937e2fbbfe73bf9f3d9d0a38d2cf4de5f59129",
+    "modular-framework/modules/llm-chat/server.js": "1394134e363feb7e452883e234f29756a8e465d6e8f91cff76b20de24ab86a6f",
+    "modular-framework/modules/llm-chat/server/app.js": "d1c69a9ac8e5ed0db04c178a0b4d3e1e4522e9d409e228ba05a1d36999b0acb7",
+    "modular-framework/modules/llm-chat/server/index.js": "0e02c04d704378d144d320d4b8bfee7b5c1bac1eaeff99f908dc33cf925e049f",
+    "modular-framework/modules/llm-chat/server/routes/chat.js": "f553ad702a282c730dac713fc83975c3cd98f60c327bd60c093a581458a032d7",
+    "modular-framework/modules/llm-chat/server/routes/health.js": "d9d21e2ec00e934bcb3edbcf8ead0e59a171a45671375a5027f0024f98c6502c",
+    "modular-framework/modules/llm-chat/server/routes/info.js": "ebfda5ed38429ed1a3f5b073d3f8ba28396130d7193ed85da6b872aa5c7be832",
+    "modular-framework/modules/llm-chat/server/routes/logs.js": "804eca579a99c4782bc123cff485e514d24e216cebf16ea816c21bf1af8a7aa9",
+    "modular-framework/modules/openvscode/Dockerfile": "3e1f9336576da84e163087f84682acf9e4179424c6bea1761a25ffbea69523ab",
+    "modular-framework/modules/openvscode/server/index.js": "665501179f4280b78dc837bdd6d35f84c5854bb40afe70fbf422ef66e1a12aae",
+    "modular-framework/modules/ssh-terminal/Dockerfile": "ee12f97c2a42efe8e7f0d51f93bbf852d2cbe67d4d59451f5b4f6baefbaafb59",
+    "modular-framework/modules/ssh-terminal/server.js": "c461d8700c02c28bf03d0e6e466ea82304c7d5834f3c239a5248090b5d4a2327"
+  }
+}
