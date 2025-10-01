@@ -193,6 +193,121 @@ if (BASE_PATH) app.post(`${BASE_PATH}/api/runners/register`, (req, res) => {
 });
 
 
+// --- Installer: runner-agent one-liner ---
+// Returns a bash script that runs a runner-agent Docker container and self-registers it
+app.get('/install/runner.sh', (_req, res) => {
+  const REG_TOKEN = process.env.RUNNER_REG_TOKEN || '';
+  // Note: We do not try to guess the external server URL here; pass ?server=http://host:8080 when curling.
+  // The token is embedded intentionally for dev/test convenience. Treat your REG_TOKEN as secret.
+  res.setHeader('Content-Type', 'text/x-shellscript');
+  const script = `#!/usr/bin/env bash
+set -euo pipefail
+
+# Usage:
+#   curl -fsSL "$0" | bash -s -- --name myrunner --server http://localhost:8080 --port 4010 --base-dir /tmp/runner --token supersecret
+# Flags:
+#   --name        Runner name to register (default: agent-$(hostname))
+#   --server      Base URL of the framework edge/nginx (e.g., http://localhost:8080)
+#   --runner-url  Public URL the workflows server can reach for this runner (default: http://localhost:\${RUNNER_PORT})
+#   --port        Local port to expose (default: 4010)
+#   --token       Runner auth token (default: random)
+#   --base-dir    Base directory restriction for runner (default: /tmp/runner-agent)
+#   --allow-env   Comma list of env vars to pass through (default: "")
+#   --image       Runner image (default: ghcr.io/modular-framework/runner-agent:latest)
+
+RUNNER_NAME=""
+SERVER_BASE=""
+RUNNER_URL=""
+RUNNER_PORT="4010"
+RUNNER_TOKEN=""
+BASE_DIR="/tmp/runner-agent"
+ALLOW_ENV=""
+RUNNER_IMAGE="ghcr.io/modular-framework/runner-agent:latest"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --name) RUNNER_NAME="$2"; shift 2;;
+    --server) SERVER_BASE="$2"; shift 2;;
+    --runner-url) RUNNER_URL="$2"; shift 2;;
+    --port) RUNNER_PORT="$2"; shift 2;;
+    --token) RUNNER_TOKEN="$2"; shift 2;;
+    --base-dir) BASE_DIR="$2"; shift 2;;
+    --allow-env) ALLOW_ENV="$2"; shift 2;;
+    --image) RUNNER_IMAGE="$2"; shift 2;;
+    *) echo "Unknown arg: $1"; exit 1;;
+  esac
+done
+
+if ! command -v docker >/dev/null 2>&1; then
+  echo "Docker is required on the target machine." >&2
+  exit 1
+fi
+
+if [[ -z "\${RUNNER_NAME}" ]]; then
+  RUNNER_NAME="agent-$(hostname)-$(date +%s)"
+fi
+if [[ -z "\${RUNNER_TOKEN}" ]]; then
+  RUNNER_TOKEN="$(tr -dc A-Za-z0-9 </dev/urandom | head -c 24)"
+fi
+if [[ -z "\${SERVER_BASE}" ]]; then
+  echo "Missing --server (e.g., http://localhost:8080)" >&2
+  exit 1
+fi
+if [[ -z "\${RUNNER_URL}" ]]; then
+  RUNNER_URL="http://localhost:\${RUNNER_PORT}"
+fi
+
+echo ">>> Starting runner: \${RUNNER_NAME} on port \${RUNNER_PORT}"
+mkdir -p "\${BASE_DIR}"
+
+# Stop/remove previous container if any
+if docker ps -a --format '{{.Names}}' | grep -q "^runner-agent-\${RUNNER_NAME}\$"; then
+  docker rm -f "runner-agent-\${RUNNER_NAME}" >/dev/null 2>&1 || true
+fi
+
+docker run -d --name "runner-agent-\${RUNNER_NAME}" --restart unless-stopped \\
+  -p "\${RUNNER_PORT}:4010" \\
+  -e RUNNER_TOKEN="\${RUNNER_TOKEN}" \\
+  -e RUNNER_BASE_DIR="\${BASE_DIR}" \\
+  -e RUNNER_DEFAULT_TIMEOUT_MS="30000" \\
+  -e RUNNER_ALLOW_ENV="\${ALLOW_ENV}" \\
+  -v "\${BASE_DIR}:\${BASE_DIR}" \\
+  "\${RUNNER_IMAGE}"
+
+echo ">>> Waiting for health..."
+for i in $(seq 1 30); do
+  if curl -fsS -H "Authorization: Bearer \${RUNNER_TOKEN}" "\${RUNNER_URL}/health" >/dev/null 2>&1; then
+    echo "Runner healthy."
+    break
+  fi
+  sleep 1
+  if [[ "$i" == "30" ]]; then
+    echo "Runner did not become healthy in time." >&2
+    exit 1
+  fi
+done
+
+echo ">>> Registering runner in llm-workflows..."
+curl -fsS -X POST \\
+  -H "Authorization: Bearer ${REG_TOKEN}" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "name": "'"'\${RUNNER_NAME}'"'",
+    "url": "'"'\${RUNNER_URL}'"'",
+    "token": "'"'\${RUNNER_TOKEN}'"'",
+    "default_cwd": "'"'\${BASE_DIR}'"'"
+  }' "\${SERVER_BASE}/api/llm-workflows/api/runners/register"
+
+echo ">>> Done. Runner \"\${RUNNER_NAME}\" registered at \${RUNNER_URL}"
+`;
+  res.send(script);
+});
+
+if (BASE_PATH) app.get(`${BASE_PATH}/install/runner.sh`, (req, res) => {
+  req.url = '/install/runner.sh';
+  app._router.handle(req, res);
+});
+
 
 // Storage helpers
 function ensureDir(p) { if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true }); }

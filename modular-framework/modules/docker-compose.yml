@@ -57,32 +57,56 @@ services:
     build: ./llm-workflows
     container_name: llm-workflows-module
     environment:
+      # Logging (optional)
       - SPLUNK_HEC_URL=$SPLUNK_HEC_URL
       - SPLUNK_HEC_TOKEN=$SPLUNK_HEC_TOKEN
       - NODE_TLS_REJECT_UNAUTHORIZED=${NODE_TLS_REJECT_UNAUTHORIZED}
       - NODE_ENV=production
-      - INTERNAL_API_TOKEN=supersecret
-      - RUNNER_REG_TOKEN=supersecret
-      #- PORT=3005
-      # Point to llm-gateway compat endpoint designed for workflows SSE
+      # INTERNAL_API_TOKEN:
+      #   Protects "dangerous" backend endpoints (testStep with execute, run workflow).
+      #   The frontend must send Authorization: Bearer <this token>.
+      #   Set it once in the UI via "Set API Token".
+      - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN:-supersecret}
+      # RUNNER_REG_TOKEN:
+      #   Token that the installer script and agents use to self-register with the workflows server.
+      #   Keep this secret; it is accepted at /api/runners/register.
+      - RUNNER_REG_TOKEN=${RUNNER_REG_TOKEN:-supersecret}
+      # Point to llm-gateway compat endpoint designed for workflows
       - LLM_GATEWAY_CHAT_URL=http://llm-gateway:3010/api/compat/llm-workflows
-      # Base for admin/models APIs
       - LLM_GATEWAY_API_BASE=http://llm-gateway:3010/api
-      # Optional: serve UI under a path instead of "/"
+      # Serve UI under a path (module also supports root)
       - BASE_PATH=/llm-workflows
+      # Allow step execution (local or via runners)
       - ALLOW_STEP_EXEC=true
-      # Optional & DANGEROUS: only set to true if you want to allow host execution
-      # - ALLOW_DANGEROUS=true
-      # Optional: choose where workflows.json is stored (default is /app/data)
-      # - DATA_DIR=/app/data
     ports:
       - "3005:3005"
     volumes:
-      # persist workflows.json
       - ./llm-workflows/data:/app/data
     depends_on:
       - llm-gateway
       - splunk
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  runner-agent:
+    build: ./runner-agent
+    container_name: runner-agent
+    environment:
+      # RUNNER_TOKEN:
+      #   Token the workflows server must use when calling this runner (/exec).
+      #   Must match the one you register the runner with (via installer or admin API).
+      - RUNNER_TOKEN=${RUNNER_TOKEN:-supersecret}
+      # Restrict the runner to a base directory on the agent machine
+      - RUNNER_BASE_DIR=/runner-home
+      # Optional: allow specific env vars to propagate into executed processes
+      - RUNNER_ALLOW_ENV=HTTP_PROXY,HTTPS_PROXY,NO_PROXY
+      - RUNNER_DEFAULT_TIMEOUT_MS=30000
+      - PORT=4010
+    volumes:
+      - ./runner-agent/home:/runner-home
+    ports:
+      - "4010:4010"
     networks:
       - app-network
     restart: unless-stopped

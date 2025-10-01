@@ -4,10 +4,8 @@ const state = {
   currentStepIdx: -1,
   runs: [],
   models: [],
-  runners: [] // <--- NEW
+  runners: []
 };
-
-// PUT IN TOKEN!!!!!!!!!!!
 
 const INTERNAL_TOKEN_KEY = 'internal_api_token';
 function authHeaders(h = {}) {
@@ -15,6 +13,22 @@ function authHeaders(h = {}) {
   return t ? { ...h, Authorization: `Bearer ${t}` } : h;
 }
 
+function updateTokenUi() {
+  const el = document.getElementById('tokenStatus');
+  if (!el) return;
+  const has = !!localStorage.getItem(INTERNAL_TOKEN_KEY);
+  el.textContent = has ? 'auth: ok' : 'auth: missing';
+  el.style.background = has ? '#0e639c' : '#3e3e42';
+}
+function promptSetToken() {
+  const cur = localStorage.getItem(INTERNAL_TOKEN_KEY) || '';
+  const next = window.prompt('Enter INTERNAL_API_TOKEN (configured on the server):', cur);
+  if (next != null) {
+    if (next.trim()) localStorage.setItem(INTERNAL_TOKEN_KEY, next.trim());
+    else localStorage.removeItem(INTERNAL_TOKEN_KEY);
+  }
+  updateTokenUi();
+}
 
 // Helpers
 const $ = (id) => document.getElementById(id);
@@ -69,23 +83,19 @@ function updatePromptPreview() {
   pre.textContent = computeFullPromptForStep(step, vars) || '';
 }
 
-
-
 // Gateway models
 async function fetchGatewayModels() {
-  console.log('[fetchGatewayModels] Starting fetch...');
   try {
     const r = await fetch('/llm-gateway/api/models', { credentials: 'include' });
     const data = await safeJson(r);
     if (!r.ok) {
-      console.warn('[fetchGatewayModels] Failed:', data?.error || data);
+      console.warn('Failed to load gateway models:', data?.error || data);
       state.models = [];
     } else {
       state.models = data.items || [];
-      console.log('[fetchGatewayModels] Loaded models:', state.models.length, state.models);
     }
   } catch (e) {
-    console.warn('[fetchGatewayModels] Exception:', e.message || e);
+    console.warn('Failed to load gateway models:', e.message || e);
     state.models = [];
   }
   populateModelSelects();
@@ -100,20 +110,13 @@ function modelOptionLabel(m) {
   return `${name} · ${prov}${mode}${cost}`;
 }
 function populateModelSelect(selectEl, infoEl, currentValue) {
-  console.log(`[populateModelSelect] Called for ${selectEl?.id}, currentValue: "${currentValue}"`);
-  if (!selectEl) {
-    console.warn('[populateModelSelect] selectEl is null');
-    return;
-  }
+  if (!selectEl) return;
   selectEl.innerHTML = '';
 
-  // Add default option
   const def = document.createElement('option');
   def.value = '';
-  
-  // Different default text for step vs main model select
-  const isStepSelect = selectEl.id === 'sModelSelect';
-  if (isStepSelect) {
+  const isStep = selectEl.id === 'sModelSelect';
+  if (isStep) {
     def.textContent = state.current?.chat?.model 
       ? `— Inherit from workflow (${state.current.chat.model}) —`
       : '— Select model —';
@@ -124,7 +127,6 @@ function populateModelSelect(selectEl, infoEl, currentValue) {
   }
   selectEl.appendChild(def);
 
-  console.log(`[populateModelSelect] Adding ${state.models.length} models to ${selectEl.id}`);
   for (const m of state.models) {
     const opt = document.createElement('option');
     opt.value = m.model_name;
@@ -135,13 +137,9 @@ function populateModelSelect(selectEl, infoEl, currentValue) {
     opt.dataset.currency = m.currency || 'USD';
     selectEl.appendChild(opt);
   }
-  
-  // Select current value if found
   const val = String(currentValue || '');
   const found = Array.from(selectEl.options).find(o => o.value === val);
-  console.log(`[populateModelSelect] Looking for value "${val}", found: ${!!found}`);
   selectEl.value = found ? val : '';
-  
   if (infoEl) {
     if (found) {
       const m = state.models.find(x => x.model_name === val);
@@ -150,68 +148,35 @@ function populateModelSelect(selectEl, infoEl, currentValue) {
       infoEl.textContent = '';
     }
   }
-  console.log(`[populateModelSelect] Final select value: "${selectEl.value}"`);
 }
 function populateModelSelects() {
-  console.log('[populateModelSelects] Called');
-  console.log('[populateModelSelects] Current workflow model:', state.current?.chat?.model);
-  console.log('[populateModelSelects] Current step index:', state.currentStepIdx);
-  
-  // Main workflow model
-  populateModelSelect($('modelSelect'), $('modelInfo'), state.current?.chat?.model || '');
-  
-  // Step model (only populate if a step is selected)
+  populateModelSelect($('modelSelect'), $('modelInfo'), $('model')?.value);
   if (state.currentStepIdx >= 0 && state.current?.steps?.[state.currentStepIdx]) {
-    const stepModel = state.current.steps[state.currentStepIdx].model || '';
-    console.log('[populateModelSelects] Step model:', stepModel);
-    populateModelSelect($('sModelSelect'), $('sModelInfo'), stepModel);
-  } else {
-    console.log('[populateModelSelects] No step selected, skipping step model select');
+    populateModelSelect($('sModelSelect'), $('sModelInfo'), $('sModel')?.value || state.current.steps[state.currentStepIdx].model || '');
   }
 }
-
-
 function onModelSelectChanged(isStep=false) {
-  console.log(`[onModelSelectChanged] isStep: ${isStep}`);
-  
   const select = isStep ? $('sModelSelect') : $('modelSelect');
   const input = isStep ? $('sModel') : $('model');
   const provEl = isStep ? $('sProvider') : $('provider');
   const baseEl = isStep ? $('sBaseUrl') : $('baseUrl');
   const infoEl = isStep ? $('sModelInfo') : $('modelInfo');
 
-  console.log(`[onModelSelectChanged] Select element: ${select?.id}, value: "${select?.value}"`);
-  console.log(`[onModelSelectChanged] Hidden input element: ${input?.id}`);
-
-  if (!select || !input) {
-    console.error('[onModelSelectChanged] Required elements not found');
-    return;
-  }
-
   const val = select.value;
   input.value = val || '';
-  console.log(`[onModelSelectChanged] Set hidden input value to: "${input.value}"`);
-  
   const opt = select.selectedOptions?.[0];
   const prov = opt?.dataset?.provider || '';
   const base = opt?.dataset?.baseUrl || '';
-
-  console.log(`[onModelSelectChanged] Provider: "${prov}", Base URL: "${base}"`);
-
-  // Only update provider/baseUrl if they're empty
-  if (prov && provEl && (!provEl.value || provEl.value === '')) {
-    provEl.value = prov;
-    console.log(`[onModelSelectChanged] Updated provider to: "${prov}"`);
+  if (!isStep) {
+    if (prov) provEl.value = prov;
+    if (base && (!baseEl.value || baseEl.value === '')) baseEl.value = base;
+  } else {
+    if (prov && (!provEl.value || provEl.value === '')) provEl.value = prov;
+    if (base && (!baseEl.value || baseEl.value === '')) baseEl.value = base;
   }
-  if (base && baseEl && (!baseEl.value || baseEl.value === '')) {
-    baseEl.value = base;
-    console.log(`[onModelSelectChanged] Updated base URL to: "${base}"`);
-  }
-  
-  if (infoEl) {
-    infoEl.textContent = val ? `Provider: ${prov} · Base: ${base}` : '';
-  }
+  if (infoEl) infoEl.textContent = val ? `Provider: ${prov} · Base: ${base}` : '';
 }
+
 // Default workflow/step creators
 function newWorkflow() {
   return {
@@ -241,7 +206,7 @@ function newStep() {
     apiKey: '',
     model: currentModel,
     temperature: '',
-    target: ''   // <--- NEW
+    target: ''
   };
 }
 function defaultActionSchema() {
@@ -309,7 +274,7 @@ async function saveCurrent() {
       provider: $('provider').value,
       baseUrl: $('baseUrl').value.trim(),
       apiKey: $('apiKey').value.trim(),
-      model: $('model').value.trim(),  // This reads from the hidden input
+      model: $('model').value.trim(),
       temperature: $('temperature').value !== '' ? Number($('temperature').value) : undefined,
       max_tokens: $('max_tokens').value !== '' ? Number($('max_tokens').value) : undefined
     };
@@ -322,7 +287,6 @@ async function saveCurrent() {
     toast('Save failed: ' + e.message);
   }
 }
-
 
 async function fetchRunners() {
   try {
@@ -354,7 +318,6 @@ function populateRunnersSelect() {
     info.textContent = found ? `URL: ${found.url} · default cwd: ${found.default_cwd || '(none)'}` : '';
   }
 }
-
 
 // Delete current
 async function deleteCurrent() {
@@ -402,7 +365,7 @@ async function runCurrent() {
   }
 }
 
-// Test selected step (robust)
+// Test selected step
 async function testStep() {
   const wf = collectWorkflowFromForm();
   const step = wf.steps[state.currentStepIdx];
@@ -419,7 +382,6 @@ async function testStep() {
     const data = await safeJson(resp);
     if (!resp.ok) {
       toast('Step test failed: ' + (data?.error || resp.statusText));
-      // Still render something if possible
       renderStepTestResult({ ok:false, error: data?.error || 'HTTP error', raw: data?.errorText || '' });
       return;
     }
@@ -431,12 +393,9 @@ async function testStep() {
 
 // Collect from form fields
 function collectWorkflowFromForm() {
-  console.log('[collectWorkflowFromForm] Called');
   if (!state.current) state.current = newWorkflow();
 
   const modelValue = $('model')?.value?.trim() || '';
-  console.log(`[collectWorkflowFromForm] Main model value: "${modelValue}"`);
-
   state.current.name = $('wfName').value.trim();
   state.current.description = $('wfDesc').value;
   state.current.chat = {
@@ -448,13 +407,9 @@ function collectWorkflowFromForm() {
     max_tokens: $('max_tokens').value !== '' ? Number($('max_tokens').value) : undefined
   };
   state.current.defaults = parseJson($('defaults').value || '{}', {});
-  
-  // Steps
   if (state.currentStepIdx >= 0 && state.current.steps[state.currentStepIdx]) {
     const s = state.current.steps[state.currentStepIdx];
     const stepModelValue = $('sModel').value.trim();
-    console.log(`[collectWorkflowFromForm] Step model value: "${stepModelValue}"`);
-    
     s.name = $('stepName').value.trim();
     s.prompt = $('stepPrompt').value;
     s.systemGuard = !$('stepNoGuard').checked;
@@ -468,13 +423,11 @@ function collectWorkflowFromForm() {
     s.model = stepModelValue;
     s.target = $('sTarget')?.value || '';
     s.temperature = $('sTemp').value !== '' ? Number($('sTemp').value) : '';
-    
-    console.log(`[collectWorkflowFromForm] Updated step model to: "${s.model}"`);
   }
   return state.current;
 }
 
-// Rendering
+// Rendering and utilities (unchanged below this line)
 function renderWorkflowList() {
   const list = $('wfList');
   list.innerHTML = '';
@@ -568,18 +521,13 @@ function renderSteps() {
 }
 
 function renderStepEditor() {
-  console.log('[renderStepEditor] Called');
   const steps = state.current?.steps || [];
   const s = steps[state.currentStepIdx];
   const noStep = !s;
-  console.log(`[renderStepEditor] Current step index: ${state.currentStepIdx}, step exists: ${!noStep}`);
-  
   $('stepEditor').style.display = noStep ? 'none' : '';
   $('noStepHint').style.display = noStep ? '' : 'none';
   if (noStep) return;
 
-  console.log(`[renderStepEditor] Step model: "${s.model}"`);
-  
   $('stepName').value = s.name || '';
   $('stepPrompt').value = s.prompt || '';
   $('stepSchema').value = typeof s.schema === 'string' ? s.schema : fmtJson(s.schema || {});
@@ -590,13 +538,9 @@ function renderStepEditor() {
   $('sProvider').value = s.provider || '';
   $('sBaseUrl').value = s.baseUrl || '';
   $('sApiKey').value = s.apiKey || '';
-  $('sModel').value = s.model || '';  // Set the hidden input
-  console.log(`[renderStepEditor] Set hidden input sModel to: "${$('sModel').value}"`);
-  
+  $('sModel').value = s.model || '';
   $('sTemp').value = s.temperature ?? '';
-  
-  // Now populate the select with the step's model value directly
-  console.log(`[renderStepEditor] About to populate select with model: "${s.model || ''}"`);
+
   populateRunnersSelect();
   populateModelSelect($('sModelSelect'), $('sModelInfo'), s.model || '');
   updateTestButtonTooltip();
@@ -622,10 +566,7 @@ function moveStep(idx, delta) {
 
 function addStep() {
   if (!state.current) state.current = newWorkflow();
-  
-  // IMPORTANT: Collect form data first so the model is available for inheritance
   collectWorkflowFromForm();
-  
   state.current.steps.push(newStep());
   state.currentStepIdx = state.current.steps.length - 1;
   renderSteps();
@@ -638,7 +579,6 @@ function escapeHtml(s) {
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// Runs
 async function loadRuns() {
   try {
     const resp = await fetch('./api/runs');
@@ -673,7 +613,6 @@ function renderRuns() {
     list.appendChild(item);
   });
 }
-
 function renderRunResult(run) {
   $('tabBtnRuns').click();
   $('runDetail').innerHTML = `
@@ -687,7 +626,6 @@ function renderRunResult(run) {
     </div>
   `;
 }
-
 function renderArtifacts(artifacts) {
   if (!artifacts.length) return '<div class="muted">No artifacts</div>';
   return artifacts.map((a, idx) => `
@@ -698,7 +636,6 @@ function renderArtifacts(artifacts) {
     </div>
   `).join('');
 }
-
 function renderStepTestResult(data) {
   $('testOutput').innerHTML = `
     <div class="card">
@@ -732,8 +669,6 @@ function renderStepTestResult(data) {
     </div>
   `;
 }
-
-// Tabs
 function activateTab(name) {
   const tabs = ['builder', 'runs'];
   tabs.forEach(t => {
@@ -742,8 +677,6 @@ function activateTab(name) {
   });
 }
 function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
-
-// Safe JSON helper
 async function safeJson(res) {
   const txt = await res.text().catch(() => '');
   try { return JSON.parse(txt); }
@@ -752,8 +685,6 @@ async function safeJson(res) {
 
 // Wire up events
 document.addEventListener('DOMContentLoaded', async () => {
-  console.log('[DOMContentLoaded] Starting initialization');
-
   $('tabBtnBuilder').addEventListener('click', () => activateTab('builder'));
   $('tabBtnRuns').addEventListener('click', () => activateTab('runs'));
   $('newWfBtn').addEventListener('click', () => { state.current = newWorkflow(); state.currentStepIdx = -1; renderWorkflowEditor(); });
@@ -766,17 +697,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('refreshModelsBtn2')?.addEventListener('click', fetchGatewayModels);
 
   $('refreshRunnersBtn')?.addEventListener('click', fetchRunners);
-  await fetchRunners(); // call once on load
+  await fetchRunners();
   $('sTarget')?.addEventListener('change', () => {
     collectWorkflowFromForm();
-    // update the info line without rebuilding the whole select
     const info = $('sTargetInfo');
     const val = $('sTarget')?.value || '';
     const found = state.runners.find(x => x.name === val);
     if (info) info.textContent = found ? `URL: ${found.url} · default cwd: ${found.default_cwd || '(none)'}` : '';
   });
 
-  // Keep form changes in state for current step
   ['wfName','wfDesc','provider','baseUrl','apiKey','model','temperature','max_tokens','defaults',
    'stepName','stepPrompt','stepSchema','stepNoGuard','stepDontStop','stepExportPath','stepExportAs',
    'sProvider','sBaseUrl','sApiKey','sModel','sTemp','sTarget'
@@ -786,39 +715,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (el && el.tagName === 'TEXTAREA') el.addEventListener('input', () => { collectWorkflowFromForm(); updateTestButtonTooltip(); updatePromptPreview(); });
   });
 
-  // Model selects
   $('modelSelect')?.addEventListener('change', () => onModelSelectChanged(false));
   $('refreshModelsBtn')?.addEventListener('click', fetchGatewayModels);
-  const elements = ['modelSelect', 'model', 'modelInfo', 'sModelSelect', 'sModel', 'sModelInfo'];
-  for (const id of elements) {
-    const el = $(id);
-    console.log(`[DOMContentLoaded] Element ${id}: ${el ? 'found' : 'NOT FOUND'}`);
-  }
-  
-  
-  activateTab('builder');
 
-  // Load data; failures won’t prevent handlers from being bound
+  $('setTokenBtn')?.addEventListener('click', promptSetToken);
+  updateTokenUi();
+
+  activateTab('builder');
   await fetchGatewayModels();
   await loadWorkflows();
   await loadRuns();
 
   $('varsInput')?.addEventListener('input', () => { updateTestButtonTooltip(); updatePromptPreview(); });
-
-  // Copy / Download actions for the preview (no-op if not present)
-  $('copyPromptBtn')?.addEventListener('click', () => {
-    const text = $('promptPreview')?.textContent || '';
-    navigator.clipboard?.writeText(text);
-  });
-  $('downloadPromptBtn')?.addEventListener('click', () => {
-    const text = $('promptPreview')?.textContent || '';
-    const blob = new Blob([text], { type: 'text/plain' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'prompt.txt';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(a.href);
-  });
 });

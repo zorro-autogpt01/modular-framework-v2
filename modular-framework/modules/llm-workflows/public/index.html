@@ -46,6 +46,8 @@
     <strong>🛠️ LLM Workflows</strong>
     <span class="muted">Build, chain, validate, and test LLM-driven workflows that output strict JSON artifacts.</span>
     <div class="grow"></div>
+    <span id="tokenStatus" class="pill">auth: missing</span>
+    <button class="ghost" id="setTokenBtn" title="Set Internal API token (used for protected actions)">Set API Token</button>
     <button class="ghost" id="newWfBtn" title="New workflow">New</button>
     <button id="saveWfBtn" title="Save workflow">Save</button>
     <button class="danger" id="deleteWfBtn" title="Delete workflow">Delete</button>
@@ -246,3 +248,5 @@
   <script type="module" src="./js/index.page.js"></script>
 </body>
 </html>
+
+
