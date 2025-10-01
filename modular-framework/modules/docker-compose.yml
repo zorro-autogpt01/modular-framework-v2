@@ -40,7 +40,6 @@ services:
     restart: unless-stopped
 
   # SSH Terminal Module Container
-# SSH Terminal Module Container
   ssh-terminal:
     build: ./ssh-terminal
     container_name: ssh-terminal-module
@@ -85,31 +84,36 @@ services:
     depends_on:
       - llm-gateway
       - splunk
+    restart: unless-stopped
     networks:
       - app-network
-    restart: unless-stopped
 
   runner-agent:
     build: ./runner-agent
     container_name: runner-agent
     environment:
-      # RUNNER_TOKEN:
-      #   Token the workflows server must use when calling this runner (/exec).
-      #   Must match the one you register the runner with (via installer or admin API).
-      - RUNNER_TOKEN=${RUNNER_TOKEN:-supersecret}
-      # Restrict the runner to a base directory on the agent machine
-      - RUNNER_BASE_DIR=/runner-home
-      # Optional: allow specific env vars to propagate into executed processes
-      - RUNNER_ALLOW_ENV=HTTP_PROXY,HTTPS_PROXY,NO_PROXY
-      - RUNNER_DEFAULT_TIMEOUT_MS=30000
       - PORT=4010
+      - AGENT_NAME=lab
+      - AGENT_TOKEN=supersecret
+      # URL that llm-workflows will use to call this agent (inside Docker network use service name)
+      - AGENT_URL=http://runner-agent:4010
+      # Self-register to llm-workflows (optional)
+      - REGISTER_URL=http://llm-workflows-module:3005/api/runners/register
+      - REGISTER_TOKEN=supersecret
+      # Where to execute by default inside the container
+      - DEFAULT_CWD=/workspace
     volumes:
-      - ./runner-agent/home:/runner-home
+      - ./runner-agent:/app:ro
+      - ./llm-workflows/data:/data
+      - ./runner-agent/workspace:/workspace
     ports:
       - "4010:4010"
+    depends_on:
+      - llm-workflows-module
     networks:
       - app-network
     restart: unless-stopped
+
 
   github-hub-module:
     build:

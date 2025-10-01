@@ -1,14 +1,14 @@
 {
   "name": "runner-agent",
-  "version": "1.0.0",
-  "private": true,
-  "type": "commonjs",
+  "version": "0.1.0",
+  "description": "Lightweight exec agent for modular-framework LLM Workflows",
+  "main": "agent.js",
+  "scripts": {
+    "start": "node agent.js"
+  },
   "dependencies": {
     "body-parser": "^1.20.2",
     "cors": "^2.8.5",
-    "express": "^4.18.4"
-  },
-  "scripts": {
-    "start": "node server/index.js"
+    "express": "^4.19.2"
   }
 }

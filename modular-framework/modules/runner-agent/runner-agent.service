@@ -1,0 +1,15 @@
+[Unit]
+Description=Runner Agent (LLM Workflows)
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/runner-agent.env
+WorkingDirectory=/opt/runner-agent
+ExecStart=/usr/bin/env node /opt/runner-agent/agent.js
+Restart=on-failure
+RestartSec=2
+User=root
+
+[Install]
+WantedBy=multi-user.target

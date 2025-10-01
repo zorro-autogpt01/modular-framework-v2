@@ -33,9 +33,33 @@ const LLM_GATEWAY_API_BASE =
 
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 const WF_FILE = path.join(DATA_DIR, 'workflows.json');
+const RUNNERS_FILE = path.join(DATA_DIR, 'runners.json'); // NEW
 
 ensureDir(DATA_DIR);
 ensureFile(WF_FILE, JSON.stringify({ workflows: [] }, null, 2));
+ensureFile(RUNNERS_FILE, JSON.stringify({ runners: [] }, null, 2)); // NEW
+
+// Seed runners from file on boot (NEW)
+function seedRunnersFromFile() {
+  try {
+    const raw = fs.readFileSync(RUNNERS_FILE, 'utf8');
+    const obj = JSON.parse(raw || '{}');
+    const items = Array.isArray(obj?.runners) ? obj.runners : [];
+    let count = 0;
+    for (const r of items) {
+      if (!r || typeof r !== 'object') continue;
+      const { name, url, token, default_cwd } = r;
+      if (name && url && token) {
+        upsertRunner({ name, url, token, default_cwd });
+        count++;
+      }
+    }
+    logInfo('runners_seeded', { count });
+  } catch (e) {
+    logWarn('runners_seed_failed', { message: e.message });
+  }
+}
+seedRunnersFromFile(); // call once at startup
 
 const app = express();
 app.use(cors({ origin: true, credentials: true }));
@@ -139,7 +163,6 @@ if (BASE_PATH) app.get(`${BASE_PATH}/api/runners/:name/health`, (req, res) => {
   app._router.handle(req, res);
 });
 
-
 // Admin upsert (protected by INTERNAL_API_TOKEN)
 app.post('/api/runners', requireInternalAuth, (req, res) => {
   const { name, url, token, default_cwd } = req.body || {};
@@ -152,9 +175,22 @@ app.post('/api/runners', requireInternalAuth, (req, res) => {
     return res.status(500).json({ error: 'Internal Server Error' });
   }
 });
-
 if (BASE_PATH) app.post(`${BASE_PATH}/api/runners`, (req, res) => {
   req.url = '/api/runners';
+  app._router.handle(req, res);
+});
+
+
+app.post('/api/runners/reload', requireInternalAuth, (req, res) => {
+  try {
+    seedRunnersFromFile();
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message || 'reload failed' });
+  }
+});
+if (BASE_PATH) app.post(`${BASE_PATH}/api/runners/reload`, (req, res) => {
+  req.url = '/api/runners/reload';
   app._router.handle(req, res);
 });
 
