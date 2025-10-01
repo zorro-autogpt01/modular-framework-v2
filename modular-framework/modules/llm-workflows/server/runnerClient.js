@@ -1,78 +1,59 @@
-// modular-framework/modules/llm-workflows/server/runnerClient.js
+// runnerClient.js (make sure it looks like this)
 const axios = require('axios');
-const { logInfo, logWarn, logError } = require('./logger');
+const { logWarn, logError } = require('./logger');
 
-const RUNNERS = (() => {
-  try { return JSON.parse(process.env.RUNNER_AGENTS || '{}'); }
-  catch { return {}; }
-})();
+const runners = new Map();
 
-/**
- * Example RUNNER_AGENTS:
- * {
- *   "lab1": { "url":"http://lab1:4010", "token":"<runner-token>", "timeout_ms": 30000, "cwd":"/home/wf" },
- *   "lab2": { "url":"http://10.0.0.22:4010", "token":"<runner-token>" }
- * }
- */
+function trim(u){ return String(u||'').replace(/\/+$/,''); }
 
 function listRunners() {
-  return Object.entries(RUNNERS).map(([name, cfg]) => ({
-    name,
-    url: (cfg.url || cfg.baseUrl || ''),
-    default_cwd: (cfg.cwd || cfg.default_cwd || ''),
-    timeout_ms: Number(cfg.timeout_ms || 20000)
-  }));
+  // never expose token
+  return [...runners.values()].map(({token, ...r}) => r);
 }
-
-function getRunner(name) {
-  return RUNNERS[name];
+function getRunner(name) { return runners.get(name) || null; }
+function upsertRunner({ name, url, token, default_cwd }) {
+  if (!name || !url || !token) throw new Error('name, url, token required');
+  runners.set(name, { name, url: trim(url), token, default_cwd });
+  const { token: _t, ...safe } = runners.get(name);
+  return safe;
 }
+function removeRunner(name) { runners.delete(name); }
 
 async function pingRunner(name) {
-  const cfg = RUNNERS[name];
-  if (!cfg) return { ok:false, error:'unknown runner' };
-  const url = (cfg.url || cfg.baseUrl || '').replace(/\/$/, '') + '/health';
+  const r = getRunner(name);
+  if (!r) return { ok:false, error:'not_found' };
   try {
-    const r = await axios.get(url, {
-      headers: cfg.token ? { Authorization: `Bearer ${cfg.token}` } : {},
-      timeout: 3000
+    const resp = await axios.get(`${trim(r.url)}/health`, {
+      headers: r.token ? { Authorization: `Bearer ${r.token}` } : {},
+      timeout: 5000
     });
-    return { ok: true, data: r.data };
+    return resp.data;
   } catch (e) {
-    return { ok:false, error: e.message };
+    const status = e?.response?.status || 0;
+    const msg = e?.response?.data?.error || e.message;
+    logWarn('runner_ping_failed', { name, status, msg });
+    return { ok:false, error: msg };
   }
 }
 
 async function execRemote({ target, kind, code, cwd, env, timeoutMs }) {
-  const cfg = RUNNERS[target];
-  if (!cfg) throw new Error(`Unknown runner: ${target}`);
-  const base = (cfg.url || cfg.baseUrl || '').replace(/\/$/, '');
-  const url = `${base}/exec`;
-  const token = cfg.token || cfg.bearer || cfg.secret;
-
-  const headers = { 'Content-Type': 'application/json' };
-  if (token) headers.Authorization = `Bearer ${token}`;
-
-  const body = (kind === 'bash')
-    ? { type: 'bash', cmd: code, cwd, env, timeoutMs: Number(timeoutMs || cfg.timeout_ms || 20000) }
-    : { type: 'python', script: code, cwd, env, timeoutMs: Number(timeoutMs || cfg.timeout_ms || 20000) };
-
-  logInfo('runner.exec ->', { target, url, kind, cwd: body.cwd, timeoutMs: body.timeoutMs });
-
+  const r = getRunner(target);
+  if (!r) throw new Error(`runner "${target}" not found`);
+  const body = kind === 'bash'
+    ? { type:'bash', cmd: code, cwd, env, timeoutMs }
+    : { type:'python', script: code, cwd, env, timeoutMs };
   try {
-    const r = await axios.post(url, body, { headers, timeout: Math.min(body.timeoutMs + 5000, 120000) });
-    const data = r.data || {};
-    if (data.ok === false) throw new Error(data.error || 'runner returned not ok');
-    return {
-      exitCode: data.exitCode ?? data.code ?? 0,
-      killed: !!data.killed,
-      stdout: String(data.stdout || ''),
-      stderr: String(data.stderr || '')
-    };
+    const resp = await axios.post(`${trim(r.url)}/exec`, body, {
+      headers: r.token ? { Authorization: `Bearer ${r.token}` } : {},
+      timeout: Math.max(2000, Number(timeoutMs||20000) + 2000)
+    });
+    return resp.data;
   } catch (e) {
-    logError('runner.exec error', { target, message: e.message });
-    throw e;
+    const status = e?.response?.status || 0;
+    const msg = e?.response?.data?.error || e.message;
+    logError('runner_exec_failed', { target, status, msg });
+    throw new Error(msg);
   }
 }
 
-module.exports = { listRunners, getRunner, pingRunner, execRemote };
+module.exports = { listRunners, getRunner, upsertRunner, removeRunner, pingRunner, execRemote };

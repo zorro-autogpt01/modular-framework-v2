@@ -11,7 +11,10 @@ const { router: logsRouter } = require('./routes/logs');
 const { router: loggingRouter } = require('./routes/logging');
 const { execBash, execPython, sanitizeCwd } = require('./executor');
 const { stamp, logDebug, logInfo, logWarn, logError } = require('./logger');
-const { listRunners, getRunner, pingRunner, execRemote } = require('./runnerClient');
+const {
+  listRunners, getRunner, pingRunner, execRemote,
+  upsertRunner, removeRunner
+} = require('./runnerClient');
 
 const BASE_PATH = (process.env.BASE_PATH || '').replace(/\/$/, ''); // e.g. /modules/llm-workflows
 const ALLOW_STEP_EXEC = String(process.env.ALLOW_STEP_EXEC || 'false').toLowerCase() === 'true';
@@ -68,6 +71,15 @@ function requireInternalAuth(req, res, next) {
   return res.status(401).json({ error: 'unauthorized' });
 }
 
+function requireRunnerRegToken(req, res, next) {
+  const t = process.env.RUNNER_REG_TOKEN;
+  if (!t) return res.status(503).json({ error: 'registration disabled' });
+  const hdr = req.headers['authorization'] || '';
+  if (hdr === `Bearer ${t}`) return next();
+  return res.status(401).json({ error: 'unauthorized' });
+}
+
+
 // Static UI
 const pub = path.join(__dirname, '..', 'public');
 app.use(express.static(pub));
@@ -106,14 +118,17 @@ if (BASE_PATH)
 
 // --- API: list / ping runners ---
 app.get('/api/runners', (_req, res) => {
-  res.json({ runners: listRunners() });
+  const redacted = (listRunners() || []).map(r => ({
+    name: r.name, url: r.url, default_cwd: r.default_cwd
+  }));
+  res.json({ runners: redacted });
 });
 if (BASE_PATH) app.get(`${BASE_PATH}/api/runners`, (req, res) => {
   req.url = '/api/runners';
   app._router.handle(req, res);
 });
 
-app.get('/api/runners/:name/health', async (req, res) => {
+app.get('/api/runners/:name/health', requireInternalAuth, async (req, res) => {
   const { name } = req.params;
   const r = await pingRunner(name);
   if (!r.ok) return res.status(502).json(r);
@@ -123,6 +138,61 @@ if (BASE_PATH) app.get(`${BASE_PATH}/api/runners/:name/health`, (req, res) => {
   req.url = `/api/runners/${req.params.name}/health`;
   app._router.handle(req, res);
 });
+
+
+// Admin upsert (protected by INTERNAL_API_TOKEN)
+app.post('/api/runners', requireInternalAuth, (req, res) => {
+  const { name, url, token, default_cwd } = req.body || {};
+  if (!name || !url || !token) return res.status(400).json({ ok:false, error:'name, url, token required' });
+  try {
+    const r = upsertRunner({ name, url, token, default_cwd });
+    return res.json({ ok:true, runner: { name:r.name, url:r.url, default_cwd:r.default_cwd } });
+  } catch (e) {
+    logError('runner_upsert_error', { message: e.message });
+    return res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+if (BASE_PATH) app.post(`${BASE_PATH}/api/runners`, (req, res) => {
+  req.url = '/api/runners';
+  app._router.handle(req, res);
+});
+
+// Admin delete (protected)
+app.delete('/api/runners/:name', requireInternalAuth, (req, res) => {
+  try {
+    removeRunner(req.params.name);
+    return res.json({ ok:true });
+  } catch (e) {
+    logError('runner_delete_error', { message: e.message });
+    return res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+if (BASE_PATH) app.delete(`${BASE_PATH}/api/runners/:name`, (req, res) => {
+  req.url = `/api/runners/${req.params.name}`;
+  app._router.handle(req, res);
+});
+
+// Agent self-registration (protected by RUNNER_REG_TOKEN)
+app.post('/api/runners/register', requireRunnerRegToken, (req, res) => {
+  const { name, url, token, default_cwd } = req.body || {};
+  if (!name || !url || !token) return res.status(400).json({ ok:false, error:'name, url, token required' });
+  try {
+    const r = upsertRunner({ name, url, token, default_cwd });
+    return res.json({ ok:true, runner: { name:r.name, url:r.url, default_cwd:r.default_cwd } });
+  } catch (e) {
+    logError('runner_register_error', { message: e.message });
+    return res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+if (BASE_PATH) app.post(`${BASE_PATH}/api/runners/register`, (req, res) => {
+  req.url = '/api/runners/register';
+  app._router.handle(req, res);
+});
+
+
 
 // Storage helpers
 function ensureDir(p) { if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true }); }
@@ -608,7 +678,8 @@ app.post('/api/testStep', requireInternalAuth, async (req, res) => {
     if (execute && !ALLOW_STEP_EXEC) {
       result.actionResults = [{ skipped: true, reason: 'step execution disabled by server (ALLOW_STEP_EXEC=false)' }];
       logWarn('WF TEST_STEP exec blocked', { corr });
-      return res.status(403).json({ ok: true, ...result, execBlocked: true });
+      // Keep 200 so the UI renders details
+      return res.json({ ok: true, ...result, execBlocked: true });
     }
 
     if (execute && result.ok && Array.isArray(result.json?.actions)) {

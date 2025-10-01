@@ -1,0 +1,10 @@
+{
+  "runners": [
+    {
+      "name": "lab",
+      "url": "http://192.168.0.7:4010",
+      "token": "supersecret",
+      "default_cwd": "/home/tux/modules/temp"
+    }
+  ]
+}

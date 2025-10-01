@@ -61,19 +61,22 @@ services:
       - SPLUNK_HEC_TOKEN=$SPLUNK_HEC_TOKEN
       - NODE_TLS_REJECT_UNAUTHORIZED=${NODE_TLS_REJECT_UNAUTHORIZED}
       - NODE_ENV=production
-      - PORT=3005
+      - INTERNAL_API_TOKEN=supersecret
+      - RUNNER_REG_TOKEN=supersecret
+      #- PORT=3005
       # Point to llm-gateway compat endpoint designed for workflows SSE
       - LLM_GATEWAY_CHAT_URL=http://llm-gateway:3010/api/compat/llm-workflows
       # Base for admin/models APIs
       - LLM_GATEWAY_API_BASE=http://llm-gateway:3010/api
       # Optional: serve UI under a path instead of "/"
       - BASE_PATH=/llm-workflows
+      - ALLOW_STEP_EXEC=true
       # Optional & DANGEROUS: only set to true if you want to allow host execution
       # - ALLOW_DANGEROUS=true
       # Optional: choose where workflows.json is stored (default is /app/data)
       # - DATA_DIR=/app/data
-    expose:
-      - "3005"
+    ports:
+      - "3005:3005"
     volumes:
       # persist workflows.json
       - ./llm-workflows/data:/app/data

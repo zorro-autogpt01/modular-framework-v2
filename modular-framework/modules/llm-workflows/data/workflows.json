@@ -1,3 +1,90 @@
 {
-  "workflows": []
+  "workflows": [
+    {
+      "id": "8440002b-ae58-4592-8c08-485b973e9da4",
+      "name": "test step",
+      "description": "",
+      "defaults": {},
+      "chat": {
+        "provider": "openai",
+        "baseUrl": "https://api.openai.com",
+        "apiKey": "",
+        "model": "gpt-5-nano"
+      },
+      "steps": [
+        {
+          "id": "step_mg7wk23c",
+          "name": "Step",
+          "prompt": "You are returning actions.v1 JSON only. Do not explain.\nCreate exactly one bash action that:\n- prints \"runner-ok\"\n- prints current user and working directory\n- creates a folder \"demo\" and writes \"hello\" to demo/ok.txt\n\nReturn JSON like:\n{ \"actions\":[ { \"type\":\"bash\", \"content\":\"<bash>\", \"cwd\":\".\" } ] }\n",
+          "schema": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "required": [
+              "actions"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "actions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "type",
+                    "content"
+                  ],
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "bash",
+                        "python",
+                        "sql",
+                        "http",
+                        "plan",
+                        "text"
+                      ]
+                    },
+                    "content": {
+                      "type": "string"
+                    },
+                    "filename": {
+                      "type": "string"
+                    },
+                    "cwd": {
+                      "type": "string"
+                    },
+                    "env": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    },
+                    "meta": {
+                      "type": "object"
+                    }
+                  }
+                }
+              },
+              "notes": {
+                "type": "string"
+              }
+            }
+          },
+          "systemGuard": true,
+          "stopOnFailure": true,
+          "exportPath": "",
+          "exportAs": "",
+          "provider": "openai",
+          "baseUrl": "https://api.openai.com",
+          "apiKey": "",
+          "model": "gpt-5-nano",
+          "temperature": "",
+          "target": "lab"
+        }
+      ],
+      "createdAt": "2025-10-01T12:42:42.636Z",
+      "updatedAt": "2025-10-01T12:42:42.636Z"
+    }
+  ]
 }
