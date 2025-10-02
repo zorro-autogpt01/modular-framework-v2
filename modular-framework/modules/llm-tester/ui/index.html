@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>LLM Testing Admin</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script defer src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="icon" href="/favicon.svg" />
+</head>
+<body class="bg-slate-50">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const apiBase = "/api/llm-testing";
+
+    function Section({title, right, children}) {
+      return (
+        <div className="bg-white shadow-sm rounded-2xl p-5 border border-slate-200">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-slate-800">{title}</h2>
+            <div>{right}</div>
+          </div>
+          {children}
+        </div>
+      );
+    }
+
+    function CreateTest() {
+      const [form, setForm] = React.useState({
+        name: "Summarizer produces five bullets",
+        suite: "summarizer-core",
+        kind: "llm-judge",
+        tags: ["nlp","acceptance"],
+        llmGateway: { baseUrl: "/llm-gateway/api", provider: "openai", model: "gpt-4o-mini" },
+        context: { static: "You are testing internal release notes." },
+        input: {
+          messages: [
+            { role: "system", content: "Write exactly 5 bullets." },
+            { role: "user", content: "Summarize: ${artifact.content}" }
+          ],
+          artifact: { source: "github", path: "CHANGELOG.md", branch: "main" }
+        },
+        assert: {
+          regex: ["(?m)^- .+$"],
+          count: { bulletsMin: 5, bulletsMax: 5 },
+          semantic: {
+            judge: { baseUrl: "/llm-gateway/api", provider: "openai", model: "gpt-4o-mini" },
+            criteria: [
+              { name: "Factual consistency", minScore: 0.9 },
+              { name: "Coverage", minScore: 0.8 }
+            ],
+            rubric: "Score each criterion 0..1 and justify briefly."
+          },
+          latencyMs: { p95Max: 2500 },
+          safety: { mustNotContain: ["API key","password"], policy: "company-safety-v1" }
+        },
+        runner: { retries: 0, timeoutSec: 90, stream: false }
+      });
+
+      const update = (path, value) => {
+        setForm(prev=>{
+          const next = structuredClone(prev);
+          const parts = path.split(".");
+          let cur = next;
+          for (let i=0; i<parts.length-1; i++) cur = cur[parts[i]];
+          cur[parts.at(-1)] = value;
+          return next;
+        });
+      };
+
+      const submit = async (e) => {
+        e.preventDefault();
+        const r = await fetch(`${apiBase}/tests`, {
+          method: "POST",
+          headers: { "Content-Type":"application/json" },
+          body: JSON.stringify(form)
+        });
+        const j = await r.json();
+        alert(j.ok ? `Created test ${j.testId}` : "Failed");
+      };
+
+      return (
+        <Section title="Create Test">
+          <form onSubmit={submit} className="grid grid-cols-1 gap-3">
+            <div className="grid grid-cols-3 gap-3">
+              <input className="border rounded-lg p-2" value={form.name} onChange={e=>update("name", e.target.value)} placeholder="Name"/>
+              <input className="border rounded-lg p-2" value={form.suite} onChange={e=>update("suite", e.target.value)} placeholder="Suite"/>
+              <select className="border rounded-lg p-2" value={form.kind} onChange={e=>update("kind", e.target.value)}>
+                {["unit","integration","system","acceptance","regression","performance","security","exploratory","llm-judge"].map(k=><option key={k} value={k}>{k}</option>)}
+              </select>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              <input className="border rounded-lg p-2" value={form.llmGateway.baseUrl} onChange={e=>update("llmGateway.baseUrl", e.target.value)} placeholder="Gateway baseUrl"/>
+              <input className="border rounded-lg p-2" value={form.llmGateway.provider} onChange={e=>update("llmGateway.provider", e.target.value)} placeholder="Provider"/>
+              <input className="border rounded-lg p-2" value={form.llmGateway.model} onChange={e=>update("llmGateway.model", e.target.value)} placeholder="Model"/>
+            </div>
+
+            <div>
+              <label className="block text-sm text-slate-600 mb-1">Semantic thresholds</label>
+              <div className="grid grid-cols-2 gap-3">
+                {form.assert.semantic.criteria.map((c, idx)=>(
+                  <div key={idx} className="bg-slate-100 rounded-xl p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-medium">{c.name}</span>
+                      <span className="text-sm text-slate-600">{c.minScore.toFixed(2)}</span>
+                    </div>
+                    <input type="range" min="0" max="1" step="0.01"
+                      value={c.minScore}
+                      onChange={e=>{
+                        const v = parseFloat(e.target.value);
+                        const next = structuredClone(form);
+                        next.assert.semantic.criteria[idx].minScore = v;
+                        setForm(next);
+                      }}/>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button className="px-4 py-2 rounded-xl bg-emerald-600 text-white">Create</button>
+              <pre className="flex-1 bg-slate-900 text-slate-100 p-3 rounded-xl overflow-auto text-xs">{JSON.stringify(form, null, 2)}</pre>
+            </div>
+          </form>
+        </Section>
+      );
+    }
+
+    function Tests() {
+      const [items, setItems] = React.useState([]);
+      const load = async () => {
+        const r = await fetch(`${apiBase}/tests`);
+        const j = await r.json();
+        setItems(j.items || []);
+      };
+      React.useEffect(()=>{ load(); }, []);
+
+      const exec = async (id) => {
+        const r = await fetch(`${apiBase}/tests/${id}/execute`, { method: "POST" });
+        const j = await r.json();
+        alert(`Run ${j.runId}: ${j.ok ? "PASS" : "FAIL"}`);
+      };
+
+      return (
+        <Section title="Tests" right={<button onClick={load} className="px-3 py-1 rounded-lg bg-slate-800 text-white">Refresh</button>}>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="text-left text-slate-600">
+                <tr><th className="py-2 pr-4">Name</th><th className="pr-4">Suite</th><th className="pr-4">Kind</th><th>Actions</th></tr>
+              </thead>
+              <tbody>
+                {items.map(t=>(
+                  <tr key={t.id} className="border-t">
+                    <td className="py-2 pr-4">{t.name}</td>
+                    <td className="pr-4">{t.suite}</td>
+                    <td className="pr-4">{t.kind}</td>
+                    <td>
+                      <button onClick={()=>exec(t.id)} className="px-3 py-1 rounded-lg bg-indigo-600 text-white">Execute</button>
+                    </td>
+                  </tr>
+                ))}
+                {items.length===0 && <tr><td className="py-3 text-slate-500" colSpan="4">No tests yet</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </Section>
+      );
+    }
+
+    function Runs() {
+      const [items, setItems] = React.useState([]);
+      const load = async () => {
+        const r = await fetch(`${apiBase}/runs?limit=25`);
+        const j = await r.json();
+        setItems(j.items || []);
+      };
+      React.useEffect(()=>{ load(); }, []);
+
+      return (
+        <Section title="Recent Runs" right={<button onClick={load} className="px-3 py-1 rounded-lg bg-slate-800 text-white">Refresh</button>}>
+          <ul className="space-y-2">
+            {items.map(run=>(
+              <li key={run.runId} className="border rounded-xl p-3 bg-white">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-medium">{run.testId} <span className={`ml-2 text-xs px-2 py-0.5 rounded-full ${run.ok?'bg-emerald-100 text-emerald-700':'bg-rose-100 text-rose-700'}`}>{run.ok?'PASS':'FAIL'}</span></div>
+                    <div className="text-sm text-slate-600">{run.suite} • {run.runId}</div>
+                  </div>
+                  <div className="text-sm text-slate-500">{run.latencyMs ?? "-"} ms</div>
+                </div>
+              </li>
+            ))}
+            {items.length===0 && <li className="text-slate-500">No runs yet</li>}
+          </ul>
+        </Section>
+      );
+    }
+
+    function App() {
+      return (
+        <div className="max-w-6xl mx-auto p-6 space-y-6">
+          <h1 className="text-2xl font-bold text-slate-900">LLM Testing Admin</h1>
+          <CreateTest />
+          <Tests />
+          <Runs />
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+  </script>
+</body>
+</html>

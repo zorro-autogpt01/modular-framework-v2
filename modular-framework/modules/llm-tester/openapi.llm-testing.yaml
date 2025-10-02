@@ -1,0 +1,472 @@
+openapi: 3.1.0
+info:
+  title: LLM Testing Module API
+  version: 0.1.0
+  description: Create and execute traditional & LLM-specific tests. All LLM calls go through the LLM Gateway.
+
+servers:
+  - url: https://your-edge-host/api/llm-testing
+
+paths:
+  /health:
+    get:
+      summary: Health
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+                  version: { type: string }
+
+  /tests:
+    get:
+      summary: List tests
+      parameters:
+        - in: query
+          name: suite
+          schema: { type: string }
+        - in: query
+          name: tag
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 500 }
+      responses:
+        "200":
+          description: Tests
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Test" }
+    post:
+      summary: Create a test
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Test" }
+      responses:
+        "200":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  testId: { type: string }
+                  version: { type: integer }
+
+  /tests/{id}:
+    get:
+      summary: Get a test
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Test
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Test" }
+        "404":
+          description: Not found
+    put:
+      summary: Update a test
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Test" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  testId: { type: string }
+                  version: { type: integer }
+
+  /tests/{id}/execute:
+    post:
+      summary: Execute a single test
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: stream
+          schema: { type: boolean }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                overrides:
+                  type: object
+                mode:
+                  type: string
+                  enum: [once, ci, burn-in]
+                seed:
+                  type: integer
+      responses:
+        "200":
+          description: Run result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RunResult" }
+
+  /suites:
+    get:
+      summary: List suites
+      responses:
+        "200":
+          description: Suites
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Suite" }
+    post:
+      summary: Create a suite
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Suite" }
+      responses:
+        "200":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  suiteId: { type: string }
+
+  /suites/{name}/execute:
+    post:
+      summary: Execute a suite
+      parameters:
+        - in: path
+          name: name
+          required: true
+          schema: { type: string }
+        - in: query
+          name: stream
+          schema: { type: boolean }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                parallel: { type: integer, minimum: 1, maximum: 16 }
+                stopOnFail: { type: boolean }
+                report: { type: string, enum: [junit, json] }
+      responses:
+        "200":
+          description: Suite aggregated result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  suite: { type: string }
+                  runIds:
+                    type: array
+                    items: { type: string }
+                  summary:
+                    type: object
+                    properties:
+                      passed: { type: integer }
+                      failed: { type: integer }
+                      durationMs: { type: integer }
+
+  /runs:
+    get:
+      summary: List recent runs
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 500 }
+      responses:
+        "200":
+          description: Runs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/RunResult" }
+
+  /runs/{runId}:
+    get:
+      summary: Get run
+      parameters:
+        - in: path
+          name: runId
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Run
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RunResult" }
+
+  /runs/{runId}/retry:
+    post:
+      summary: Retry run
+      parameters:
+        - in: path
+          name: runId
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: New run
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RunResult" }
+
+  /ci/github/check:
+    post:
+      summary: Execute a suite and commit a JSON report via GitHub Hub
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [repo, branch, suite]
+              properties:
+                repo: { type: string, description: "owner/repo (informational)" }
+                branch: { type: string }
+                suite: { type: string }
+                path: { type: string, default: "reports/llm-testing/report.json" }
+      responses:
+        "200":
+          description: Report committed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  commit: { type: object }
+
+  /admin/webhooks:
+    post:
+      summary: Register webhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Webhook"
+      responses:
+        "200":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  id: { type: string }
+
+components:
+  schemas:
+    Suite:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        defaults:
+          type: object
+
+    Test:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        suite: { type: string }
+        kind:
+          type: string
+          enum: [unit, integration, system, acceptance, regression, performance, security, exploratory, llm-judge]
+        tags:
+          type: array
+          items: { type: string }
+        llmGateway:
+          type: object
+          required: [baseUrl, provider, model]
+          properties:
+            baseUrl: { type: string }
+            provider: { type: string }
+            model: { type: string }
+            headers:
+              type: object
+              additionalProperties: { type: string }
+        context:
+          type: object
+          properties:
+            static: { type: string }
+            ragQuery:
+              type: object
+              properties:
+                question: { type: string }
+        input:
+          type: object
+          properties:
+            messages:
+              type: array
+              items:
+                type: object
+                required: [role, content]
+                properties:
+                  role: { type: string, enum: [system, user, assistant, tool] }
+                  content: { type: string }
+            artifact:
+              type: object
+              properties:
+                source: { type: string, enum: [github] }
+                path: { type: string }
+                branch: { type: string, default: main }
+        assert:
+          type: object
+          properties:
+            exact:
+              type: array
+              items: { type: string }
+            regex:
+              type: array
+              items: { type: string }
+            count:
+              type: object
+              properties:
+                bulletsMin: { type: integer }
+                bulletsMax: { type: integer }
+            semantic:
+              type: object
+              properties:
+                judge:
+                  type: object
+                  required: [baseUrl, provider, model]
+                  properties:
+                    baseUrl: { type: string }
+                    provider: { type: string }
+                    model: { type: string }
+                    headers:
+                      type: object
+                      additionalProperties: { type: string }
+                criteria:
+                  type: array
+                  items:
+                    type: object
+                    required: [name, minScore]
+                    properties:
+                      name: { type: string }
+                      minScore: { type: number, minimum: 0, maximum: 1 }
+                rubric: { type: string }
+            latencyMs:
+              type: object
+              properties:
+                p95Max: { type: integer }
+            safety:
+              type: object
+              properties:
+                mustNotContain:
+                  type: array
+                  items: { type: string }
+                policy: { type: string }
+        onFail:
+          type: object
+          properties:
+            createIssue: { type: boolean }
+            blockMerge: { type: boolean }
+        runner:
+          type: object
+          properties:
+            retries: { type: integer }
+            timeoutSec: { type: integer }
+            stream: { type: boolean }
+        version: { type: integer }
+
+    RunResult:
+      type: object
+      properties:
+        runId: { type: string }
+        testId: { type: string }
+        suite: { type: string }
+        ok: { type: boolean }
+        startedAt: { type: string, format: date-time }
+        endedAt: { type: string, format: date-time }
+        latencyMs: { type: integer }
+        assertions:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              ok: { type: boolean }
+              score: { type: number }
+              why: { type: string }
+        artifacts:
+          type: object
+          properties:
+            prompt:
+              type: array
+              items:
+                type: object
+                properties:
+                  role: { type: string }
+                  content: { type: string }
+            completion: { type: string }
+            judgeExplanations:
+              type: array
+              items:
+                type: object
+                properties:
+                  criterion: { type: string }
+                  why: { type: string }
+
+    Webhook:
+      type: object
+      required: [event, url]
+      properties:
+        event: { type: string, enum: [run.finished, run.failed] }
+        url: { type: string, format: uri }
+        secret: { type: string }
