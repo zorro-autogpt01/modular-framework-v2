@@ -15,6 +15,20 @@
 
   <script type="text/babel">
     const apiBase = "/api/llm-testing";
+    const chatUiUrl = "/api/llm-chat/"; // existing Chat UI
+
+    function Tabs({ tabs, current, onChange }) {
+      return (
+        <div className="flex gap-2 bg-white p-2 rounded-2xl border border-slate-200 shadow-sm">
+          {tabs.map(t => (
+            <button key={t} onClick={()=>onChange(t)}
+              className={`px-3 py-1.5 rounded-xl ${current===t?'bg-slate-900 text-white':'bg-slate-100 text-slate-800 hover:bg-slate-200'}`}>
+              {t}
+            </button>
+          ))}
+        </div>
+      );
+    }
 
     function Section({title, right, children}) {
       return (
@@ -28,14 +42,48 @@
       );
     }
 
-    function CreateTest() {
+    // -------- SETTINGS --------
+    function Settings() {
+      const [cfg, setCfg] = React.useState({ ragEnabled: true, chatReplayEnabled: true });
+      const load = async () => {
+        const r = await fetch(`${apiBase}/admin/config`);
+        const j = await r.json();
+        setCfg(j);
+      };
+      React.useEffect(()=>{ load(); }, []);
+      const save = async () => {
+        const r = await fetch(`${apiBase}/admin/config`, { method: "PUT", headers: {"Content-Type":"application/json"}, body: JSON.stringify(cfg) });
+        const j = await r.json();
+        alert(j.ok ? "Saved!" : "Failed");
+        load();
+      };
+      return (
+        <Section title="Settings">
+          <div className="flex items-center gap-3 mb-2">
+            <input id="ragEnabled" type="checkbox" checked={!!cfg.ragEnabled} onChange={e=>setCfg({...cfg, ragEnabled: e.target.checked})}/>
+            <label htmlFor="ragEnabled" className="cursor-pointer select-none">Enable RAG globally</label>
+          </div>
+          <div className="flex items-center gap-3">
+            <input id="chatReplayEnabled" type="checkbox" checked={!!cfg.chatReplayEnabled} onChange={e=>setCfg({...cfg, chatReplayEnabled: e.target.checked})}/>
+            <label htmlFor="chatReplayEnabled" className="cursor-pointer select-none">Enable “Replay in Chat” actions</label>
+          </div>
+          <p className="text-sm text-slate-600 mt-2">Replay uses the exact messages (artifact + optional RAG context). If RAG is disabled, the context is simply omitted.</p>
+          <div className="mt-4">
+            <button onClick={save} className="px-4 py-2 rounded-xl bg-emerald-600 text-white">Save</button>
+          </div>
+        </Section>
+      );
+    }
+
+    // -------- CREATE TEST (same as before, omitted for brevity) --------
+    function CreateTest({ onCreated }) {
       const [form, setForm] = React.useState({
         name: "Summarizer produces five bullets",
         suite: "summarizer-core",
         kind: "llm-judge",
         tags: ["nlp","acceptance"],
         llmGateway: { baseUrl: "/llm-gateway/api", provider: "openai", model: "gpt-4o-mini" },
-        context: { static: "You are testing internal release notes." },
+        context: { static: "You are testing internal release notes.", disableRag: false, ragQuery: { question: "" } },
         input: {
           messages: [
             { role: "system", content: "Write exactly 5 bullets." },
@@ -59,8 +107,7 @@
         },
         runner: { retries: 0, timeoutSec: 90, stream: false }
       });
-
-      const update = (path, value) => {
+      const set = (path, value) => {
         setForm(prev=>{
           const next = structuredClone(prev);
           const parts = path.split(".");
@@ -70,68 +117,136 @@
           return next;
         });
       };
-
       const submit = async (e) => {
         e.preventDefault();
-        const r = await fetch(`${apiBase}/tests`, {
-          method: "POST",
-          headers: { "Content-Type":"application/json" },
-          body: JSON.stringify(form)
-        });
+        const r = await fetch(`${apiBase}/tests`, { method: "POST", headers: { "Content-Type":"application/json" }, body: JSON.stringify(form) });
         const j = await r.json();
-        alert(j.ok ? `Created test ${j.testId}` : "Failed");
+        if (j.ok) { alert(`Created test ${j.testId}`); onCreated?.(); } else alert("Failed");
       };
-
       return (
         <Section title="Create Test">
           <form onSubmit={submit} className="grid grid-cols-1 gap-3">
             <div className="grid grid-cols-3 gap-3">
-              <input className="border rounded-lg p-2" value={form.name} onChange={e=>update("name", e.target.value)} placeholder="Name"/>
-              <input className="border rounded-lg p-2" value={form.suite} onChange={e=>update("suite", e.target.value)} placeholder="Suite"/>
-              <select className="border rounded-lg p-2" value={form.kind} onChange={e=>update("kind", e.target.value)}>
+              <input className="border rounded-lg p-2" value={form.name} onChange={e=>set("name", e.target.value)} placeholder="Name"/>
+              <input className="border rounded-lg p-2" value={form.suite} onChange={e=>set("suite", e.target.value)} placeholder="Suite"/>
+              <select className="border rounded-lg p-2" value={form.kind} onChange={e=>set("kind", e.target.value)}>
                 {["unit","integration","system","acceptance","regression","performance","security","exploratory","llm-judge"].map(k=><option key={k} value={k}>{k}</option>)}
               </select>
             </div>
-
             <div className="grid grid-cols-3 gap-3">
-              <input className="border rounded-lg p-2" value={form.llmGateway.baseUrl} onChange={e=>update("llmGateway.baseUrl", e.target.value)} placeholder="Gateway baseUrl"/>
-              <input className="border rounded-lg p-2" value={form.llmGateway.provider} onChange={e=>update("llmGateway.provider", e.target.value)} placeholder="Provider"/>
-              <input className="border rounded-lg p-2" value={form.llmGateway.model} onChange={e=>update("llmGateway.model", e.target.value)} placeholder="Model"/>
+              <input className="border rounded-lg p-2" value={form.llmGateway.baseUrl} onChange={e=>set("llmGateway.baseUrl", e.target.value)} placeholder="Gateway baseUrl"/>
+              <input className="border rounded-lg p-2" value={form.llmGateway.provider} onChange={e=>set("llmGateway.provider", e.target.value)} placeholder="Provider"/>
+              <input className="border rounded-lg p-2" value={form.llmGateway.model} onChange={e=>set("llmGateway.model", e.target.value)} placeholder="Model"/>
             </div>
-
-            <div>
-              <label className="block text-sm text-slate-600 mb-1">Semantic thresholds</label>
-              <div className="grid grid-cols-2 gap-3">
-                {form.assert.semantic.criteria.map((c, idx)=>(
-                  <div key={idx} className="bg-slate-100 rounded-xl p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-medium">{c.name}</span>
-                      <span className="text-sm text-slate-600">{c.minScore.toFixed(2)}</span>
-                    </div>
-                    <input type="range" min="0" max="1" step="0.01"
-                      value={c.minScore}
-                      onChange={e=>{
-                        const v = parseFloat(e.target.value);
-                        const next = structuredClone(form);
-                        next.assert.semantic.criteria[idx].minScore = v;
-                        setForm(next);
-                      }}/>
-                  </div>
-                ))}
+            <div className="bg-slate-50 rounded-xl p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <input id="useRag" type="checkbox" checked={!form.context.disableRag} onChange={e=>set("context.disableRag", !e.target.checked)} />
+                <label htmlFor="useRag">Use RAG (this test)</label>
               </div>
+              <input className="border rounded-lg p-2 w-full" placeholder="RAG question (optional)"
+                     value={form.context.ragQuery?.question || ""}
+                     onChange={e=>set("context.ragQuery.question", e.target.value)}
+                     disabled={form.context.disableRag}/>
+              <p className="text-xs text-slate-500 mt-1">If RAG is globally disabled, it is skipped regardless of this checkbox.</p>
             </div>
-
             <div className="flex gap-3">
               <button className="px-4 py-2 rounded-xl bg-emerald-600 text-white">Create</button>
-              <pre className="flex-1 bg-slate-900 text-slate-100 p-3 rounded-xl overflow-auto text-xs">{JSON.stringify(form, null, 2)}</pre>
+              <details className="flex-1">
+                <summary className="cursor-pointer text-slate-700">Preview JSON</summary>
+                <pre className="bg-slate-900 text-slate-100 p-3 rounded-xl overflow-auto text-xs mt-2">{JSON.stringify(form, null, 2)}</pre>
+              </details>
             </div>
           </form>
         </Section>
       );
     }
 
+    // -------- REPLAY DRAWER --------
+    function ReplayDrawer({ test, onClose, chatReplayEnabled }) {
+      const [payload, setPayload] = React.useState(null);
+      const [embed, setEmbed] = React.useState(false);
+      const [ragMode, setRagMode] = React.useState("auto"); // auto | true | false
+
+      const build = async () => {
+        const r = await fetch(`${apiBase}/tests/${encodeURIComponent(test.id)}/replay?includeRag=${ragMode}`);
+        const j = await r.json();
+        setPayload(j);
+      };
+
+      const copy = async () => {
+        const txt = JSON.stringify(payload?.replay || {}, null, 2);
+        await navigator.clipboard.writeText(txt);
+        alert("Copied replay JSON");
+      };
+
+      return (
+        <div className="fixed inset-0 bg-black/30 flex" role="dialog" aria-modal="true">
+          <div className="ml-auto h-full w-full max-w-4xl bg-white shadow-2xl p-5 flex flex-col">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-lg font-semibold">Replay in Chat — {test.name}</div>
+              <button onClick={onClose} className="px-3 py-1 rounded-lg bg-slate-200">Close</button>
+            </div>
+
+            {!chatReplayEnabled && (
+              <div className="mb-3 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                Replay actions are globally disabled in Settings. You can still generate/copy the payload.
+              </div>
+            )}
+
+            <div className="flex items-center gap-3 mb-3">
+              <label className="text-sm text-slate-700">RAG for this payload:</label>
+              <select value={ragMode} onChange={e=>setRagMode(e.target.value)} className="border rounded-lg p-1.5">
+                <option value="auto">Auto (obey toggles)</option>
+                <option value="true">Force include</option>
+                <option value="false">Force exclude</option>
+              </select>
+              <button onClick={build} className="px-3 py-1.5 rounded-lg bg-slate-900 text-white">Generate replay payload</button>
+              <button onClick={()=>window.open(chatUiUrl, "_blank")} className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white">Open Chat UI</button>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={embed} onChange={e=>setEmbed(e.target.checked)} />
+                Embed Chat here
+              </label>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 flex-1">
+              <div className="flex flex-col">
+                <div className="text-sm text-slate-700 mb-1">Replay JSON (for /api/llm-chat/api/chat)</div>
+                <textarea className="flex-1 w-full border rounded-xl p-3 font-mono text-xs"
+                          value={payload ? JSON.stringify(payload.replay, null, 2) : ""}
+                          placeholder="Click 'Generate replay payload' to build the messages…" readOnly />
+                <div className="mt-2 flex gap-2">
+                  <button onClick={copy} className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white" disabled={!payload}>Copy JSON</button>
+                  {payload && <span className="text-xs text-slate-600 self-center">
+                    RAG included: <b>{String(payload.info?.ragIncluded)}</b> (global:{String(payload.info?.ragGloballyEnabled)}, testDisabled:{String(payload.info?.ragDisabledPerTest)})
+                  </span>}
+                </div>
+              </div>
+
+              <div className="h-full">
+                {embed ? (
+                  <iframe src={chatUiUrl} className="w-full h-full min-h-[28rem] border rounded-xl"></iframe>
+                ) : (
+                  <div className="h-full border rounded-xl bg-slate-50 flex items-center justify-center text-slate-500">
+                    Enable “Embed Chat here” to show the Chat UI side-by-side.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // -------- TESTS (list + JSON editor + Replay buttons) --------
     function Tests() {
+      const [cfg, setCfg] = React.useState({ chatReplayEnabled: true });
+      React.useEffect(()=>{ fetch(`${apiBase}/admin/config`).then(r=>r.json()).then(setCfg); }, []);
+
       const [items, setItems] = React.useState([]);
+      const [selected, setSelected] = React.useState(null);
+      const [json, setJson] = React.useState("");
+      const [showReplay, setShowReplay] = React.useState(false);
+
       const load = async () => {
         const r = await fetch(`${apiBase}/tests`);
         const j = await r.json();
@@ -139,7 +254,27 @@
       };
       React.useEffect(()=>{ load(); }, []);
 
-      const exec = async (id) => {
+      const pick = async (id) => {
+        const r = await fetch(`${apiBase}/tests/${id}`);
+        const j = await r.json();
+        setSelected(j);
+        setJson(JSON.stringify(j, null, 2));
+      };
+
+      const save = async () => {
+        try {
+          const obj = JSON.parse(json);
+          const r = await fetch(`${apiBase}/tests/${obj.id}`, { method: "PUT", headers: {"Content-Type":"application/json"}, body: JSON.stringify(obj) });
+          const j = await r.json();
+          if (j.ok) { alert("Saved"); load(); }
+          else alert("Save failed");
+        } catch { alert("Invalid JSON"); }
+      };
+
+      const format = () => { try { setJson(JSON.stringify(JSON.parse(json), null, 2)); } catch {} };
+
+      const execute = async () => {
+        const id = selected?.id; if (!id) return;
         const r = await fetch(`${apiBase}/tests/${id}/execute`, { method: "POST" });
         const j = await r.json();
         alert(`Run ${j.runId}: ${j.ok ? "PASS" : "FAIL"}`);
@@ -147,39 +282,133 @@
 
       return (
         <Section title="Tests" right={<button onClick={load} className="px-3 py-1 rounded-lg bg-slate-800 text-white">Refresh</button>}>
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="text-left text-slate-600">
-                <tr><th className="py-2 pr-4">Name</th><th className="pr-4">Suite</th><th className="pr-4">Kind</th><th>Actions</th></tr>
-              </thead>
-              <tbody>
-                {items.map(t=>(
-                  <tr key={t.id} className="border-t">
-                    <td className="py-2 pr-4">{t.name}</td>
-                    <td className="pr-4">{t.suite}</td>
-                    <td className="pr-4">{t.kind}</td>
-                    <td>
-                      <button onClick={()=>exec(t.id)} className="px-3 py-1 rounded-lg bg-indigo-600 text-white">Execute</button>
-                    </td>
-                  </tr>
-                ))}
-                {items.length===0 && <tr><td className="py-3 text-slate-500" colSpan="4">No tests yet</td></tr>}
-              </tbody>
-            </table>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="text-left text-slate-600">
+                  <tr><th className="py-2 pr-4">Name</th><th className="pr-4">Suite</th><th className="pr-4">Kind</th><th>Actions</th></tr>
+                </thead>
+                <tbody>
+                  {items.map(t=>(
+                    <tr key={t.id} className={`border-t ${selected?.id===t.id?'bg-slate-50':''}`}>
+                      <td className="py-2 pr-4">{t.name}</td>
+                      <td className="pr-4">{t.suite}</td>
+                      <td className="pr-4">{t.kind}</td>
+                      <td className="space-x-2">
+                        <button onClick={()=>pick(t.id)} className="px-3 py-1 rounded-lg bg-slate-200">Edit</button>
+                        <button onClick={()=>fetch(`${apiBase}/tests/${t.id}/execute`, {method:"POST"}).then(r=>r.json()).then(j=>alert(`Run ${j.runId}: ${j.ok?'PASS':'FAIL'}`))} className="px-3 py-1 rounded-lg bg-indigo-600 text-white">Execute</button>
+                        {cfg.chatReplayEnabled && <button onClick={()=>{ setSelected(t); setShowReplay(true); }} className="px-3 py-1 rounded-lg bg-fuchsia-600 text-white">Replay in Chat</button>}
+                      </td>
+                    </tr>
+                  ))}
+                  {items.length===0 && <tr><td className="py-3 text-slate-500" colSpan="4">No tests yet</td></tr>}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex flex-col">
+              <div className="flex items-center justify-between mb-2">
+                <div className="font-medium">{selected ? `Editing: ${selected.name}` : "Select a test to edit"}</div>
+                {selected && <div className="space-x-2">
+                  <button onClick={format} className="px-3 py-1 rounded-lg bg-slate-200">Format</button>
+                  <button onClick={save} className="px-3 py-1 rounded-lg bg-emerald-600 text-white">Save</button>
+                  <button onClick={execute} className="px-3 py-1 rounded-lg bg-indigo-600 text-white">Execute</button>
+                  {cfg.chatReplayEnabled && <button onClick={()=>setShowReplay(true)} className="px-3 py-1 rounded-lg bg-fuchsia-600 text-white">Replay in Chat</button>}
+                </div>}
+              </div>
+              <textarea className="flex-1 w-full h-96 border rounded-xl p-3 font-mono text-xs"
+                        value={json} onChange={e=>setJson(e.target.value)} placeholder="Test JSON…" />
+              <p className="text-xs text-slate-500 mt-2">Tip: Disable RAG for this test via <code>context.disableRag=true</code> (or via Settings for global off).</p>
+            </div>
+          </div>
+
+          {showReplay && selected && (
+            <ReplayDrawer
+              test={selected}
+              chatReplayEnabled={cfg.chatReplayEnabled}
+              onClose={()=>setShowReplay(false)}
+            />
+          )}
+        </Section>
+      );
+    }
+
+    // -------- SUITES (unchanged from previous extended version) --------
+    function Suites() {
+      const [suites, setSuites] = React.useState([]);
+      const [name, setName] = React.useState("");
+      const [desc, setDesc] = React.useState("");
+      const [log, setLog] = React.useState([]);
+      const [running, setRunning] = React.useState(false);
+
+      const load = async () => { const r = await fetch(`${apiBase}/suites`); const j = await r.json(); setSuites(j.items || []); };
+      React.useEffect(()=>{ load(); }, []);
+
+      const create = async () => {
+        const r = await fetch(`${apiBase}/suites`, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ name, description: desc }) });
+        const j = await r.json();
+        if (j.ok) { setName(""); setDesc(""); load(); } else alert("Failed");
+      };
+
+      const runSuite = (suitename) => {
+        setRunning(true); setLog([]);
+        const es = new EventSource(`${apiBase}/suites/${encodeURIComponent(suitename)}/execute?stream=true`);
+        es.onmessage = (ev) => {
+          try {
+            const data = JSON.parse(ev.data);
+            setLog(prev=>[...prev, data]);
+            if (data.type === "done") { es.close(); setRunning(false); }
+          } catch {}
+        };
+        es.onerror = () => { es.close(); setRunning(false); };
+      };
+
+      return (
+        <Section title="Suites" right={<button onClick={load} className="px-3 py-1 rounded-lg bg-slate-800 text-white">Refresh</button>}>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div>
+              <div className="mb-3 font-medium">Create Suite</div>
+              <div className="grid grid-cols-1 gap-2">
+                <input className="border rounded-lg p-2" value={name} onChange={e=>setName(e.target.value)} placeholder="Suite name"/>
+                <input className="border rounded-lg p-2" value={desc} onChange={e=>setDesc(e.target.value)} placeholder="Description (optional)"/>
+                <button onClick={create} className="px-3 py-2 rounded-lg bg-emerald-600 text-white w-max">Create</button>
+              </div>
+
+              <div className="mt-6">
+                <div className="mb-2 font-medium">Existing Suites</div>
+                <ul className="space-y-2">
+                  {suites.map(s=>(
+                    <li key={s.name} className="border rounded-xl p-3 flex items-center justify-between">
+                      <div>
+                        <div className="font-medium">{s.name}</div>
+                        <div className="text-sm text-slate-600">{s.description || ""}</div>
+                      </div>
+                      <button onClick={()=>runSuite(s.name)} disabled={running}
+                        className="px-3 py-1 rounded-lg bg-indigo-600 text-white">{running?'Running…':'Run'}</button>
+                    </li>
+                  ))}
+                  {suites.length===0 && <li className="text-slate-500">No suites yet</li>}
+                </ul>
+              </div>
+            </div>
+
+            <div>
+              <div className="mb-2 font-medium">Live Log</div>
+              <div className="h-96 overflow-auto bg-slate-900 text-slate-100 rounded-xl p-3 text-xs">
+                {log.map((l, i)=> <div key={i}>{JSON.stringify(l)}</div>)}
+                {log.length===0 && <div className="text-slate-400">No output yet…</div>}
+              </div>
+            </div>
           </div>
         </Section>
       );
     }
 
+    // -------- RUNS (unchanged) --------
     function Runs() {
       const [items, setItems] = React.useState([]);
-      const load = async () => {
-        const r = await fetch(`${apiBase}/runs?limit=25`);
-        const j = await r.json();
-        setItems(j.items || []);
-      };
+      const load = async () => { const r = await fetch(`${apiBase}/runs?limit=50`); const j = await r.json(); setItems(j.items || []); };
       React.useEffect(()=>{ load(); }, []);
-
       return (
         <Section title="Recent Runs" right={<button onClick={load} className="px-3 py-1 rounded-lg bg-slate-800 text-white">Refresh</button>}>
           <ul className="space-y-2">
@@ -201,12 +430,20 @@
     }
 
     function App() {
+      const [tab, setTab] = React.useState("Tests");
       return (
         <div className="max-w-6xl mx-auto p-6 space-y-6">
-          <h1 className="text-2xl font-bold text-slate-900">LLM Testing Admin</h1>
-          <CreateTest />
-          <Tests />
-          <Runs />
+          <div className="flex items-center justify-between">
+            <h1 className="text-2xl font-bold text-slate-900">LLM Testing Admin</h1>
+            <Tabs tabs={["Tests","Suites","Runs","Settings"]} current={tab} onChange={setTab}/>
+          </div>
+          {tab==="Tests" && <>
+            <CreateTest onCreated={()=>{}}/>
+            <Tests />
+          </>}
+          {tab==="Suites" && <Suites />}
+          {tab==="Runs" && <Runs />}
+          {tab==="Settings" && <Settings />}
         </div>
       );
     }

@@ -49,19 +49,26 @@ router.post("/:id/execute", async (req, res) => {
   if (doStream) openSSE(res), send(res, { type: "phase", phase: "prepare" });
 
   try {
-    // Artifact (GitHub Hub)
     let artifactContent = "";
     if (test.input?.artifact?.path) {
       if (doStream) send(res, { type: "artifact", path: test.input.artifact.path });
       artifactContent = await getFile(test.input.artifact);
     }
 
-    // RAG (optional)
+    // RAG gate (global + per-test)
+    const cfg = Storage.getConfig();
+    const ragRequested = !!test.context?.ragQuery?.question;
+    const ragDisabledPerTest = test.context?.disableRag === true;
+    const canUseRag = cfg.ragEnabled && ragRequested && !ragDisabledPerTest;
+
     let ragContext = "";
-    if (test.context?.ragQuery?.question) {
+    if (canUseRag) {
       if (doStream) send(res, { type: "rag", status: "retrieving" });
       ragContext = await retrieve({ question: test.context.ragQuery.question, top_k: 4 });
+    } else {
+      if (doStream) send(res, { type: "rag", status: "skipped", reason: !cfg.ragEnabled ? "global_disabled" : (ragDisabledPerTest ? "test_disabled" : "not_requested") });
     }
+    const ragUsed = Boolean(canUseRag && ragContext);
 
     const messages = buildMessages(test.input?.messages, {
       artifactContent,
@@ -69,7 +76,6 @@ router.post("/:id/execute", async (req, res) => {
       staticContext: test.context?.static
     });
 
-    // Call LLM via Gateway
     if (doStream) send(res, { type: "llm", model: test.llmGateway?.model || "unknown" });
 
     const t0 = Date.now();
@@ -82,11 +88,8 @@ router.post("/:id/execute", async (req, res) => {
     });
     const latencyMs = Date.now() - t0;
 
-    // Assertions (regex/exact/count/safety)
     const { ok: baseOk, results } = assertAll({ completion: content, test });
 
-    // Semantic judge
-    const judgeResults = [];
     let judgeExplanations = [];
     if (test.assert?.semantic?.criteria?.length) {
       const j = test.assert.semantic;
@@ -108,7 +111,6 @@ router.post("/:id/execute", async (req, res) => {
         const score = got?.score ?? 0;
         const pass = score >= c.minScore;
         results.push({ name: `semantic:${c.name}`, ok: pass, score, why: got?.why });
-        judgeResults.push({ criterion: c.name, score, ok: pass });
         if (got?.why) judgeExplanations.push({ criterion: c.name, why: got.why });
       }
     }
@@ -123,12 +125,16 @@ router.post("/:id/execute", async (req, res) => {
       endedAt: new Date().toISOString(),
       latencyMs,
       assertions: results,
-      artifacts: { prompt: messages, completion: content, judgeExplanations }
+      artifacts: {
+        prompt: messages,
+        completion: content,
+        judgeExplanations,
+        ragUsed,
+        llmGateway: test.llmGateway || null   // snapshot for replay helpers
+      }
     };
 
     Storage.saveRun(run);
-
-    // Webhooks
     await notifyWebhooks(Storage.listWebhooks(), ok ? "run.finished" : "run.failed", run);
 
     if (doStream) {
@@ -145,6 +151,60 @@ router.post("/:id/execute", async (req, res) => {
     }
     return res.status(500).json({ error: "execute_failed", message: e.message || String(e) });
   }
+});
+
+router.get("/:id/replay", async (req, res) => {
+  const test = Storage.getTest(req.params.id);
+  if (!test) return res.status(404).json({ error: "not_found" });
+
+  // Artifact
+  let artifactContent = "";
+  if (test.input?.artifact?.path) {
+    artifactContent = await getFile(test.input.artifact);
+  }
+
+  // RAG
+  const cfg = Storage.getConfig();
+  const ragRequested = !!test.context?.ragQuery?.question;
+  const ragDisabledPerTest = test.context?.disableRag === true;
+
+  const mode = (req.query.includeRag || "auto").toString();
+  const allowAuto = cfg.ragEnabled && ragRequested && !ragDisabledPerTest;
+  const includeRag =
+    mode === "true" ? true :
+    mode === "false" ? false :
+    allowAuto;
+
+  let ragContext = "";
+  if (includeRag) {
+    ragContext = await retrieve({ question: test.context.ragQuery.question, top_k: 4 });
+  }
+
+  const messages = buildMessages(test.input?.messages, {
+    artifactContent,
+    ragContext,
+    staticContext: test.context?.static
+  });
+
+  // Output a recommended payload for LLM Chat API (OpenAI-compatible via your Gateway)
+  const payload = {
+    provider: "openai-compatible",
+    baseUrl: "/llm-gateway/api",
+    // apiKey: "<your-gateway-key-if-required>",
+    model: test.llmGateway?.model || "gpt-4o-mini",
+    messages
+  };
+
+  res.json({
+    ok: true,
+    replay: payload,
+    info: {
+      ragIncluded: includeRag,
+      ragGloballyEnabled: cfg.ragEnabled === true,
+      ragRequested,
+      ragDisabledPerTest
+    }
+  });
 });
 
 export default router;

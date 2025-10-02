@@ -21,6 +21,89 @@ paths:
                 properties:
                   status: { type: string }
                   version: { type: string }
+  /admin/config:
+    get:
+      summary: Get admin config (global flags)
+      responses:
+        "200":
+          description: Config
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ragEnabled: { type: boolean }
+                  chatReplayEnabled: { type: boolean }
+    put:
+      summary: Update admin config
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ragEnabled: { type: boolean }
+                chatReplayEnabled: { type: boolean }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  config:
+                    type: object
+                    properties:
+                      ragEnabled: { type: boolean }
+                      chatReplayEnabled: { type: boolean }
+
+  /tests/{id}/replay:
+    get:
+      summary: Build the replay payload for Chat (no model execution)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: includeRag
+          schema:
+            type: string
+            enum: [auto, "true", "false"]
+            default: auto
+      responses:
+        "200":
+          description: Replay payload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  replay:
+                    type: object
+                    properties:
+                      provider: { type: string }
+                      baseUrl: { type: string }
+                      model: { type: string }
+                      messages:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            role: { type: string }
+                            content: { type: string }
+                  info:
+                    type: object
+                    properties:
+                      ragIncluded: { type: boolean }
+                      ragGloballyEnabled: { type: boolean }
+                      ragRequested: { type: boolean }
+                      ragDisabledPerTest: { type: boolean }
+
 
   /tests:
     get:
