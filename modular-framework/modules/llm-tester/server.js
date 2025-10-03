@@ -10,9 +10,34 @@ import runsRouter from "./src/routes/runs.js";
 import ciRouter from "./src/routes/ci.js";
 import adminRouter from "./src/routes/admin.js";
 
+import logsRouter from "./src/routes/logs.js";
+import loggingRouter from "./src/routes/logging.js";
+import { stamp, logInfo, logError } from "./src/logger.js";
+
 const app = express();
 app.disable("x-powered-by");
 app.use(express.json({ limit: "2mb" }));
+// Attach request id to each request
+app.use(stamp);
+
+// Lightweight http access logging for Splunk
+app.use((req, res, next) => {
+  const start = process.hrtime.bigint();
+  res.on('finish', () => {
+    const durMs = Number(process.hrtime.bigint() - start) / 1e6;
+    logInfo('http_access', {
+      rid: req.id,
+      method: req.method,
+      path: req.originalUrl || req.url,
+      status: res.statusCode,
+      duration_ms: Math.round(durMs),
+      ip: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
+      ua: req.headers['user-agent'] || ''
+    }, 'http');
+  });
+  next();
+});
+
 
 // Health
 app.get("/api/health", (req, res) => res.json({ status: "healthy" }));
@@ -29,6 +54,10 @@ app.use(["/api/tests", "/api/llm-tester/tests"], testsRouter);
 app.use(["/api/suites", "/api/llm-tester/suites"], suitesRouter);
 app.use(["/api/runs", "/api/llm-tester/runs"], runsRouter);
 app.use(["/api/ci", "/api/llm-tester/ci"], ciRouter);
+// Logging admin + buffer APIs
+app.use(["/api", "/api/llm-tester"], logsRouter);
+app.use(["/api", "/api/llm-tester"], loggingRouter);
+
 app.use(["/api/admin", "/api/llm-tester/admin"], adminRouter);
 
 // Static Admin UI (edge maps /llm-tester/ -> /)
@@ -37,9 +66,10 @@ app.use(["/", "/llm-tester"], express.static(uiDir, { index: ["index.html"] }));
 
 // Error handler
 app.use((err, req, res, next) => {
-  console.error("Unhandled error:", err);
-  res.status(500).json({ error: "internal_error", message: err?.message || "Unknown error" });
+  try { logError('unhandled_error', { rid: req?.id, message: err?.message || String(err), stack: err?.stack }); } catch {}
+  res.status(500).json({ error: 'internal_error', message: err?.message || 'Unknown error' });
 });
+
 
 const PORT = process.env.PORT || 3040;
 app.listen(PORT, () => console.log(`llm-tester-module listening on ${PORT}`));

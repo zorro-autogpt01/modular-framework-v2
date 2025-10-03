@@ -280,6 +280,25 @@ services:
       - DATA_DIR=/app/data
       - NODE_TLS_REJECT_UNAUTHORIZED=0
       - NODE_EXTRA_CA_CERTS=/etc/ssl/certs/edge-dev.crt
+      # Logging to Splunk (optional)
+      - SPLUNK_HEC_URL=${SPLUNK_HEC_URL}
+      - SPLUNK_HEC_TOKEN=${SPLUNK_HEC_TOKEN}
+      - SPLUNK_SOURCE=llm-tester
+      - LOG_TO_CONSOLE=false
+    volumes:
+      - ./llm-tester/data:/app/data
+      - ./edge-nginx/certs/dev.crt:/etc/ssl/certs/edge-dev.crt:ro
+    networks:
+      - app-network
+    restart: unless-stopped
+    depends_on:
+      - splunk
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3040/api/llm-tester/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     volumes:
       - ./llm-tester/data:/app/data
       - ./edge-nginx/certs/dev.crt:/etc/ssl/certs/edge-dev.crt:ro
@@ -324,7 +343,7 @@ services:
       # Optional: set a token to require Bearer auth for write endpoints
       - ORCH_TOKEN=${ORCH_TOKEN}
       # Seed known services (you can add more at runtime in the UI)
-      - SERVICES=[{"name":"llm-gateway","logging_url":"http://llm-gateway:3010/api/logging"},{"name":"rag","logging_url":"http://rag-api-module:8000/admin-api/logging"},{"name":"llm-chat","logging_url":"http://llm-chat-module:3004/admin-api/logging"}]
+      - SERVICES=[{"name":"llm-gateway","logging_url":"http://llm-gateway:3010/api/logging"},{"name":"rag","logging_url":"http://rag-api-module:8000/admin-api/logging"},{"name":"llm-chat","logging_url":"http://llm-chat-module:3004/admin-api/logging"},{"name":"llm-tester","logging_url":"http://llm-tester:3040/api/logging"}]
       # Optional: default HEC
       - SPLUNK_HEC_URL=${SPLUNK_HEC_URL}
       - SPLUNK_HEC_TOKEN=${SPLUNK_HEC_TOKEN}
