@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), "data");
@@ -43,7 +44,7 @@ export const Storage = {
   saveTest(test) {
     const arr = read(files.tests);
     let existing = test.id ? arr.find(t => t.id === test.id) : undefined;
-    if (!test.id) test.id = "t_" + crypto.randomUUID();
+    if (!test.id) test.id = "t_"  + randomUUID();
     if (existing) {
       test.version = (existing.version || 0) + 1;
       Object.assign(existing, test);
@@ -79,7 +80,7 @@ export const Storage = {
 
   addWebhook(hook) {
     const arr = read(files.webhooks);
-    hook.id = "wh_" + crypto.randomUUID();
+    hook.id = "wh_" + randomUUID();
     arr.push(hook); write(files.webhooks, arr);
     return hook;
   },

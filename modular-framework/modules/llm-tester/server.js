@@ -25,15 +25,15 @@ app.get("/api/llm-testing/openapi.yaml", (req, res) => res.type("text/yaml").sen
 app.use("/api/llm-testing/docs", swaggerUi.serve, swaggerUi.setup(openapiDoc, { explorer: true }));
 
 // API routers (edge maps /api/llm-testing/* -> /api/* here)
-app.use("/api/tests", testsRouter);
-app.use("/api/suites", suitesRouter);
-app.use("/api/runs", runsRouter);
-app.use("/api/ci", ciRouter);
-app.use("/api/admin", adminRouter);
+app.use(["/api/tests", "/api/llm-testing/tests"], testsRouter);
+app.use(["/api/suites", "/api/llm-testing/suites"], suitesRouter);
+app.use(["/api/runs", "/api/llm-testing/runs"], runsRouter);
+app.use(["/api/ci", "/api/llm-testing/ci"], ciRouter);
+app.use(["/api/admin", "/api/llm-testing/admin"], adminRouter);
 
 // Static Admin UI (edge maps /llm-testing/ -> /)
 const uiDir = path.join(process.cwd(), "ui");
-app.use("/", express.static(uiDir, { index: ["index.html"] }));
+app.use(["/", "/llm-testing"], express.static(uiDir, { index: ["index.html"] }));
 
 // Error handler
 app.use((err, req, res, next) => {

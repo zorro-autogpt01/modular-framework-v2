@@ -6,6 +6,8 @@ import { retrieve } from "../rag.js";
 import { openSSE, send, close } from "../sse.js";
 import { buildMessages, assertAll } from "../util.js";
 import { notifyWebhooks } from "../webhook.js";
+import { randomUUID } from "node:crypto";
+
 
 const router = Router();
 
@@ -117,7 +119,7 @@ router.post("/:id/execute", async (req, res) => {
 
     const ok = results.every(r => r.ok);
     const run = {
-      runId: "run_" + crypto.randomUUID(),
+      runId: "run_" + randomUUID(),
       testId: test.id,
       suite: test.suite,
       ok,
