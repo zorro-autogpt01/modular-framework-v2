@@ -5,7 +5,7 @@ info:
   description: Create and execute traditional & LLM-specific tests. All LLM calls go through the LLM Gateway.
 
 servers:
-  - url: https://your-edge-host/api/llm-testing
+  - url: https://your-edge-host/api/llm-tester
 
 paths:
   /health:
@@ -356,7 +356,7 @@ paths:
                 repo: { type: string, description: "owner/repo (informational)" }
                 branch: { type: string }
                 suite: { type: string }
-                path: { type: string, default: "reports/llm-testing/report.json" }
+                path: { type: string, default: "reports/llm-tester/report.json" }
       responses:
         "200":
           description: Report committed

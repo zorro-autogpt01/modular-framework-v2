@@ -16,24 +16,24 @@ app.use(express.json({ limit: "2mb" }));
 
 // Health
 app.get("/api/health", (req, res) => res.json({ status: "healthy" }));
-app.get("/api/llm-testing/health", (req, res) => res.json({ status: "healthy", version: "0.1.0" }));
+app.get("/api/llm-tester/health", (req, res) => res.json({ status: "healthy", version: "0.1.0" }));
 
 // OpenAPI + Swagger UI
-const openapiPath = path.join(process.cwd(), "openapi.llm-testing.yaml");
+const openapiPath = path.join(process.cwd(), "openapi.llm-tester.yaml");
 const openapiDoc = YAML.parse(fs.readFileSync(openapiPath, "utf8"));
-app.get("/api/llm-testing/openapi.yaml", (req, res) => res.type("text/yaml").send(fs.readFileSync(openapiPath, "utf8")));
-app.use("/api/llm-testing/docs", swaggerUi.serve, swaggerUi.setup(openapiDoc, { explorer: true }));
+app.get("/api/llm-tester/openapi.yaml", (req, res) => res.type("text/yaml").send(fs.readFileSync(openapiPath, "utf8")));
+app.use("/api/llm-tester/docs", swaggerUi.serve, swaggerUi.setup(openapiDoc, { explorer: true }));
 
-// API routers (edge maps /api/llm-testing/* -> /api/* here)
-app.use(["/api/tests", "/api/llm-testing/tests"], testsRouter);
-app.use(["/api/suites", "/api/llm-testing/suites"], suitesRouter);
-app.use(["/api/runs", "/api/llm-testing/runs"], runsRouter);
-app.use(["/api/ci", "/api/llm-testing/ci"], ciRouter);
-app.use(["/api/admin", "/api/llm-testing/admin"], adminRouter);
+// API routers (edge maps /api/llm-tester/* -> /api/* here)
+app.use(["/api/tests", "/api/llm-tester/tests"], testsRouter);
+app.use(["/api/suites", "/api/llm-tester/suites"], suitesRouter);
+app.use(["/api/runs", "/api/llm-tester/runs"], runsRouter);
+app.use(["/api/ci", "/api/llm-tester/ci"], ciRouter);
+app.use(["/api/admin", "/api/llm-tester/admin"], adminRouter);
 
-// Static Admin UI (edge maps /llm-testing/ -> /)
+// Static Admin UI (edge maps /llm-tester/ -> /)
 const uiDir = path.join(process.cwd(), "ui");
-app.use(["/", "/llm-testing"], express.static(uiDir, { index: ["index.html"] }));
+app.use(["/", "/llm-tester"], express.static(uiDir, { index: ["index.html"] }));
 
 // Error handler
 app.use((err, req, res, next) => {
@@ -42,4 +42,4 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 3040;
-app.listen(PORT, () => console.log(`llm-testing-module listening on ${PORT}`));
+app.listen(PORT, () => console.log(`llm-tester-module listening on ${PORT}`));
