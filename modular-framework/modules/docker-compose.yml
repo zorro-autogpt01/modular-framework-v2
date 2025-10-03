@@ -18,6 +18,7 @@ services:
       - llm-chat
       - llm-workflows-module
       - llm-gateway
+      - llm-tester
     networks:
       - app-network
     restart: unless-stopped
@@ -277,13 +278,21 @@ services:
       - EDGE_BASE=http://edge-nginx
       - PORT=3040
       - DATA_DIR=/app/data
+      - NODE_TLS_REJECT_UNAUTHORIZED=0
+      - NODE_EXTRA_CA_CERTS=/etc/ssl/certs/edge-dev.crt
     volumes:
       - ./llm-tester/data:/app/data
+      - ./edge-nginx/certs/dev.crt:/etc/ssl/certs/edge-dev.crt:ro
     networks:
       - app-network
     restart: unless-stopped
-    depends_on:
-      - edge-nginx
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3040/api/llm-tester/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
 
   splunk:
     image: splunk/splunk:latest

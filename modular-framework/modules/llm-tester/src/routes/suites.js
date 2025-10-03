@@ -43,7 +43,7 @@ router.post("/:name/execute", async (req, res) => {
     if (doStream) send(res, { type: "execute", testId: t.id });
     // Fire internal HTTP to our own test execute endpoint
     const base = process.env.EDGE_BASE?.replace(/\/$/, "") || "";
-    const url = `${base}/api/llm-testing/tests/${t.id}/execute`;
+    const url = `${base}/api/llm-tester/tests/${t.id}/execute`;
     const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
     const j = await r.json();
     runIds.push(j.runId);

@@ -27,8 +27,17 @@ export function assertAll({ completion, test }) {
   }
 
   // regex
-  for (const pattern of (test.assert?.regex || [])) {
-    const pass = new RegExp(pattern).test(completion);
+  for (let pattern of (test.assert?.regex || [])) {
+    // Default to multiline+unicode for text assertions
+    let flags = "mu";
+    // Accept inline flags like (?imsgu) and merge them
+    const m = pattern.match(/^\(\?([imsguy]+)\)/);
+    if (m) {
+      pattern = pattern.replace(/^\(\?[imsguy]+\)/, "");
+      // merge unique flags
+      flags = Array.from(new Set((flags + m[1]).split(""))).join("");
+    }
+    const pass = new RegExp(pattern, flags).test(completion);
     results.push({ name: `regex:${pattern}`, ok: pass });
     ok &&= pass;
   }

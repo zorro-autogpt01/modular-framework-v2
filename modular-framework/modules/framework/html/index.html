@@ -295,6 +295,10 @@
     <div class="app-container" id="appContainer">
         <div class="header">
             <h1>🚀 Modular Application Framework</h1>
+            <button onclick="discoverModules()">🔍 Discover</button>
+            <button onclick="exportModules()">⬇️ Export</button>
+            <input type="file" id="importFile" style="display:none" accept="application/json" onchange="importModules(this.files[0])"/>
+            <button onclick="document.getElementById('importFile').click()">⬆️ Import</button>
             <button onclick="showRegistrationModal()">+ Register Module</button>
             <button onclick="refreshModules()">🔄 Refresh</button>
         </div>
@@ -421,263 +425,314 @@
         // Module Registry
         const moduleRegistry = new Map();
         const eventBus = new EventTarget();
-        
-        // Initialize with demo data
-        const demoModules = [
-        {
-            name: 'SSH Terminal',
-            url: '/api/ssh-terminal/',
-            type: 'terminal',
-            description: 'SSH connection to remote systems',
-            configUrl: '/api/ssh-terminal/',
-            status: 'online'
-        },
-        {
-            name: 'LLM Workflows',
-            url: '/api/llm-workflows/',
-            type: 'dashboard',
-            description: 'Build, validate & execute JSON-based workflows',
-            configUrl: '/api/llm-workflows/',
-            status: 'online'
-            },
-        {
-            name: 'LLM Chat',
-            url: '/api/llm-chat/',
-            type: 'other',
-            description: 'Chat with LLMs (OpenAI/Ollama/Compat)',
-            configUrl: '/api/llm-chat/config',
-            status: 'online'
-        },
-        // 👇 NEW
-        {
-            name: 'GitHub Hub',
-            url: '/api/github-hub/',
-            type: 'viewer',
-            description: 'Repo browser & GitHub API for all modules',
-            configUrl: '/api/github-hub/',   // same UI also serves config
-            status: 'online'
-        },
-        {
-            name: 'RAG Admin',
-            url: '/rag/admin/',
-            type: 'dashboard',
-            description: 'RAG Admin UI and API',
-            configUrl: '/rag/admin/',
-            status: 'online'
-            },
-        {
-            name: 'Logging Orchestrator',
-            url: '/logging/',
-            type: 'dashboard',
-            description: 'Central logging configuration management',
-            configUrl: '/logging/',
-            status: 'online'
-        },
-        {
-            name: 'Web Browser',
-            url: '/api/browser/',
-            type: 'viewer',
-            description: 'Tabbed browser with proxy mode + screenshots',
-            configUrl: '/api/browser/',
-            status: 'online'
-            }
+        let editingModuleName = null;
+
+        // Known modules for one-click discovery
+        const knownModules = [
+            { name: 'SSH Terminal', url: '/api/ssh-terminal/', type: 'terminal', configUrl: '/api/ssh-terminal/', description: 'SSH connection to remote systems' },
+            { name: 'LLM Workflows', url: '/api/llm-workflows/', type: 'dashboard', configUrl: '/api/llm-workflows/', description: 'Build, validate & execute JSON workflows' },
+            { name: 'LLM Chat', url: '/api/llm-chat/', type: 'other', configUrl: '/api/llm-chat/config', description: 'Chat with LLMs (OpenAI/Ollama/Compat)' },
+            { name: 'GitHub Hub', url: '/api/github-hub/ui/', type: 'viewer', configUrl: '/api/github-hub/ui/', description: 'Repo browser & GitHub API for all modules' },
+            { name: 'LLM Gateway', url: '/llm-gateway/', type: 'dashboard', configUrl: '/llm-gateway/', description: 'Gateway admin & keys' },
+            { name: 'RAG Admin', url: '/rag/admin/', type: 'dashboard', configUrl: '/rag/admin/', description: 'RAG Admin UI and API' },
+            { name: 'LLM Tester', url: '/llm-tester/', type: 'dashboard', configUrl: '/llm-tester/', description: 'Create and run LLM tests' },
+            { name: 'Documentor', url: '/documentor/', type: 'viewer', configUrl: '/documentor/', description: 'Generate docs using LLMs' }
         ];
 
-        // Event Bus System
+        // Demo defaults (first-run only)
+        const demoModules = knownModules;
+
         class ModuleEventBus {
             constructor() {
-                this.listeners = new Map();
-                this.setupMessageListener();
+            this.listeners = new Map();
+            window.addEventListener('message', (event) => {
+                if (event.data?.type === 'MODULE_EVENT') {
+                this.emit(event.data.eventName, event.data.payload);
+                }
+            });
             }
-
-            setupMessageListener() {
-                window.addEventListener('message', (event) => {
-                    if (event.data.type === 'MODULE_EVENT') {
-                        this.emit(event.data.eventName, event.data.payload);
-                    }
-                });
-            }
-
             on(eventName, callback) {
-                if (!this.listeners.has(eventName)) {
-                    this.listeners.set(eventName, []);
-                }
-                this.listeners.get(eventName).push(callback);
+            if (!this.listeners.has(eventName)) this.listeners.set(eventName, []);
+            this.listeners.get(eventName).push(callback);
             }
-
             emit(eventName, data) {
-                if (this.listeners.has(eventName)) {
-                    this.listeners.get(eventName).forEach(callback => {
-                        callback(data);
-                    });
-                }
-                
-                // Log event
-                logEvent(eventName, data);
+            if (this.listeners.has(eventName)) {
+                this.listeners.get(eventName).forEach(cb => cb(data));
             }
-
+            logEvent(eventName, data);
+            }
             sendToModule(moduleName, eventName, data) {
-                const module = moduleRegistry.get(moduleName);
-                if (module && module.iframe) {
-                    module.iframe.contentWindow.postMessage({
-                        type: 'FRAMEWORK_EVENT',
-                        eventName,
-                        payload: data
-                    }, '*');
-                }
+            const module = moduleRegistry.get(moduleName);
+            if (module?.iframe) {
+                module.iframe.contentWindow.postMessage({ type: 'FRAMEWORK_EVENT', eventName, payload: data }, '*');
+            }
             }
         }
 
         const messageBus = new ModuleEventBus();
 
-        // Module Management
         function loadModules() {
             const moduleList = document.getElementById('moduleList');
             moduleList.innerHTML = '';
-            
-            // Load from localStorage or use demo modules
-            const savedModules = localStorage.getItem('modules');
-            const modules = savedModules ? JSON.parse(savedModules) : demoModules;
-            
-            modules.forEach(module => {
-                moduleRegistry.set(module.name, module);
-                const moduleItem = document.createElement('div');
-                moduleItem.className = 'module-item';
-                moduleItem.innerHTML = `
-                    <span>${module.name}</span>
-                    <div class="module-status ${module.status === 'offline' ? 'offline' : ''}"></div>
-                `;
-                moduleItem.onclick = () => selectModule(module, moduleItem);
-                moduleList.appendChild(moduleItem);
+
+            let modules = [];
+            try {
+            const saved = JSON.parse(localStorage.getItem('modules') || '[]');
+            modules = Array.isArray(saved) && saved.length ? saved : demoModules;
+            } catch { modules = demoModules; }
+
+            moduleRegistry.clear();
+            modules.forEach(m => {
+            const mod = { ...m, status: 'unknown' };
+            moduleRegistry.set(mod.name, mod);
             });
-            
+
+            // render list + start async health checks
+            moduleRegistry.forEach((module, name) => {
+            const el = renderModuleItem(module);
+            moduleList.appendChild(el);
+            checkModuleStatus(name);  // async update
+            });
+
             updatePaneSelectors();
         }
 
+        function renderModuleItem(module) {
+            const el = document.createElement('div');
+            el.className = 'module-item';
+            const statusClass = module.status === 'offline' ? 'offline' : '';
+            el.innerHTML = `
+            <span style="flex:1">${module.name}</span>
+            <div style="display:flex; align-items:center; gap:8px">
+                <button title="Load in Pane 1" class="btn btn-secondary" style="padding:2px 6px" onclick="quickLoad('${module.name}',1); event.stopPropagation();">P1</button>
+                <button title="Edit" class="btn btn-secondary" style="padding:2px 6px" onclick="editModule('${module.name}'); event.stopPropagation();">✏️</button>
+                <button title="Remove" class="btn btn-secondary" style="padding:2px 6px" onclick="removeModule('${module.name}'); event.stopPropagation();">🗑️</button>
+                <div class="module-status ${statusClass}" id="status-${slug(module.name)}"></div>
+            </div>
+            `;
+            el.onclick = () => selectModule(module, el);
+            return el;
+        }
+
+        function slug(s) { return s.toLowerCase().replace(/[^a-z0-9]+/g,'-'); }
+
+        async function checkModuleStatus(name) {
+            const module = moduleRegistry.get(name);
+            if (!module) return;
+            try {
+            // Try well-known manifest first
+            const base = module.url.replace(/\/+$/,'');
+            const manifestUrl = `${base}/.well-known/module.json`;
+            let ok = false;
+            let configFromManifest = null;
+            try {
+                const r = await fetch(manifestUrl, { method: 'GET' });
+                if (r.ok) {
+                const j = await r.json().catch(()=>null);
+                if (j?.name) {
+                    module.type = j.type || module.type || 'other';
+                    module.description = j.description || module.description || '';
+                    module.configUrl = j.configUrl || module.configUrl;
+                }
+                ok = true;
+                configFromManifest = true;
+                }
+            } catch {}
+
+            if (!ok) {
+                // Fallback: HEAD or GET on base URL
+                const r = await fetch(base, { method: 'HEAD' }).catch(()=>null);
+                ok = !!(r && (r.ok || r.status === 405 || r.status === 404));
+            }
+
+            module.status = ok ? 'online' : 'offline';
+            } catch {
+            module.status = 'offline';
+            } finally {
+            const dot = document.getElementById(`status-${slug(name)}`);
+            if (dot) dot.classList.toggle('offline', module.status === 'offline');
+            persistModules();
+            }
+        }
+
         function selectModule(module, el) {
-            // Load config
             const configFrame = document.getElementById('configFrame');
             if (module.configUrl) {
-                configFrame.src = module.configUrl;
-                configFrame.style.display = 'block';
+            configFrame.src = module.configUrl;
+            configFrame.style.display = 'block';
+            } else {
+            configFrame.removeAttribute('src');
+            configFrame.style.display = 'none';
             }
-
-            // Highlight
             document.querySelectorAll('.module-item').forEach(item => item.classList.remove('active'));
             if (el) el.classList.add('active');
-
             messageBus.emit('module-selected', { module: module.name });
-            }
+        }
+
+        function quickLoad(name, pane) {
+            const selects = document.querySelectorAll('.pane select');
+            const target = Array.from(selects)[pane - 1];
+            if (!target) return;
+            target.value = name;
+            loadModuleInPane(pane, name);
+        }
 
         function loadModuleInPane(paneNumber, moduleName) {
             if (!moduleName) return;
-            
             const module = moduleRegistry.get(moduleName);
             if (!module) return;
-            
             const frame = document.getElementById(`pane${paneNumber}Frame`);
             frame.src = module.url;
-            
-            // Store iframe reference for messaging
             module.iframe = frame;
-            
-            // Update pane header
             const pane = document.querySelector(`[data-pane="${paneNumber}"]`);
             const header = pane.querySelector('.pane-header span');
             header.textContent = `${module.name} - Pane ${paneNumber}`;
-            
-            // Emit pane load event
-            messageBus.emit('module-loaded', { 
-                module: moduleName, 
-                pane: paneNumber 
-            });
+            messageBus.emit('module-loaded', { module: moduleName, pane: paneNumber });
         }
 
         function updatePaneSelectors() {
             const selectors = document.querySelectorAll('.pane select');
             selectors.forEach(select => {
-                // Keep current selection
-                const currentValue = select.value;
-                
-                // Clear and rebuild options
-                select.innerHTML = '<option value="">Select Module</option>';
-                moduleRegistry.forEach((module, name) => {
-                    const option = document.createElement('option');
-                    option.value = name;
-                    option.textContent = name;
-                    select.appendChild(option);
-                });
-                
-                // Restore selection
-                select.value = currentValue;
+            const currentValue = select.value;
+            select.innerHTML = '<option value="">Select Module</option>';
+            moduleRegistry.forEach((module, name) => {
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = name;
+                select.appendChild(option);
+            });
+            select.value = currentValue;
             });
         }
 
-        // Registration Modal
         function showRegistrationModal() {
+            editingModuleName = null;
             document.getElementById('registrationModal').style.display = 'block';
+            document.getElementById('moduleName').value = '';
+            document.getElementById('moduleUrl').value = '';
+            document.getElementById('moduleType').value = 'other';
+            document.getElementById('moduleDescription').value = '';
+        }
+
+        function editModule(name) {
+            const m = moduleRegistry.get(name);
+            if (!m) return;
+            editingModuleName = name;
+            document.getElementById('registrationModal').style.display = 'block';
+            document.getElementById('moduleName').value = m.name;
+            document.getElementById('moduleUrl').value = m.url;
+            document.getElementById('moduleType').value = m.type || 'other';
+            document.getElementById('moduleDescription').value = m.description || '';
         }
 
         function closeRegistrationModal() {
             document.getElementById('registrationModal').style.display = 'none';
-            document.getElementById('moduleName').value = '';
-            document.getElementById('moduleUrl').value = '';
-            document.getElementById('moduleDescription').value = '';
+            editingModuleName = null;
         }
 
         function registerModule() {
-            const name = document.getElementById('moduleName').value;
-            const url = document.getElementById('moduleUrl').value;
+            const name = document.getElementById('moduleName').value.trim();
+            const url = document.getElementById('moduleUrl').value.trim();
             const type = document.getElementById('moduleType').value;
-            const description = document.getElementById('moduleDescription').value;
-            
+            const description = document.getElementById('moduleDescription').value.trim();
             if (!name || !url) {
-                alert('Please fill in all required fields');
-                return;
+            alert('Please fill in all required fields');
+            return;
             }
-            
             const newModule = {
-                name,
-                url,
-                type,
-                description,
-                configUrl: `${url}/config`,
-                status: 'online'
+            name, url, type, description,
+            configUrl: `${url.replace(/\/+$/,'')}/config`,
+            status: 'unknown'
             };
-            
-            // Save to registry and localStorage
+            if (editingModuleName && moduleRegistry.has(editingModuleName)) {
+            // update (might rename)
+            if (editingModuleName !== name) moduleRegistry.delete(editingModuleName);
             moduleRegistry.set(name, newModule);
+            logEvent('Module Updated', name);
+            } else {
+            moduleRegistry.set(name, newModule);
+            logEvent('Module Registered', name);
+            }
+            persistModules();
+            loadModules();
+            closeRegistrationModal();
+        }
+
+        function removeModule(name) {
+            if (!confirm(`Remove module "${name}"?`)) return;
+            moduleRegistry.delete(name);
+            persistModules();
+            loadModules();
+            logEvent('Module Removed', name);
+        }
+
+        function persistModules() {
             const modules = Array.from(moduleRegistry.values());
             localStorage.setItem('modules', JSON.stringify(modules));
-            
-            // Reload module list
+        }
+
+        function exportModules() {
+            const data = localStorage.getItem('modules') || '[]';
+            const blob = new Blob([data], { type: 'application/json' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'modules.json';
+            a.click();
+            URL.revokeObjectURL(a.href);
+        }
+
+        function importModules(file) {
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = () => {
+            try {
+                const arr = JSON.parse(reader.result);
+                if (!Array.isArray(arr)) throw new Error('Invalid JSON');
+                arr.forEach(m => moduleRegistry.set(m.name, m));
+                persistModules();
+                loadModules();
+                alert('Modules imported.');
+            } catch {
+                alert('Invalid modules JSON.');
+            }
+            };
+            reader.readAsText(file);
+        }
+
+        async function discoverModules() {
+            let added = 0;
+            for (const km of knownModules) {
+            try {
+                const base = km.url.replace(/\/+$/,'');
+                const r = await fetch(base, { method: 'HEAD' });
+                if (r.ok || r.status === 405 || r.status === 404) {
+                if (!moduleRegistry.has(km.name)) {
+                    moduleRegistry.set(km.name, { ...km, status: 'online' });
+                    added++;
+                } else {
+                    const cur = moduleRegistry.get(km.name);
+                    cur.status = 'online';
+                }
+                }
+            } catch {
+                // ignore
+            }
+            }
+            persistModules();
             loadModules();
-            
-            // Close modal
-            closeRegistrationModal();
-            
-            // Emit registration event
-            messageBus.emit('module-registered', { module: name });
-            
-            // Show success
-            logEvent('Module Registered', `${name} has been successfully registered`);
+            alert(added ? `Discovered ${added} module(s).` : 'No new modules discovered.');
         }
 
         function mountGithubHubInLeftPane() {
-            // Use the second left sidebar (the one that currently shows "Module Config")
             const leftPaneHeader = document.querySelector('.sidebar-left-2 .pane-header');
             const leftPaneContent = document.querySelector('.sidebar-left-2 .pane-content');
             if (!leftPaneContent) return;
-
             if (leftPaneHeader) leftPaneHeader.textContent = 'GitHub Hub';
-
             const iframe = document.createElement('iframe');
-            // Only-tree side mode (no file viewer)
             iframe.src = '/api/github-hub/ui/?embed=side';
             iframe.style.width = '100%';
             iframe.style.height = '100%';
             iframe.style.border = 'none';
-
             leftPaneContent.innerHTML = '';
             leftPaneContent.appendChild(iframe);
         }
@@ -693,39 +748,22 @@
             const logEntry = document.createElement('div');
             logEntry.style.cssText = 'padding: 5px; border-bottom: 1px solid #3e3e42; font-size: 11px;';
             const timestamp = new Date().toLocaleTimeString();
-            logEntry.innerHTML = `<span style="color: #608b4e;">[${timestamp}]</span> <strong>${eventName}</strong>: ${JSON.stringify(data)}`;
+            logEntry.innerHTML <= `<span style="color: #608b4e;">[${timestamp}]</span> <strong>${eventName}</strong>: ${typeof data==='string'?data:JSON.stringify(data)}`;
             logsPane.insertBefore(logEntry, logsPane.firstChild);
-            
-            // Keep only last 50 logs
-            while (logsPane.children.length > 50) {
-                logsPane.removeChild(logsPane.lastChild);
-            }
+            while (logsPane.children.length > 50) logsPane.removeChild(logsPane.lastChild);
         }
 
-        // Initialize
         document.addEventListener('DOMContentLoaded', () => {
             loadModules();
-            
-            // Setup event listeners
-            messageBus.on('module-selected', (data) => {
-                console.log('Module selected:', data);
-            });
+            messageBus.on('module-selected', data => console.log('Module selected:', data));
+            messageBus.on('module-loaded', data => console.log('Module loaded:', data));
             mountGithubHubInLeftPane();
-
-            messageBus.on('module-loaded', (data) => {
-                console.log('Module loaded:', data);
-            });
-            
-            // Welcome message
             logEvent('System', 'Framework initialized successfully');
         });
 
-        // Handle Escape key to close modal
         window.onclick = function(event) {
             const modal = document.getElementById('registrationModal');
-            if (event.target === modal) {
-                closeRegistrationModal();
-            }
+            if (event.target === modal) closeRegistrationModal();
         }
     </script>
 </body>

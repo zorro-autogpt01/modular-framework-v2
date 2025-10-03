@@ -5,6 +5,6 @@ RUN openssl req -x509 -nodes -newkey rsa:2048 \
     -keyout /etc/nginx/certs/dev.key \
     -out /etc/nginx/certs/dev.crt \
     -days 365 -subj "/CN=localhost" \
-    -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
+    -addext "subjectAltName=DNS:localhost,IP:127.0.0.1,DNS:edge-nginx"
 EXPOSE 80 443
 CMD ["nginx", "-g", "daemon off;"]
