@@ -9,10 +9,9 @@ import suitesRouter from "./src/routes/suites.js";
 import runsRouter from "./src/routes/runs.js";
 import ciRouter from "./src/routes/ci.js";
 import adminRouter from "./src/routes/admin.js";
-
-import logsRouter from "./src/routes/logs.js";
 import loggingRouter from "./src/routes/logging.js";
-import { stamp, logInfo, logError } from "./src/logger.js";
+import logsRouter from "./src/routes/logs.js";
+import { stamp, logInfo } from "./src/logger.js";
 
 const app = express();
 app.disable("x-powered-by");
@@ -55,10 +54,12 @@ app.use(["/api/suites", "/api/llm-tester/suites"], suitesRouter);
 app.use(["/api/runs", "/api/llm-tester/runs"], runsRouter);
 app.use(["/api/ci", "/api/llm-tester/ci"], ciRouter);
 // Logging admin + buffer APIs
-app.use(["/api", "/api/llm-tester"], logsRouter);
-app.use(["/api", "/api/llm-tester"], loggingRouter);
+//app.use(["/api", "/api/llm-tester"], logsRouter);
+//app.use(["/api", "/api/llm-tester"], loggingRouter);
 
 app.use(["/api/admin", "/api/llm-tester/admin"], adminRouter);
+app.use(["/api/logging", "/api/llm-tester/logging"], loggingRouter);
+app.use(["/api/logs", "/api/llm-tester/logs"], logsRouter);
 
 // Static Admin UI (edge maps /llm-tester/ -> /)
 const uiDir = path.join(process.cwd(), "ui");
@@ -72,4 +73,7 @@ app.use((err, req, res, next) => {
 
 
 const PORT = process.env.PORT || 3040;
-app.listen(PORT, () => console.log(`llm-tester-module listening on ${PORT}`));
+app.listen(PORT, () => {
+  logInfo(`llm-tester-module listening on ${PORT}`, { port: PORT }, "startup");
+  console.log(`llm-tester-module listening on ${PORT}`);
+});

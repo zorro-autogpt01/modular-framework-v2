@@ -88,8 +88,7 @@
           messages: [
             { role: "system", content: "Write exactly 5 bullets." },
             { role: "user", content: "Summarize: ${artifact.content}" }
-          ],
-          artifact: { source: "github", path: "CHANGELOG.md", branch: "main" }
+          ]
         },
         assert: {
           regex: ["(?m)^- .+$"],
