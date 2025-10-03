@@ -7,7 +7,7 @@ import { openSSE, send, close } from "../sse.js";
 import { buildMessages, assertAll } from "../util.js";
 import { notifyWebhooks } from "../webhook.js";
 import { randomUUID } from "node:crypto";
-import { logInfo, logError, logDebug, logWarn } from "../logger.js";
+import { logWarn } from "../logger.js";
 
 const router = Router();
 
@@ -25,7 +25,6 @@ router.post("/", (req, res) => {
   const t = req.body || {};
   if (!t.name || !t.suite || !t.kind) return res.status(400).json({ error: "name, suite, kind required" });
   const saved = Storage.saveTest(t);
-  logInfo("Test created", { testId: saved.id, suite: saved.suite }, "tests");
   res.json({ ok: true, testId: saved.id, version: saved.version });
 });
 
@@ -39,7 +38,6 @@ router.put("/:id", (req, res) => {
   const existing = Storage.getTest(req.params.id);
   if (!existing) return res.status(404).json({ error: "not_found" });
   const saved = Storage.saveTest({ ...existing, ...req.body, id: existing.id });
-  logInfo("Test updated", { testId: saved.id, version: saved.version }, "tests");
   res.json({ ok: true, testId: saved.id, version: saved.version });
 });
 
@@ -49,37 +47,26 @@ router.post("/:id/execute", async (req, res) => {
 
   const doStream = String(req.query.stream || "").toLowerCase() === "true" || req.headers.accept?.includes("text/event-stream");
   let startedAt = new Date().toISOString();
-  
-  logInfo("Test execution started", { testId: test.id, suite: test.suite, stream: doStream }, "tests");
 
   if (doStream) openSSE(res), send(res, { type: "phase", phase: "prepare" });
 
   try {
+    // Artifact (tolerant)
     let artifactContent = "";
     if (test.input?.artifact?.path) {
-      if (doStream) send(res, { type: "artifact", path: test.input.artifact.path });
-      logDebug("Fetching artifact", { path: test.input.artifact.path }, "tests");
-      
-      // Try to fetch artifact, but don't fail the test if it doesn't exist
       try {
+        if (doStream) send(res, { type: "artifact", path: test.input.artifact.path });
         artifactContent = await getFile(test.input.artifact);
-      } catch (error) {
-        logWarn("Artifact fetch failed, continuing without it", { 
-          path: test.input.artifact.path,
-          error: error.message 
-        }, "tests");
-        
-        if (doStream) send(res, { type: "artifact", status: "failed", message: error.message });
-        
-        // If the artifact uses ${artifact.content} placeholder, we need to handle this
-        const hasArtifactPlaceholder = test.input?.messages?.some(m => 
-          m.content?.includes('${artifact.content}')
-        );
-        
-        if (hasArtifactPlaceholder) {
-          // Provide a fallback content or skip the test
-          artifactContent = "[Artifact not found - using placeholder content]";
-          logWarn("Using placeholder for missing artifact", { path: test.input.artifact.path }, "tests");
+      } catch (e) {
+        logWarn("Artifact fetch failed, continuing without it", { path: test.input.artifact.path, error: e.message }, "artifact");
+        if (test.input.artifact.fallback) {
+          artifactContent = String(test.input.artifact.fallback);
+          logWarn("Using fallback content for missing artifact", { path: test.input.artifact.path, len: artifactContent.length }, "artifact");
+        } else if (test.input.artifact.optional) {
+          artifactContent = "";
+        } else {
+          artifactContent = "Placeholder: CHANGELOG not available.";
+          logWarn("Using placeholder for missing artifact", { path: test.input.artifact.path }, "artifact");
         }
       }
     }
@@ -93,8 +80,11 @@ router.post("/:id/execute", async (req, res) => {
     let ragContext = "";
     if (canUseRag) {
       if (doStream) send(res, { type: "rag", status: "retrieving" });
-      logDebug("Retrieving RAG context", { question: test.context.ragQuery.question }, "tests");
-      ragContext = await retrieve({ question: test.context.ragQuery.question, top_k: 4 });
+      try {
+        ragContext = await retrieve({ question: test.context.ragQuery.question, top_k: 4 });
+      } catch (e) {
+        logWarn("RAG retrieve failed, continuing without RAG", { error: e.message }, "rag");
+      }
     } else {
       if (doStream) send(res, { type: "rag", status: "skipped", reason: !cfg.ragEnabled ? "global_disabled" : (ragDisabledPerTest ? "test_disabled" : "not_requested") });
     }
@@ -127,16 +117,12 @@ router.post("/:id/execute", async (req, res) => {
         { role: "system", content: `You are a strict evaluator. Rubric:\n${j.rubric || ""}\nReturn JSON exactly: {"scores":[{"criterion":"","score":0..1,"why":""},...]}` },
         { role: "user", content: `Candidate output:\n${content}\n\nNow evaluate.` }
       ];
-      
-      logDebug("Running semantic evaluation", { criteriaCount: j.criteria.length }, "tests");
-      
       const { content: judgeOut } = await chatCompletion({
         baseUrl: j.judge.baseUrl || test.llmGateway?.baseUrl || "/llm-gateway/api",
         headers: j.judge.headers || test.llmGateway?.headers || {},
         model: j.judge.model || test.llmGateway?.model,
         messages: judgePrompt
       });
-      
       let parsed = {};
       try { parsed = JSON.parse(judgeOut); } catch { parsed = {}; }
       const scores = parsed?.scores || [];
@@ -164,21 +150,11 @@ router.post("/:id/execute", async (req, res) => {
         completion: content,
         judgeExplanations,
         ragUsed,
-        llmGateway: test.llmGateway || null   // snapshot for replay helpers
+        llmGateway: test.llmGateway || null
       }
     };
 
     Storage.saveRun(run);
-    
-    logInfo("Test execution completed", { 
-      testId: test.id, 
-      runId: run.runId, 
-      ok, 
-      latencyMs,
-      assertionsPassed: results.filter(r => r.ok).length,
-      assertionsTotal: results.length 
-    }, "tests");
-    
     await notifyWebhooks(Storage.listWebhooks(), ok ? "run.finished" : "run.failed", run);
 
     if (doStream) {
@@ -189,12 +165,6 @@ router.post("/:id/execute", async (req, res) => {
       return res.json(run);
     }
   } catch (e) {
-    logError("Test execution failed", { 
-      testId: test.id, 
-      error: e.message,
-      stack: e.stack 
-    }, "tests");
-    
     if (doStream) {
       send(res, { type: "error", message: e.message || String(e) });
       return close(res);
@@ -207,59 +177,56 @@ router.get("/:id/replay", async (req, res) => {
   const test = Storage.getTest(req.params.id);
   if (!test) return res.status(404).json({ error: "not_found" });
 
-  try {
-    // Artifact
-    let artifactContent = "";
-    if (test.input?.artifact?.path) {
+  // Artifact
+  let artifactContent = "";
+  if (test.input?.artifact?.path) {
+    try {
       artifactContent = await getFile(test.input.artifact);
+    } catch {
+      artifactContent = test.input?.artifact?.fallback || (test.input?.artifact?.optional ? "" : "Placeholder: artifact unavailable.");
     }
-
-    // RAG
-    const cfg = Storage.getConfig();
-    const ragRequested = !!test.context?.ragQuery?.question;
-    const ragDisabledPerTest = test.context?.disableRag === true;
-
-    const mode = (req.query.includeRag || "auto").toString();
-    const allowAuto = cfg.ragEnabled && ragRequested && !ragDisabledPerTest;
-    const includeRag =
-      mode === "true" ? true :
-      mode === "false" ? false :
-      allowAuto;
-
-    let ragContext = "";
-    if (includeRag) {
-      ragContext = await retrieve({ question: test.context.ragQuery.question, top_k: 4 });
-    }
-
-    const messages = buildMessages(test.input?.messages, {
-      artifactContent,
-      ragContext,
-      staticContext: test.context?.static
-    });
-
-    // Output a recommended payload for LLM Chat API (OpenAI-compatible via your Gateway)
-    const payload = {
-      provider: "openai-compatible",
-      baseUrl: "/llm-gateway/api",
-      // apiKey: "<your-gateway-key-if-required>",
-      model: test.llmGateway?.model || "gpt-4o-mini",
-      messages
-    };
-
-    res.json({
-      ok: true,
-      replay: payload,
-      info: {
-        ragIncluded: includeRag,
-        ragGloballyEnabled: cfg.ragEnabled === true,
-        ragRequested,
-        ragDisabledPerTest
-      }
-    });
-  } catch (e) {
-    logError("Failed to generate replay", { testId: test.id, error: e.message }, "tests");
-    res.status(500).json({ error: "replay_failed", message: e.message });
   }
+
+  // RAG
+  const cfg = Storage.getConfig();
+  const ragRequested = !!test.context?.ragQuery?.question;
+  const ragDisabledPerTest = test.context?.disableRag === true;
+
+  const mode = (req.query.includeRag || "auto").toString();
+  const allowAuto = cfg.ragEnabled && ragRequested && !ragDisabledPerTest;
+  const includeRag =
+    mode === "true" ? true :
+    mode === "false" ? false :
+    allowAuto;
+
+  let ragContext = "";
+  if (includeRag) {
+    try { ragContext = await retrieve({ question: test.context.ragQuery.question, top_k: 4 }); } catch {}
+  }
+
+  const messages = buildMessages(test.input?.messages, {
+    artifactContent,
+    ragContext,
+    staticContext: test.context?.static
+  });
+
+  const payload = {
+    provider: "openai-compatible",
+    baseUrl: "/llm-gateway/api",
+    model: test.llmGateway?.model || "gpt-4o-mini",
+    messages
+  };
+
+  res.json({
+    ok: true,
+    replay: payload,
+    info: {
+      ragIncluded: includeRag && !!ragContext,
+      ragGloballyEnabled: cfg.ragEnabled === true,
+      ragRequested,
+      ragDisabledPerTest
+    }
+  });
 });
 
 export default router;

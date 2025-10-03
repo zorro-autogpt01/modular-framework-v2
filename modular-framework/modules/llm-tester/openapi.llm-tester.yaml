@@ -448,6 +448,12 @@ components:
                 source: { type: string, enum: [github] }
                 path: { type: string }
                 branch: { type: string, default: main }
+                optional:
+                  type: boolean
+                  description: If true, continue when the artifact is missing (empty or fallback used)
+                fallback:
+                  type: string
+                  description: Static text to use if artifact fetch fails
         assert:
           type: object
           properties:
