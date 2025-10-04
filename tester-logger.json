@@ -1,131 +1,102 @@
 {
-"root": ".",
-"changes": [
-{
-"op": "write",
-"path": "modular-framework/modules/llm-tester/src/routes/connectivity.js",
-"encoding": "utf-8",
-"content": "import { Router } from "express";\nimport fetch from "node-fetch";\nimport { logInfo, logError } from "../logger.js";\n\nconst router = Router();\n\nfunction edgeBase() {\n  const base = process.env.EDGE_BASE;\n  if (!base) throw new Error("EDGE_BASE is required");\n  return base.endsWith("/") ? base.slice(0, -1) : base;\n}\n\nasync function pingGateway({ baseUrl = "/llm-gateway/api", timeoutMs = 3000 } = {}) {\n  const base = edgeBase();\n  const url = `${base}${baseUrl}/v1/models`;\n  const controller = new AbortController();\n  const t = setTimeout(() => controller.abort(), timeoutMs);\n  const started = Date.now();\n  let ok = false, status = 0, err = null;\n  try {\n    const r = await fetch(url, { method: "GET", signal: controller.signal });\n    status = r.status; ok = r.ok;\n  } catch (e) {\n    err = e.message || String(e);\n  } finally { clearTimeout(t); }\n  const latencyMs = Date.now() - started;\n  return { ok, status, latencyMs, url, error: err };\n}\n\nasync function pingRag({ timeoutMs = 3000 } = {}) {\n  const base = edgeBase();\n  const url = `${base}/rag/retrieve`;\n  const controller = new AbortController();\n  const t = setTimeout(() => controller.abort(), timeoutMs);\n  const started = Date.now();\n  let ok = false, status = 0, err = null;\n  try {\n    const r = await fetch(url, {\n      method: "POST",\n      headers: { "Content-Type": "application/json" },\n      body: JSON.stringify({ query: "connectivity probe", top_k: 1, dedupe_by: "file" }),\n      signal: controller.signal\n    });\n    status = r.status; ok = r.ok;\n  } catch (e) {\n    err = e.message || String(e);\n  } finally { clearTimeout(t); }\n  const latencyMs = Date.now() - started;\n  return { ok, status, latencyMs, url, error: err };\n}\n\nrouter.get("/", async (req, res) => {\n  const rid = req.id;\n  try {\n    const [gw, rag] = await Promise.all([ pingGateway({}), pingRag({}) ]);\n    logInfo("LT connectivity summary", { rid, gw, rag }, "ops");\n    res.json({ ok: gw.ok && rag.ok, gateway: gw, rag });\n  } catch (e) {\n    logError("LT connectivity error", { rid, error: e.message || String(e) }, "ops");\n    res.status(500).json({ ok: false, error: e.message || "connectivity failed" });\n  }\n});\n\nrouter.get("/gateway", async (req, res) => {\n  const rid = req.id;\n  try {\n    const r = await pingGateway({});\n    logInfo("LT connectivity gateway", { rid, result: r }, "ops");\n    res.json(r);\n  } catch (e) {\n    logError("LT connectivity gateway error", { rid, error: e.message || String(e) }, "ops");\n    res.status(500).json({ ok: false, error: e.message || "gateway ping failed" });\n  }\n});\n\nrouter.get("/rag", async (req, res) => {\n  const rid = req.id;\n  try {\n    const r = await pingRag({});\n    logInfo("LT connectivity rag", { rid, result: r }, "ops");\n    res.json(r);\n  } catch (e) {\n    logError("LT connectivity rag error", { rid, error: e.message || String(e) }, "ops");\n    res.status(500).json({ ok: false, error: e.message || "rag ping failed" });\n  }\n});\n\nexport default router;\n"
-},
-{
-"op": "edit",
-"path": "modular-framework/modules/llm-tester/server.js",
-"steps": [
-{
-"action": "insert_after",
-"match": "^import loggingRouter from "\.\/src\/routes\/logging\.js";\nimport logsRouter from "\.\/src\/routes\/logs\.js";\nimport \{ stamp, logInfo \} from "\.\/src\/logger\.js";\n$",
-"replacement": "import connectivityRouter from "./src/routes/connectivity.js";\n",
-"regex": true,
-"strict": true
-},
-{
-"action": "insert_after",
-"match": "^app.use\(["\/api\/logs", "\/api\/llm-tester\/logs"\], logsRouter\);\n$",
-"replacement": "app.use(["/api/connectivity", "/api/llm-tester/connectivity"], connectivityRouter);\n",
-"regex": true,
-"strict": true
-}
-]
-},
-{
-"op": "edit",
-"path": "modular-framework/modules/llm-tester/src/llm.js",
-"steps": [
-{
-"action": "replace",
-"match": "import fetch from "node-fetch";\nimport \{ logError, logDebug \} from "\.\/logger\.js";\n",
-"replacement": "import fetch from "node-fetch";\nimport { logError, logDebug, logInfo } from "./logger.js";\n",
-"regex": true,
-"strict": true
-},
-{
-"action": "insert_after",
-"match": "logDebug\("LLM Gateway request", \{ url, model, messageCount: Array\.isArray\(messages\) \? messages\.length : 0 \ }, "llm"\);\n$",
-"replacement": "  // Log full outbound payload (message contents) for Splunk visibility\n  try { logInfo("LLM Gateway request payload", { url, model, messages }, "llm"); } catch {}\n",
-"regex": true,
-"strict": true
-},
-{
-"action": "insert_after",
-"match": "const content = extractContent\(json\);\nlogDebug\("LLM Gateway success", \{ contentLength: content\?\.length ?? 0 \}, "llm"\);\n$",
-"replacement": "// Log full inbound content (and small raw preview) for Splunk visibility\n  try {\n    const rawPreview = typeof json === "string" ? json.slice(0, 500) : undefined;\n    logInfo("LLM Gateway response content", { content, rawPreviewLength: (rawPreview||"").length }, "llm");\n  } catch {}\n",
-"regex": true,
-"strict": true
-}
-]
-},
-{
-"op": "edit",
-"path": "modular-framework/modules/llm-tester/src/rag.js",
-"steps": [
-{
-"action": "replace",
-"match": "import fetch from "node-fetch";\nimport \{ logError, logDebug \} from "\.\/logger\.js";\n",
-"replacement": "import fetch from "node-fetch";\nimport { logError, logDebug, logInfo } from "./logger.js";\n",
-"regex": true,
-"strict": true
-},
-{
-"action": "insert_after",
-"match": "logDebug\("RAG retrieve request", \{ question, top_k \ }, "rag"\);\n$",
-"replacement": "  // Log full outbound RAG query for Splunk\n  try { logInfo("RAG retrieve payload", { question, top_k }, "rag"); } catch {}\n",
-"regex": true,
-"strict": true
-},
-{
-"action": "insert_after",
-"match": "const snippets = \(json\.snippets || [\]\)\.map\(s => s\.text\)\.filter\(Boolean\);\n\s+logDebug\("RAG retrieve success", \{ \n\s+snippetCount: snippets\.length,\n\s+totalLength: snippets\.join\(""\)\.length \n\}, "rag"\);\n\s+return snippets\.join\("\n---\n"\);\n$",
-"replacement": "  // Log full inbound RAG snippets/content for Splunk\n  try { logInfo("RAG retrieve response", { snippetCount: snippets.length, snippets }, "rag"); } catch {}\n  return snippets.join("\n---\n");\n",
-"regex": true,
-"strict": true
-}
-]
-},
-{
-"op": "edit",
-"path": "modular-framework/modules/llm-tester/openapi.llm-tester.yaml",
-"steps": [
-{
-"action": "insert_after",
-"match": "^paths:\n",
-"replacement": "  /connectivity:\n    get:\n      summary: Check connectivity to LLM Gateway and RAG\n      responses:\n        "200":\n          description: Connectivity summary\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  ok: { type: boolean }\n                  gateway:\n                    type: object\n                    properties:\n                      ok: { type: boolean }\n                      status: { type: integer }\n                      latencyMs: { type: integer }\n                      url: { type: string }\n                      error: { type: string }\n                  rag:\n                    type: object\n                    properties:\n                      ok: { type: boolean }\n                      status: { type: integer }\n                      latencyMs: { type: integer }\n                      url: { type: string }\n                      error: { type: string }\n  /connectivity/gateway:\n    get:\n      summary: Check connectivity to LLM Gateway only\n      responses:\n        "200":\n          description: Gateway connectivity\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  ok: { type: boolean }\n                  status: { type: integer }\n                  latencyMs: { type: integer }\n                  url: { type: string }\n                  error: { type: string }\n  /connectivity/rag:\n    get:\n      summary: Check connectivity to RAG only\n      responses:\n        "200":\n          description: RAG connectivity\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  ok: { type: boolean }\n                  status: { type: integer }\n                  latencyMs: { type: integer }\n                  url: { type: string }\n                  error: { type: string }\n",
-"regex": true,
-"strict": true
-}
-]
-},
-{
-"op": "edit",
-"path": "modular-framework/modules/llm-tester/src/routes/admin.js",
-"steps": [
-{
-"action": "replace",
-"match": "const router = Router\(\);\n\nrouter\.post\("\/webhooks", \(req, res\) => \{\n  const rid = req\.id; logInfo\('LT admin webhook create <-', \{ rid, ip: req\.ip, body: \{ event, url: url \? url\.toString\(\) : null \ } \}\);\n\n  const \{ event, url, secret \} = req\.body || \{};\n",
-"replacement": "const router = Router();\n\nrouter.post("/webhooks", (req, res) => {\n  const rid = req.id; const { event, url, secret } = req.body || {};\n  logInfo('LT admin webhook create <-', { rid, ip: req.ip, body: { event, url: url ? url.toString() : null } });\n\n",
-"regex": true,
-"strict": true
-}
-]
-},
-{
-"op": "edit",
-"path": "modular-framework/modules/llm-tester/.env.example",
-"steps": [
-{
-"action": "insert_after",
-"match": "^EDGE_BASE=http:\/\/edge-nginx\n$",
-"replacement": "\n# Logging (Splunk HEC). When set, llm-tester will send rich request/response logs\nSPLUNK_HEC_URL=\nSPLUNK_HEC_TOKEN=\nSPLUNK_SOURCE=llm-tester\nSPLUNK_INDEX=\nLOG_TO_CONSOLE=false\n",
-"regex": true,
-"strict": true
-},
-{
-"action": "delete_between",
-"start": "# OPTIONAL: if your LLM Gateway needs a token and you want to default-inject it# Logging (optional: Splunk HEC)",
-"end": "LOG_TO_CONSOLE=false",
-"regex": false,
-"strict": true
-}
-]
-}
-]
+  "version": "1.0",
+  "project_root": "modular-framework/modules",
+  "dry_run": false,
+  "backup": true,
+  "changes": [
+    {
+      "id": "fix-admin-webhook-validate-and-log",
+      "description": "Fix variable usage before declaration in admin webhooks route, validate URL and event, improve logging metadata.",
+      "op": "patch_text",
+      "path": "llm-tester/src/routes/admin.js",
+      "patches": [
+        {
+          "type": "replace_regex",
+          "match": "router\\.post\\(\"/webhooks\",\\s*\\(req, res\\) => \\{[\\s\\S]*?\\}\\);",
+          "replacement": "router.post(\"/webhooks\", (req, res) => {\n  const rid = req.id;\n  const { event, url, secret } = req.body || {};\n  logInfo('LT admin webhook create <-', { rid, ip: req.ip, body: { event, url } });\n\n  if (!event || !url) return res.status(400).json({ error: \"event_and_url_required\" });\n  if (!['run.finished', 'run.failed'].includes(event)) {\n    return res.status(400).json({ error: \"invalid_event\", allowed: ['run.finished','run.failed'] });\n  }\n  try {\n    const u = new URL(String(url));\n    if (!/^https?:$/.test(u.protocol)) throw new Error('only http/https supported');\n  } catch (e) {\n    return res.status(400).json({ error: \"invalid_url\", message: e.message });\n  }\n\n  const hook = Storage.addWebhook({ event, url: String(url), secret });\n  logInfo('LT admin webhook create ->', { rid, id: hook.id });\n\n  res.json({ ok: true, id: hook.id });\n});"
+        }
+      ]
+    },
+    {
+      "id": "fix-ci-github-check",
+      "description": "Harden CI github/check endpoint: proper EDGE_BASE fallback, handle HTTP errors and invalid JSON, fix message to use exec.ok not summary.ok, improve logging.",
+      "op": "patch_text",
+      "path": "llm-tester/src/routes/ci.js",
+      "patches": [
+        {
+          "type": "replace_regex",
+          "match": "router\\.post\\(\"/github/check\",\\s*async \\(req, res\\) => \\{[\\s\\S]*?\\}\\);",
+          "replacement": "router.post(\"/github/check\", async (req, res) => {\n  const rid = req.id;\n  const { repo, branch = \"main\", suite, path: reportPath = \"reports/llm-tester/report.json\" } = req.body || {};\n  logInfo(\"LT CI github/check <-\", { rid, ip: req.ip, repo, branch, suite, path: reportPath });\n\n  if (!suite) return res.status(400).json({ error: \"suite_required\" });\n\n  const base = (process.env.EDGE_BASE?.replace(/\\/$/, \"\")) || `http://localhost:${process.env.PORT || 3040}`;\n  const execUrl = `${base}/api/llm-tester/suites/${encodeURIComponent(suite)}/execute`;\n  let exec;\n  try {\n    const execResp = await fetch(execUrl, {\n      method: \"POST\",\n      headers: { \"Content-Type\": \"application/json\" },\n      body: JSON.stringify({ stopOnFail: false }),\n    });\n    const text = await execResp.text();\n    if (!execResp.ok) {\n      logError(\"LT CI suite execute failed\", { rid, status: execResp.status, body: text.slice(0, 500) }, \"ci\");\n      return res.status(502).json({ ok: false, error: `suite_execute_${execResp.status}` });\n    }\n    try { exec = JSON.parse(text); } catch (e) {\n      logError(\"LT CI suite execute invalid JSON\", { rid, error: e.message, preview: text.slice(0, 200) }, \"ci\");\n      return res.status(502).json({ ok: false, error: \"suite_execute_invalid_json\" });\n    }\n  } catch (e) {\n    logError(\"LT CI fetch error\", { rid, error: e.message }, \"ci\");\n    return res.status(502).json({ ok: false, error: e.message });\n  }\n\n  logInfo(\"LT CI suite executed\", {\n    rid,\n    suite,\n    ok: exec?.ok,\n    passed: exec?.summary?.passed,\n    failed: exec?.summary?.failed,\n  }, \"ci\");\n\n  const content = JSON.stringify(\n    { repo, branch, suite, timestamp: new Date().toISOString(), result: exec },\n    null,\n    2\n  );\n\n  let commit;\n  try {\n    commit = await putFile({\n      path: reportPath,\n      branch,\n      content,\n      message: `llm-tester: ${suite} -> ${exec.ok ? \"PASS\" : \"FAIL\"} (${exec.summary?.passed || 0}/${\n        (exec.summary?.passed || 0) + (exec.summary?.failed || 0)\n      })`,\n    });\n  } catch (e) {\n    logError(\"LT CI github commit failed\", { rid, error: e.message }, \"ci\");\n    return res.status(502).json({ ok: false, error: e.message });\n  }\n\n  logInfo(\"LT CI github commit\", {\n    rid,\n    path: reportPath,\n    branch,\n    suite,\n    commit: commit?.commit?.sha || null,\n  }, \"ci\");\n\n  logInfo(\"LT CI github/check ->\", { rid, ok: true }, \"ci\");\n  res.json({ ok: true, commit });\n});"
+        }
+      ]
+    },
+    {
+      "id": "fix-diagnostics-connectivity-ok",
+      "description": "Fix connectivity summary ok flag calculation to use optional chaining and boolean coercion.",
+      "op": "patch_text",
+      "path": "llm-tester/src/routes/diagnostics.js",
+      "patches": [
+        {
+          "type": "replace_regex",
+          "match": "return\\s+res\\.json\\(\\{\\s*ok:\\s*\\(results\\.gateway\\?ok\\s*&&\\s*results\\.rag\\?ok\\s*:\\s*false\\),\\s*results\\s*\\}\\)\\s*;?",
+          "replacement": "const ok = Boolean(results.gateway?.ok && results.rag?.ok);\n  return res.json({ ok, results });"
+        }
+      ]
+    },
+    {
+      "id": "harden-suites-execute-and-optional-junit",
+      "description": "Harden suite execution HTTP calls with EDGE_BASE fallback and errors; add optional JUnit XML output via ?report=junit.",
+      "op": "patch_text",
+      "path": "llm-tester/src/routes/suites.js",
+      "patches": [
+        {
+          "type": "replace_regex",
+          "match": "router\\.post\\(\"/:name/execute\",\\s*async \\(req, res\\) => \\{[\\s\\S]*?\\}\\);",
+          "replacement": "router.post(\"/:name/execute\", async (req, res) => {\n  const { name } = req.params;\n  const suite = Storage.listSuites().find(s => s.name === name);\n  if (!suite) return res.status(404).json({ error: \"not_found\", message: \"suite not found\" });\n\n  logInfo(\"Suite execution started\", { suiteName: name }, \"suites\");\n  \n  const doStream = String(req.query.stream || \"\").toLowerCase() === \"true\" || req.headers.accept?.includes(\"text/event-stream\");\n  if (doStream) openSSE(res), send(res, { type: \"suite\", name });\n\n  // Select tests\n  let tests = Storage.listTests({ suite: name });\n  if (!tests.length) {\n    const empty = { ok: true, suite: name, runIds: [], summary: { passed: 0, failed: 0, durationMs: 0 } };\n    if (doStream) { send(res, { type: \"done\", ...empty }); return close(res); }\n    return res.json(empty);\n  }\n\n  const base = (process.env.EDGE_BASE?.replace(/\\/$/, \"\")) || `http://localhost:${process.env.PORT || 3040}`;\n  const start = Date.now();\n  const runIds = [];\n  let passed = 0, failed = 0;\n\n  // Sequential execution\n  for (const t of tests) {\n    if (doStream) send(res, { type: \"execute\", testId: t.id });\n    const url = `${base}/api/llm-tester/tests/${encodeURIComponent(t.id)}/execute`;\n    \n    try {\n      const r = await fetch(url, { method: \"POST\", headers: { \"Content-Type\": \"application/json\" }, body: JSON.stringify({}) });\n      const txt = await r.text();\n      if (!r.ok) throw new Error(`HTTP ${r.status}: ${txt.slice(0,200)}`);\n      const j = JSON.parse(txt);\n      runIds.push(j.runId);\n      if (j.ok) passed++; else failed++;\n      if (doStream) send(res, { type: \"result\", testId: t.id, ok: j.ok, runId: j.runId });\n      if (req.body?.stopOnFail && !j.ok) break;\n    } catch (e) {\n      logError(\"Failed to execute test in suite\", { testId: t.id, error: e.message }, \"suites\");\n      failed++;\n      if (doStream) send(res, { type: \"result\", testId: t.id, ok: false, error: e.message });\n      if (req.body?.stopOnFail) break;\n    }\n  }\n\n  const durationMs = Date.now() - start;\n  const ok = failed === 0;\n  const summary = { passed, failed, durationMs };\n\n  logInfo(\"Suite execution completed\", { \n    suiteName: name, \n    ok, \n    passed, \n    failed, \n    durationMs \n  }, \"suites\");\n\n  if (doStream) {\n    send(res, { type: \"done\", ok, suite: name, runIds, summary });\n    return close(res);\n  }\n\n  // Optional JUnit result\n  if ((req.query.report || \"\").toString().toLowerCase() === \"junit\") {\n    const runs = runIds.map(id => Storage.getRun(id)).filter(Boolean);\n    const xml = toJUnitXml({ suiteName: name, runs });\n    res.setHeader(\"Content-Type\", \"application/xml\");\n    return res.send(xml);\n  }\n\n  return res.json({ ok, suite: name, runIds, summary });\n});"
+        }
+      ]
+    },
+    {
+      "id": "import-logerror-in-server",
+      "description": "Import logError in server to fix unhandled error logging and prevent ReferenceError.",
+      "op": "patch_text",
+      "path": "llm-tester/server.js",
+      "patches": [
+        {
+          "type": "replace_literal",
+          "match": "import { stamp, logInfo } from \"./src/logger.js\";",
+          "replacement": "import { stamp, logInfo, logError } from \"./src/logger.js\";"
+        }
+      ]
+    },
+    {
+      "id": "fix-ui-favicon-path",
+      "description": "Ensure favicon loads when UI is served under /llm-tester by using a path-prefixed icon href.",
+      "op": "patch_text",
+      "path": "llm-tester/ui/index.html",
+      "patches": [
+        {
+          "type": "replace_literal",
+          "match": "<link rel=\"icon\" href=\"/favicon.svg\" />",
+          "replacement": "<link rel=\"icon\" href=\"/llm-tester/favicon.svg\" />"
+        }
+      ]
+    },
+    {
+      "id": "clean-env-example",
+      "description": "Replace noisy .env.example with a clean, working example including logging toggles.",
+      "op": "write_file",
+      "path": "llm-tester/.env.example",
+      "mode": "overwrite",
+      "content": "# LLM Tester Module .env example\n\n# REQUIRED: Full base to reach your edge from inside the container or host\nEDGE_BASE=http://edge-nginx\n\n# OPTIONAL: If your LLM Gateway needs a token and you want to default-inject it\nGATEWAY_KEY=\n\n# Logging (optional: Splunk HEC)\nSPLUNK_HEC_URL=\nSPLUNK_HEC_TOKEN=\nSPLUNK_SOURCE=llm-tester\nLOG_TO_CONSOLE=false\n\n# Data directory (mounted or local)\nDATA_DIR=/app/data\n\n# Service port (do not change unless you alter edge mapping)\nPORT=3040\n\n# TLS relax for dev (edge dev cert)\nNODE_TLS_REJECT_UNAUTHORIZED=0\n"
+    },
+    {
+      "id": "add-openapi-spec",
+      "description": "Add OpenAPI spec for llm-tester to power Swagger UI and documentation.",
+      "op": "write_file",
+      "path": "llm-tester/openapi.llm-tester.yaml",
+      "mode": "create_if_missing",
+      "content": "openapi: 3.1.0\ninfo:\n  title: LLM Testing Module API\n  version: 0.1.0\n  description: Create and execute traditional & LLM-specific tests. All LLM calls go through the LLM Gateway.\n\nservers:\n  - url: https://your-edge-host/api/llm-tester\n\npaths:\n  /health:\n    get:\n      summary: Health\n      responses:\n        \"200\":\n          description: OK\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  status: { type: string }\n                  version: { type: string }\n  /admin/config:\n    get:\n      summary: Get admin config (global flags)\n      responses:\n        \"200\":\n          description: Config\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  ragEnabled: { type: boolean }\n                  chatReplayEnabled: { type: boolean }\n    put:\n      summary: Update admin config\n      requestBody:\n        required: true\n        content:\n          application/json:\n            schema:\n              type: object\n              properties:\n                ragEnabled: { type: boolean }\n                chatReplayEnabled: { type: boolean }\n      responses:\n        \"200\":\n          description: Updated\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  ok: { type: boolean }\n                  config:\n                    type: object\n                    properties:\n                      ragEnabled: { type: boolean }\n                      chatReplayEnabled: { type: boolean }\n\n  /tests/{id}/replay:\n    get:\n      summary: Build the replay payload for Chat (no model execution)\n      parameters:\n        - in: path\n          name: id\n          required: true\n          schema: { type: string }\n        - in: query\n          name: includeRag\n          schema:\n            type: string\n            enum: [auto, \"true\", \"false\"]\n            default: auto\n      responses:\n        \"200\":\n          description: Replay payload\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  ok: { type: boolean }\n                  replay:\n                    type: object\n                    properties:\n                      provider: { type: string }\n                      baseUrl: { type: string }\n                      model: { type: string }\n                      messages:\n                        type: array\n                        items:\n                          type: object\n                          properties:\n                            role: { type: string }\n                            content: { type: string }\n                  info:\n                    type: object\n                    properties:\n                      ragIncluded: { type: boolean }\n                      ragGloballyEnabled: { type: boolean }\n                      ragRequested: { type: boolean }\n                      ragDisabledPerTest: { type: boolean }\n\n  /tests:\n    get:\n      summary: List tests\n      parameters:\n        - in: query\n          name: suite\n          schema: { type: string }\n        - in: query\n          name: tag\n          schema: { type: string }\n        - in: query\n          name: limit\n          schema: { type: integer, minimum: 1, maximum: 500 }\n      responses:\n        \"200\":\n          description: Tests\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  items:\n                    type: array\n                    items: { $ref: \"#/components/schemas/Test\" }\n    post:\n      summary: Create a test\n      requestBody:\n        required: true\n        content:\n          application/json:\n            schema: { $ref: \"#/components/schemas/Test\" }\n      responses:\n        \"200\":\n          description: Created\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  ok: { type: boolean }\n                  testId: { type: string }\n                  version: { type: integer }\n\n  /tests/{id}:\n    get:\n      summary: Get a test\n      parameters:\n        - in: path\n          name: id\n          required: true\n          schema: { type: string }\n      responses:\n        \"200\":\n          description: Test\n          content:\n            application/json:\n              schema: { $ref: \"#/components/schemas/Test\" }\n        \"404\":\n          description: Not found\n    put:\n      summary: Update a test\n      parameters:\n        - in: path\n          name: id\n          required: true\n          schema: { type: string }\n      requestBody:\n        required: true\n        content:\n          application/json:\n            schema: { $ref: \"#/components/schemas/Test\" }\n      responses:\n        \"200\":\n          description: Updated\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  ok: { type: boolean }\n                  testId: { type: string }\n                  version: { type: integer }\n\n  /tests/{id}/execute:\n    post:\n      summary: Execute a single test\n      parameters:\n        - in: path\n          name: id\n          required: true\n          schema: { type: string }\n        - in: query\n          name: stream\n          schema: { type: boolean }\n      requestBody:\n        required: false\n        content:\n          application/json:\n            schema:\n              type: object\n              properties:\n                overrides:\n                  type: object\n                mode:\n                  type: string\n                  enum: [once, ci, burn-in]\n                seed:\n                  type: integer\n      responses:\n        \"200\":\n          description: Run result\n          content:\n            application/json:\n              schema: { $ref: \"#/components/schemas/RunResult\" }\n\n  /suites:\n    get:\n      summary: List suites\n      responses:\n        \"200\":\n          description: Suites\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  items:\n                    type: array\n                    items: { $ref: \"#/components/schemas/Suite\" }\n    post:\n      summary: Create a suite\n      requestBody:\n        required: true\n        content:\n          application/json:\n            schema: { $ref: \"#/components/schemas/Suite\" }\n      responses:\n        \"200\":\n          description: Created\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  ok: { type: boolean }\n                  suiteId: { type: string }\n\n  /suites/{name}/execute:\n    post:\n      summary: Execute a suite\n      parameters:\n        - in: path\n          name: name\n          required: true\n          schema: { type: string }\n        - in: query\n          name: stream\n          schema: { type: boolean }\n      requestBody:\n        required: false\n        content:\n          application/json:\n            schema:\n              type: object\n              properties:\n                parallel: { type: integer, minimum: 1, maximum: 16 }\n                stopOnFail: { type: boolean }\n                report: { type: string, enum: [junit, json] }\n      responses:\n        \"200\":\n          description: Suite aggregated result\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  ok: { type: boolean }\n                  suite: { type: string }\n                  runIds:\n                    type: array\n                    items: { type: string }\n                  summary:\n                    type: object\n                    properties:\n                      passed: { type: integer }\n                      failed: { type: integer }\n                      durationMs: { type: integer }\n\n  /runs:\n    get:\n      summary: List recent runs\n      parameters:\n        - in: query\n          name: limit\n          schema: { type: integer, minimum: 1, maximum: 500 }\n      responses:\n        \"200\":\n          description: Runs\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  items:\n                    type: array\n                    items: { $ref: \"#/components/schemas/RunResult\" }\n\n  /runs/{runId}:\n    get:\n      summary: Get run\n      parameters:\n        - in: path\n          name: runId\n          required: true\n          schema: { type: string }\n      responses:\n        \"200\":\n          description: Run\n          content:\n            application/json:\n              schema: { $ref: \"#/components/schemas/RunResult\" }\n\n  /runs/{runId}/retry:\n    post:\n      summary: Retry run\n      parameters:\n        - in: path\n          name: runId\n          required: true\n          schema: { type: string }\n      responses:\n        \"200\":\n          description: New run\n          content:\n            application/json:\n              schema: { $ref: \"#/components/schemas/RunResult\" }\n\n  /ci/github/check:\n    post:\n      summary: Execute a suite and commit a JSON report via GitHub Hub\n      requestBody:\n        required: true\n        content:\n          application/json:\n            schema:\n              type: object\n              required: [repo, branch, suite]\n              properties:\n                repo: { type: string, description: \"owner/repo (informational)\" }\n                branch: { type: string }\n                suite: { type: string }\n                path: { type: string, default: \"reports/llm-tester/report.json\" }\n      responses:\n        \"200\":\n          description: Report committed\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  ok: { type: boolean }\n                  commit: { type: object }\n\n  /admin/webhooks:\n    post:\n      summary: Register webhook\n      requestBody:\n        required: true\n        content:\n          application/json:\n            schema:\n              $ref: \"#/components/schemas/Webhook\"\n      responses:\n        \"200\":\n          description: Created\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  ok: { type: boolean }\n                  id: { type: string }\n\ncomponents:\n  schemas:\n    Suite:\n      type: object\n      properties:\n        name: { type: string }\n        description: { type: string }\n        tags:\n          type: array\n          items: { type: string }\n        defaults:\n          type: object\n\n    Test:\n      type: object\n      properties:\n        id: { type: string }\n        name: { type: string }\n        suite: { type: string }\n        kind:\n          type: string\n          enum: [unit, integration, system, acceptance, regression, performance, security, exploratory, llm-judge]\n        tags:\n          type: array\n          items: { type: string }\n        llmGateway:\n          type: object\n          required: [baseUrl, provider, model]\n          properties:\n            baseUrl: { type: string }\n            provider: { type: string }\n            model: { type: string }\n            headers:\n              type: object\n              additionalProperties: { type: string }\n        context:\n          type: object\n          properties:\n            static: { type: string }\n            ragQuery:\n              type: object\n              properties:\n                question: { type: string }\n        input:\n          type: object\n          properties:\n            messages:\n              type: array\n              items:\n                type: object\n                required: [role, content]\n                properties:\n                  role: { type: string, enum: [system, user, assistant, tool] }\n                  content: { type: string }\n            artifact:\n              type: object\n              properties:\n                source: { type: string, enum: [github] }\n                path: { type: string }\n                branch: { type: string, default: main }\n                optional:\n                  type: boolean\n                  description: If true, continue when the artifact is missing (empty or fallback used)\n                fallback:\n                  type: string\n                  description: Static text to use if artifact fetch fails\n        assert:\n          type: object\n          properties:\n            exact:\n              type: array\n              items: { type: string }\n            regex:\n              type: array\n              items: { type: string }\n            count:\n              type: object\n              properties:\n                bulletsMin: { type: integer }\n                bulletsMax: { type: integer }\n            semantic:\n              type: object\n              properties:\n                judge:\n                  type: object\n                  required: [baseUrl, provider, model]\n                  properties:\n                    baseUrl: { type: string }\n                    provider: { type: string }\n                    model: { type: string }\n                    headers:\n                      type: object\n                      additionalProperties: { type: string }\n                criteria:\n                  type: array\n                  items:\n                    type: object\n                    required: [name, minScore]\n                    properties:\n                      name: { type: string }\n                      minScore: { type: number, minimum: 0, maximum: 1 }\n                rubric: { type: string }\n            latencyMs:\n              type: object\n              properties:\n                p95Max: { type: integer }\n            safety:\n              type: object\n              properties:\n                mustNotContain:\n                  type: array\n                  items: { type: string }\n                policy: { type: string }\n        onFail:\n          type: object\n          properties:\n            createIssue: { type: boolean }\n            blockMerge: { type: boolean }\n        runner:\n          type: object\n          properties:\n            retries: { type: integer }\n            timeoutSec: { type: integer }\n            stream: { type: boolean }\n        version: { type: integer }\n\n    RunResult:\n      type: object\n      properties:\n        runId: { type: string }\n        testId: { type: string }\n        suite: { type: string }\n        ok: { type: boolean }\n        startedAt: { type: string, format: date-time }\n        endedAt: { type: string, format: date-time }\n        latencyMs: { type: integer }\n        assertions:\n          type: array\n          items:\n            type: object\n            properties:\n              name: { type: string }\n              ok: { type: boolean }\n              score: { type: number }\n              why: { type: string }\n        artifacts:\n          type: object\n          properties:\n            prompt:\n              type: array\n              items:\n                type: object\n                properties:\n                  role: { type: string }\n                  content: { type: string }\n            completion: { type: string }\n            judgeExplanations:\n              type: array\n              items:\n                type: object\n                properties:\n                  criterion: { type: string }\n                  why: { type: string }\n\n    Webhook:\n      type: object\n      required: [event, url]\n      properties:\n        event: { type: string, enum: [run.finished, run.failed] }\n        url: { type: string, format: uri }\n        secret: { type: string }\n"
+    }
+  ]
 }

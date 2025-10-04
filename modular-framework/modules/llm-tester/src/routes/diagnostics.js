@@ -64,7 +64,8 @@ router.get('/connectivity', async (req, res) => { const rid = req.id; const mode
   } catch (e) {
     results.rag = { ok: false, error: e.message };
   }
-  return res.json({ ok: (results.gateway?ok && results.rag?ok : false), results });
+  const ok = Boolean(results.gateway?.ok && results.rag?.ok);
+  return res.json({ ok, results });
 });
 
 export default router;

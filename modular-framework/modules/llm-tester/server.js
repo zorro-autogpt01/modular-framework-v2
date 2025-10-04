@@ -11,7 +11,7 @@ import ciRouter from "./src/routes/ci.js";
 import adminRouter from "./src/routes/admin.js";
 import loggingRouter from "./src/routes/logging.js";
 import logsRouter from "./src/routes/logs.js";
-import { stamp, logInfo } from "./src/logger.js";
+import { stamp, logInfo, logError } from "./src/logger.js";
 
 const app = express();
 app.disable("x-powered-by");
