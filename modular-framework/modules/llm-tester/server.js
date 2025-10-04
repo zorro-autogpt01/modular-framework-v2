@@ -67,7 +67,9 @@ app.use(["/", "/llm-tester"], express.static(uiDir, { index: ["index.html"] }));
 
 // Error handler
 app.use((err, req, res, next) => {
-  try { logError('unhandled_error', { rid: req?.id, message: err?.message || String(err), stack: err?.stack }); } catch {}
+  try {
+    logError('unhandled_error', { rid: req?.id, message: err?.message || String(err), stack: err?.stack }, 'http');
+  } catch {}
   res.status(500).json({ error: 'internal_error', message: err?.message || 'Unknown error' });
 });
 

@@ -54,9 +54,15 @@ export async function chatCompletion({ baseUrl, headers = {}, model, messages = 
     ...(typeof max_tokens === "number" ? { max_tokens } : {})
   };
 
-  logDebug("LLM Gateway request", { url, model, messageCount: Array.isArray(messages) ? messages.length : 0 }, "llm");
+  logDebug("LLM Gateway request", {
+    url,
+    model,
+    headerKeys: Object.keys(mergedHeaders || {}),
+    messageCount: Array.isArray(messages) ? messages.length : 0
+  }, "llm");
 
   let response;
+  const t0 = Date.now();
   try {
     response = await fetch(url, { method: "POST", headers: mergedHeaders, body: JSON.stringify(body) });
   } catch (error) {
@@ -65,11 +71,13 @@ export async function chatCompletion({ baseUrl, headers = {}, model, messages = 
   }
 
   const responseText = await response.text();
+  const latencyMs = Date.now() - t0;
 
   if (!response.ok) {
     logError("LLM Gateway error response", {
       status: response.status,
       statusText: response.statusText,
+      latencyMs,
       responsePreview: responseText.slice(0, 500)
     }, "llm");
 
@@ -100,7 +108,7 @@ export async function chatCompletion({ baseUrl, headers = {}, model, messages = 
   }
 
   const content = extractContent(json);
-  logDebug("LLM Gateway success", { contentLength: content?.length ?? 0 }, "llm");
+  logDebug("LLM Gateway success", { latencyMs, contentLength: content?.length ?? 0 }, "llm");
 
   return { raw: json, content };
 }

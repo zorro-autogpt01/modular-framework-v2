@@ -104,7 +104,6 @@ paths:
                       ragRequested: { type: boolean }
                       ragDisabledPerTest: { type: boolean }
 
-
   /tests:
     get:
       summary: List tests
@@ -409,7 +408,7 @@ components:
         suite: { type: string }
         kind:
           type: string
-          enum: [unit, integration, system, acceptance, regression, performance, security, exploratory, llm-judge]
+          enum: [unit, integration, system, acceptance, regression, performance, security, exploratory, llm-judge, llm]
         tags:
           type: array
           items: { type: string }
@@ -445,9 +444,21 @@ components:
             artifact:
               type: object
               properties:
-                source: { type: string, enum: [github] }
+                source:
+                  type: string
+                  description: "Where to fetch or generate artifact from"
+                  enum: [github, local_tree]
+                # github fields
                 path: { type: string }
                 branch: { type: string, default: main }
+                # local_tree fields
+                root: { type: string, description: "Filesystem root for the tree (defaults to REPO_ROOT or process.cwd())" }
+                maxDepth: { type: integer, default: 4 }
+                maxFiles: { type: integer, default: 2000 }
+                includeHidden: { type: boolean, default: false }
+                ignore:
+                  type: array
+                  items: { type: string }
                 optional:
                   type: boolean
                   description: If true, continue when the artifact is missing (empty or fallback used)

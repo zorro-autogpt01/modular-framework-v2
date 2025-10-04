@@ -3,7 +3,6 @@ import { chatCompletion } from '../llm.js';
 import { retrieve } from '../rag.js';
 import { logInfo, logError } from '../logger.js';
 
-
 const router = Router();
 
 // GIT: /api/llm-tester/diagnostics/gateway
@@ -23,7 +22,7 @@ router.get('/gateway', async (req, res) => { const rid = req.id;
     logInfo('LT diag gateway', { rid, baseUrl, model, latencyMs, messages, response: content }, 'diag');
     return res.json({ ok: true, baseUrl, model, latencyMs, content, contentLength: content?.length || 0 });
   } catch (e) {
-    logError('LT diag gateway failed', { rid, baseUrl, model, error: e.message }, 'diag');
+    logError('LT diag gateway failed', { rid, baseUrl, model, error: e.message, stack: e.stack }, 'diag');
     return res.status(500).json({ ok: false, error: e.message || 'failed' });
   }
 });
@@ -38,7 +37,7 @@ router.get('/rag', async (req, res) => { const rid = req.id; const question = (r
     logInfo('LT diag rag', { rid, question, latencyMs, content: context }, 'diag');
     return res.json({ ok: true, question, latencyMs, content: context, contentLength: context.length });
   } catch (e) {
-    logError( 'LT diag rag failed', { rid, error: e.message }, 'diag');
+    logError( 'LT diag rag failed', { rid, error: e.message, stack: e.stack }, 'diag');
     return res.status(500).json({ ok: false, error: e.message || 'failed' });
   }
 });
@@ -64,8 +63,7 @@ router.get('/connectivity', async (req, res) => { const rid = req.id; const mode
   } catch (e) {
     results.rag = { ok: false, error: e.message };
   }
-  const ok = Boolean(results.gateway?.ok && results.rag?.ok);
-  return res.json({ ok, results });
+  return res.json({ ok: (results.gateway?.ok && results.rag?.ok) || false, results });
 });
 
 export default router;

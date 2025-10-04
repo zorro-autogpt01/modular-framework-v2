@@ -89,31 +89,31 @@ services:
     networks:
       - app-network
 
-  runner-agent:
-    build: ./runner-agent
-    container_name: runner-agent
-    environment:
-      - PORT=4010
-      - AGENT_NAME=lab
-      - AGENT_TOKEN=supersecret
-      # URL that llm-workflows will use to call this agent (inside Docker network use service name)
-      - AGENT_URL=http://runner-agent:4010
-      # Self-register to llm-workflows (optional)
-      - REGISTER_URL=http://llm-workflows-module:3005/api/runners/register
-      - REGISTER_TOKEN=supersecret
-      # Where to execute by default inside the container
-      - DEFAULT_CWD=/workspace
-    volumes:
-      - ./runner-agent:/app:ro
-      - ./llm-workflows/data:/data
-      - ./runner-agent/workspace:/workspace
-    ports:
-      - "4010:4010"
-    depends_on:
-      - llm-workflows-module
-    networks:
-      - app-network
-    restart: unless-stopped
+#  runner-agent:
+#    build: ./runner-agent
+#    container_name: runner-agent
+#    environment:
+#      - PORT=4010
+#      - AGENT_NAME=lab
+#      - AGENT_TOKEN=supersecret
+#      # URL that llm-workflows will use to call this agent (inside Docker network use service name)
+#      - AGENT_URL=http://runner-agent:4010
+#      # Self-register to llm-workflows (optional)
+#      - REGISTER_URL=http://llm-workflows-module:3005/api/runners/register
+#      - REGISTER_TOKEN=supersecret
+#      # Where to execute by default inside the container
+#      - DEFAULT_CWD=/workspace
+#    volumes:
+#      - ./runner-agent:/app:ro
+#      - ./llm-workflows/data:/data
+#      - ./runner-agent/workspace:/workspace
+#    ports:
+#      - "4010:4010"
+#    depends_on:
+#      - llm-workflows-module
+#    networks:
+#      - app-network
+#    restart: unless-stopped
 
 
   github-hub-module:
