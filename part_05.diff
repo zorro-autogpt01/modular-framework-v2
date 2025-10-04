@@ -1,0 +1,83 @@
+diff --git a/modular-framework/modules/llm-tester/openapi.llm-tester.yaml b/modular-framework/modules/llm-tester/openapi.llm-tester.yaml
+index 0a06c89..b7a3d7e 100644
+--- a/modular-framework/modules/llm-tester/openapi.llm-tester.yaml
++++ b/modular-framework/modules/llm-tester/openapi.llm-tester.yaml
+@@ -35,6 +35,58 @@ paths:
+ config:
+ type: object
+ properties:
+ ragEnabled: { type: boolean }
+ chatReplayEnabled: { type: boolean }
++  /admin/connectivity:
++    get:
++      summary: Check connectivity to LLM Gateway and RAG from llm-tester
++      parameters:
++        - in: query
++          name: g_base
++          description: Base URL for LLM Gateway (relative to EDGE_BASE or absolute)
++          schema: { type: string, default: "/llm-gateway/api" }
++        - in: query
++          name: g_model
++          description: Optional model to perform a chat ping (POST /v1/chat with 'ping')
++          schema: { type: string }
++        - in: query
++          name: g_chat
++          description: If "1", performs the chat ping when g_model is provided (default is 1 when g_model is set)
++          schema: { type: string, enum: ["0","1"] }
++        - in: query
++          name: rag
++          description: If "0", skip the RAG connectivity probe
++          schema: { type: string, enum: ["0","1"], default: "1" }
++      responses:
++        "200":
++          description: Connectivity report
++          content:
++            application/json:
++              schema:
++                type: object
++                properties:
++                  ok: { type: boolean }
++                  gateway:
++                    type: object
++                    properties:
++                      ok: { type: boolean }
++                      baseUrl: { type: string }
++                      health:
++                        type: object
++                        properties:
++                          ok: { type: boolean }
++                          status: { type: integer }
++                          preview: { type: string }
++                          url: { type: string }
++                          error: { type: string }
++                      chat:
++                        type: object
++                        properties:
++                          ok: { type: boolean }
++                          latencyMs: { type: integer }
++                          contentPreview: { type: string }
++                          error: { type: string }
++                  rag:
++                    type: object
++                    properties:
++                      ok: { type: boolean }
++                      health:
++                        type: object
++                        properties:
++                          ok: { type: boolean }
++                          status: { type: integer }
++                          preview: { type: string }
++                          url: { type: string }
++                          error: { type: string }
++                      retrieval:
++                        type: object
++                        properties:
++                          ok: { type: boolean }
++                          latencyMs: { type: integer }
++                          snippetsPreview: { type: string }
++                          error: { type: string }
+ 
+ /tests/{id}/replay:
+ get:
+ summary: Build the replay payload for Chat (no model execution)
+ parameters:

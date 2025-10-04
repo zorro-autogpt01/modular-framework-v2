@@ -1,0 +1,87 @@
+diff --git a/modular-framework/modules/llm-tester/src/connectivity.js b/modular-framework/modules/llm-tester/src/connectivity.js
+new file mode 100644
+index 0000000..a1e63b4
+--- /dev/null
++++ b/modular-framework/modules/llm-tester/src/connectivity.js
+@@ -0,0 +1,82 @@
++import fetch from "node-fetch";
++import { chatCompletion } from "./llm.js";
++import { retrieve } from "./rag.js";
++import { logInfo } from "./logger.js";
++
++function toAbsolute(baseUrl) {
++  if (/^https?:\/\//i.test(baseUrl)) return baseUrl;
++  const edge = process.env.EDGE_BASE;
++  if (!edge) throw new Error("EDGE_BASE is required");
++  const e = edge.endsWith("/") ? edge.slice(0, -1) : edge;
++  return e + baseUrl;
++}
++
++async function tryFetch(url, { timeoutMs = 3000 } = {}) {
++  const ctrl = new AbortController();
++  const t = setTimeout(() => ctrl.abort(), timeoutMs);
++  try {
++    const r = await fetch(url, { method: "GET", signal: ctrl.signal });
++    const text = await r.text().catch(() => "");
++    return { ok: r.ok, status: r.status, preview: text.slice(0, 200) };
++  } catch (e) {
++    return { ok: false, error: e.message || String(e) };
++  } finally {
++    clearTimeout(t);
++  }
++}
++
++export async function checkGatewayConnectivity({ baseUrl = "/llm-gateway/api", model } = {}) {
++  const abs = toAbsolute(baseUrl);
++  const healthUrls = [`${abs}/health`, `${abs}/v1/health`];
++
++  let health = null;
++  for (const u of healthUrls) {
++    // eslint-disable-next-line no-await-in-loop
++    const r = await tryFetch(u);
++    if (r.ok) { health = { ...r, url: u }; break; }
++    if (!health) health = { ...r, url: u };
++  }
++
++  let chat = null;
++  if (model) {
++    try {
++      const t0 = Date.now();
++      const { content } = await chatCompletion({
++        baseUrl,
++        model,
++        messages: [{ role: "user", content: "ping" }],
++        stream: false
++      });
++      const latencyMs = Date.now() - t0;
++      chat = { ok: true, latencyMs, contentPreview: String(content || "").slice(0, 200) };
++    } catch (e) {
++      chat = { ok: false, error: e.message || String(e) };
++    }
++  }
++
++  const ok = Boolean(health?.ok) && (model ? Boolean(chat?.ok) : true);
++  try { logInfo("connectivity.gateway", { baseUrl, ok, health, chat }, "ops"); } catch {}
++  return { ok, baseUrl, health, chat };
++}
++
++export async function checkRagConnectivity() {
++  const edge = process.env.EDGE_BASE;
++  if (!edge) throw new Error("EDGE_BASE is required");
++  const ragBase = (edge.endsWith("/") ? edge.slice(0, -1) : edge) + "/rag";
++
++  const health = await tryFetch(`${ragBase}/health`);
++  let retrieval = null;
++  try {
++    const t0 = Date.now();
++    const text = await retrieve({ question: "ping", top_k: 1 });
++    const latencyMs = Date.now() - t0;
++    retrieval = { ok: true, latencyMs, snippetsPreview: String(text || "").slice(0, 200) };
++  } catch (e) {
++    retrieval = { ok: false, error: e.message || String(e) };
++  }
++
++  const ok = Boolean(health?.ok) && Boolean(retrieval?.ok);
++  try { logInfo("connectivity.rag", { ok, health, retrieval }, "ops"); } catch {}
++  return { ok, health, retrieval };
++}

@@ -1,0 +1,469 @@
+{
+  "version": "1.0",
+  "changes": [
+    {
+      "op": "write_file",
+      "path": "modular-framework/modules/llm-tester/src/logger.js",
+      "mode": "overwrite",
+      "description": "Add Splunk-capable logger (ESM) modeled after llm-gateway, with request stamping, in-memory buffer, HEC sink, console sink, hot-reloadable config.",
+      "content": "// modular-framework/modules/llm-tester/src/logger.js\nimport os from 'node:os';\n\n// ===== Defaults from ENV =====\nconst ENV_DEFAULTS = {\n  level: (process.env.LOG_LEVEL || 'info').toLowerCase(),\n  console: (process.env.LOG_TO_CONSOLE || 'false').toLowerCase() === 'true',\n  buffer_max: Number(process.env.LOG_MAX || 1000),\n  sinks: {\n    hec: {\n      enabled: !!(process.env.SPLUNK_HEC_URL && process.env.SPLUNK_HEC_TOKEN),\n      url: process.env.SPLUNK_HEC_URL || null,\n      token: process.env.SPLUNK_HEC_TOKEN || null,\n      source: process.env.SPLUNK_SOURCE || 'llm-tester',\n      index: process.env.SPLUNK_INDEX || undefined,\n      tls_verify: String(process.env.NODE_TLS_REJECT_UNAUTHORIZED || '1') !== '0',\n      timeout_ms: 3000,\n      batch_max: 100\n    }\n  },\n  fields: { service: 'llm-tester', host: os.hostname() },\n  sampling: { rate: 1.0 },\n  level_overrides: {},\n};\n\n// ===== In-memory buffer =====\nexport const logs = [];\nfunction pushBuffer(entry, cfg) {\n  logs.push(entry);\n  const max = Math.max(1, Number(cfg.buffer_max || 1000));\n  while (logs.length > max) logs.shift();\n}\n\n// ===== Utilities =====\nlet reqCounter = 0;\nexport function stamp(req, _res, next) {\n  req.id = `${Date.now().toString(36)}-${(++reqCounter).toString(36)}`;\n  next();\n}\nfunction safeStringify(v) {\n  try {\n    const seen = new WeakSet();\n    return JSON.stringify(v, (k, val) => {\n      if (typeof val === 'object' && val !== null) {\n        if (seen.has(val)) return '[Circular]';\n        seen.add(val);\n      }\n      return val;\n    });\n  } catch {\n    return '[unstringifiable]';\n  }\n}\nfunction deepMerge(a, b) {\n  if (b === null || b === undefined) return a;\n  if (Array.isArray(a) || Array.isArray(b) || typeof a !== 'object' || typeof b !== 'object') return b;\n  const out = { ...a };\n  for (const k of Object.keys(b)) out[k] = deepMerge(a[k], b[k]);\n  return out;\n}\n\n// ===== Levels =====\nconst LEVELS = ['debug', 'info', 'warn', 'error'];\nfunction levelAllows(min, lvl) {\n  const mi = LEVELS.indexOf((min || 'info').toLowerCase());\n  const li = LEVELS.indexOf((lvl || 'info').toLowerCase());\n  return li >= mi;\n}\n\n// ===== Active config =====\nlet cfg = JSON.parse(JSON.stringify(ENV_DEFAULTS));\nfunction loadFromEnv() { return JSON.parse(JSON.stringify(ENV_DEFAULTS)); }\nfunction validateConfig(c) {\n  const err = (m) => { const e = new Error(m); e.status = 400; throw e; };\n  if (!c || typeof c !== 'object') err('config must be an object');\n  if (c.level && !LEVELS.includes(c.level)) err(`invalid level: ${c.level}`);\n  if (c.sampling && typeof c.sampling.rate === 'number' && (c.sampling.rate < 0 || c.sampling.rate > 1)) err('sampling.rate must be between 0 and 1');\n  if (c.sinks?.hec?.enabled) {\n    const { url, token } = c.sinks.hec;\n    if (!url || !token) err('hec.url and hec.token are required when hec.enabled=true');\n  }\n  return c;\n}\nexport function getEffectiveLoggingConfig() {\n  return redact(cfg);\n}\nexport function setLoggingConfig(patch, { dryRun = false } = {}) {\n  if (patch && patch._reload) {\n    const reloaded = loadFromEnv();\n    validateConfig(reloaded);\n    if (!dryRun) cfg = reloaded;\n    return { applied: !dryRun, effective: redact(cfg) };\n  }\n  const next = validateConfig(deepMerge(cfg, patch));\n  if (dryRun) return { validated: true, next: redact(next) };\n  cfg = next;\n  return { applied: true, effective: redact(cfg) };\n}\n\n// ===== Redaction =====\nfunction redact(obj) {\n  if (!obj || typeof obj !== 'object') return obj;\n  const clone = JSON.parse(JSON.stringify(obj));\n  const hide = (o, k) => { if (o && o[k]) o[k] = '***REDACTED***'; };\n  hide(clone, 'apiKey'); hide(clone, 'token'); hide(clone, 'Authorization'); hide(clone, 'authorization');\n  if (clone.headers && clone.headers.Authorization) clone.headers.Authorization = '***REDACTED***';\n  if (clone.headers && clone.headers.authorization) clone.headers.authorization = '***REDACTED***';\n  if (clone.sinks?.hec?.token) clone.sinks.hec.token = '***REDACTED***';\n  return clone;\n}\nfunction redactMeta(obj) {\n  if (!obj || typeof obj !== 'object') return obj;\n  const clone = JSON.parse(JSON.stringify(obj));\n  const REDACT_KEYS = ['authorization', 'Authorization', 'apiKey', 'token', 'password', 'secret'];\n  (function walk(o) {\n    if (!o || typeof o !== 'object') return;\n    for (const k of Object.keys(o)) {\n      if (REDACT_KEYS.includes(k)) o[k] = '***REDACTED***';\n      else if (typeof o[k] === 'object') walk(o[k]);\n    }\n  })(clone);\n  return clone;\n}\n\n// ===== Sinks =====\nasync function sendConsole(entry) {\n  if (!cfg.console) return;\n  const line = `[${entry.ts}] [${entry.level.toUpperCase()}] ${entry.msg} ${entry.meta ? safeStringify(entry.meta) : ''}`;\n  try {\n    if (entry.level === 'debug') console.debug(line);\n    else if (entry.level === 'info') console.info(line);\n    else if (entry.level === 'warn') console.warn(line);\n    else console.error(line);\n  } catch {}\n}\nasync function sendHec(entry) {\n  const h = cfg.sinks?.hec || {};\n  if (!h.enabled) return;\n  const payload = {\n    event: { level: entry.level, message: entry.msg, meta: entry.meta },\n    time: Math.floor(Date.now() / 1000),\n    host: cfg.fields?.host || os.hostname(),\n    sourcetype: '_json',\n    source: h.source || 'llm-tester',\n  };\n  if (h.index) payload.index = h.index;\n  const controller = new AbortController();\n  const timeout = setTimeout(() => controller.abort(), Number(h.timeout_ms || 3000));\n  try {\n    await fetch(h.url, {\n      method: 'POST',\n      headers: { 'Authorization': `Splunk ${h.token}`, 'Content-Type': 'application/json' },\n      body: JSON.stringify(payload),\n      signal: controller.signal\n    });\n  } finally { clearTimeout(timeout); }\n}\nconst sinks = [ sendConsole, sendHec ];\n\n// ===== Public log API =====\nfunction categoryLevel(min, category) {\n  const override = cfg.level_overrides?.[category];\n  return override || min;\n}\nfunction addLog(level, msg, meta, category) {\n  const min = categoryLevel(cfg.level, category);\n  if (!levelAllows(min, level)) return;\n  const rate = Number(cfg.sampling?.rate ?? 1);\n  if (rate < 1 && Math.random() > rate) return;\n  const baseMeta = { ...(meta || {}), service: cfg.fields?.service || 'llm-tester' };\n  const entry = {\n    ts: new Date().toISOString(),\n    level,\n    msg: typeof msg === 'string' ? msg : safeStringify(msg),\n    meta: redactMeta(baseMeta),\n  };\n  pushBuffer(entry, cfg);\n  for (const sink of sinks) sink(entry).catch?.(() => {});\n}\nexport const logDebug = (msg, meta, category)=> addLog('debug', msg, meta, category);\nexport const logInfo  = (msg, meta, category)=> addLog('info',  msg, meta, category);\nexport const logWarn  = (msg, meta, category)=> addLog('warn',  msg, meta, category);\nexport const logError = (msg, meta, category)=> addLog('error', msg, meta, category);\nexport const safeStringifyPublic = (v)=> safeStringify(v);\n\n// ===== Test hook =====\nexport async function testLoggingSink() {\n  const probe = { ts: Date.now(), probe: true, source: 'logging_test' };\n  logInfo('logging_test', probe, 'ops');\n  return { sent: true };\n}\n"
+    },
+    {
+      "op": "write_file",
+      "path": "modular-framework/modules/llm-tester/src/routes/logs.js",
+      "mode": "overwrite",
+      "description": "Expose in-memory logs buffer endpoints (GET /logs, POST /logs/clear) similar to llm-gateway.",
+      "content": "import { Router } from 'express';\nimport { logs } from '../logger.js';\n\nconst router = Router();\n\nrouter.get('/logs', (req, res) => {\n  const limit = Math.max(1, Math.min(Number(req.query.limit || 200), 2000));\n  const start = Math.max(0, logs.length - limit);\n  res.json(logs.slice(start));\n});\n\nrouter.post('/logs/clear', (_req, res) => {\n  logs.length = 0;\n  res.json({ ok: true });\n});\n\nexport default router;\n"
+    },
+    {
+      "op": "write_file",
+      "path": "modular-framework/modules/llm-tester/src/routes/logging.js",
+      "mode": "overwrite",
+      "description": "Admin endpoints to get/set effective logging config and test/reload sink, similar to llm-gateway.",
+      "content": "import { Router } from 'express';\nimport { getEffectiveLoggingConfig, setLoggingConfig, testLoggingSink } from '../logger.js';\n\nconst router = Router();\n\nfunction requireInternalAuth(req, res, next) {\n  const token = process.env.INTERNAL_API_TOKEN;\n  if (!token) return next();\n  const hdr = req.headers['authorization'] || '';\n  if (hdr === `Bearer ${token}`) return next();\n  return res.status(401).json({ error: 'unauthorized' });\n}\n\nrouter.get('/logging', requireInternalAuth, (_req, res) => {\n  res.json({ effective: getEffectiveLoggingConfig(), redacted: true });\n});\n\nrouter.put('/logging', requireInternalAuth, (req, res) => {\n  const dry = String(req.query.dry_run || '').toLowerCase() === '1';\n  try {\n    const result = setLoggingConfig(req.body || {}, { dryRun: dry });\n    res.json({ ok: true, dry_run: dry, result });\n  } catch (e) {\n    res.status(400).json({ ok: false, error: e.message || 'invalid config' });\n  }\n});\n\nrouter.post('/logging/test', requireInternalAuth, async (_req, res) => {\n  try {\n    const r = await testLoggingSink();\n    res.json({ ok: true, result: r });\n  } catch (e) {\n    res.status(500).json({ ok: false, error: e.message || 'test failed' });\n  }\n});\n\nrouter.post('/logging/reload', requireInternalAuth, (_req, res) => {\n  try {\n    const result = setLoggingConfig({ _reload: true }, { dryRun: false });\n    res.json({ ok: true, result });\n  } catch (e) {\n    res.status(500).json({ ok: false, error: e.message || 'reload failed' });\n  }\n});\n\nexport default router;\n"
+    },
+    {
+      "op": "patch_text",
+      "path": "modular-framework/modules/llm-tester/server.js",
+      "description": "Wire in logger: request stamping, http access logs, error logging, and mount /api logs + logging routers under both base paths.",
+      "patches": [
+        {
+          "type": "insert_before",
+          "match": "const app = express();",
+          "replacement": "import logsRouter from \"./src/routes/logs.js\";\nimport loggingRouter from \"./src/routes/logging.js\";\nimport { stamp, logInfo, logError } from \"./src/logger.js\";\n\nconst app = express();"
+        },
+        {
+          "type": "insert_after",
+          "match": "app.use\\(express\\.json\\(\\{ limit: \"2mb\" \\}\\)\\);",
+          "replacement": "\n// Attach request id to each request\napp.use(stamp);\n\n// Lightweight http access logging for Splunk\napp.use((req, res, next) => {\n  const start = process.hrtime.bigint();\n  res.on('finish', () => {\n    const durMs = Number(process.hrtime.bigint() - start) / 1e6;\n    logInfo('http_access', {\n      rid: req.id,\n      method: req.method,\n      path: req.originalUrl || req.url,\n      status: res.statusCode,\n      duration_ms: Math.round(durMs),\n      ip: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',\n      ua: req.headers['user-agent'] || ''\n    }, 'http');\n  });\n  next();\n});"
+        },
+        {
+          "type": "insert_after",
+          "match": "app.use\\(\\[\"/api/ci\", \"/api/llm-tester/ci\"\\], ciRouter\\);",
+          "replacement": "\n// Logging admin + buffer APIs\napp.use([\"/api\", \"/api/llm-tester\"], logsRouter);\napp.use([\"/api\", \"/api/llm-tester\"], loggingRouter);\n"
+        },
+        {
+          "type": "replace",
+          "match": "app.use\\(\\(err, req, res, next\\) => \\{[\\s\\S]*?\\}\\);",
+          "replacement": "app.use((err, req, res, next) => {\n  try { logError('unhandled_error', { rid: req?.id, message: err?.message || String(err), stack: err?.stack }); } catch {}\n  res.status(500).json({ error: 'internal_error', message: err?.message || 'Unknown error' });\n});"
+        }
+      ]
+    },
+    {
+      "op": "patch_text",
+      "path": "modular-framework/modules/llm-tester/src/routes/admin.js",
+      "description": "Add logging for admin actions.",
+      "patches": [
+        {
+          "type": "insert_before",
+          "match": "const router = Router\\(\\);",
+          "replacement": "import { logInfo, logWarn } from \"../logger.js\";\n\nconst router = Router();"
+        },
+        {
+          "type": "insert_after",
+          "match": "router.post\\(\"/webhooks\", \\(req, res\\) => \\{",
+          "replacement": "\n  const rid = req.id; logInfo('LT admin webhook create <-', { rid, ip: req.ip, body: { event, url: url ? url.toString() : null } });"
+        },
+        {
+          "type": "insert_after",
+          "match": "const hook = Storage.addWebhook\\(\\{ event, url, secret \\}\\);",
+          "replacement": "\n  logInfo('LT admin webhook create ->', { rid, id: hook.id });"
+        },
+        {
+          "type": "insert_before",
+          "match": "router.get\\(\"/config\", \\(req, res\\) => \\{",
+          "replacement": "// Config (RAG + Chat Replay)\nrouter.get(\"/config\", (req, res) => {\n  const rid = req.id; logInfo('LT admin config get', { rid, ip: req.ip });"
+        },
+        {
+          "type": "replace",
+          "match": "router.get\\(\"/config\", \\(req, res\\) => \\{\\s*res\\.json\\(Storage\\.getConfig\\(\\)\\);\\s*\\}\\);",
+          "replacement": "router.get(\"/config\", (req, res) => {\n  const rid = req.id; logInfo('LT admin config get', { rid, ip: req.ip });\n  res.json(Storage.getConfig());\n});"
+        },
+        {
+          "type": "replace",
+          "match": "router.put\\(\"/config\", \\(req, res\\) => \\{[\\s\\S]*?\\}\\);",
+          "replacement": "router.put(\"/config\", (req, res) => {\n  const rid = req.id; const { ragEnabled, chatReplayEnabled } = req.body || {};\n  logInfo('LT admin config put <-', { rid, ip: req.ip, ragEnabled, chatReplayEnabled });\n  if (ragEnabled != null && typeof ragEnabled !== \"boolean\")\n    return res.status(400).json({ error: \"invalid_value\", message: \"ragEnabled must be boolean\" });\n  if (chatReplayEnabled != null && typeof chatReplayEnabled !== \"boolean\")\n    return res.status(400).json({ error: \"invalid_value\", message: \"chatReplayEnabled must be boolean\" });\n  const saved = Storage.saveConfig({ ragEnabled, chatReplayEnabled });\n  logInfo('LT admin config put ->', { rid, saved });\n  res.json({ ok: true, config: saved });\n});"
+        }
+      ]
+    },
+    {
+      "op": "patch_text",
+      "path": "modular-framework/modules/llm-tester/src/routes/ci.js",
+      "description": "Add logging for CI suite run and GitHub report commit.",
+      "patches": [
+        {
+          "type": "insert_before",
+          "match": "const router = Router\\(\\);",
+          "replacement": "import { logInfo, logError } from \"../logger.js\";\n\nconst router = Router();"
+        },
+        {
+          "type": "insert_after",
+          "match": "router.post\\(\"/github/check\", async \\(req, res\\) => \\{",
+          "replacement": "\n  const rid = req.id; const { repo, branch = \"main\", suite, path: reportPath = \"reports/llm-tester/report.json\" } = req.body || {};\n  logInfo('LT CI github/check <-', { rid, ip: req.ip, repo, branch, suite, path: reportPath });"
+        },
+        {
+          "type": "replace",
+          "match": "const \\{ repo, branch = \"main\", suite, path = \"reports/llm-tester/report.json\" \\} = req\\.body \\|\\| \\{\\};",
+          "replacement": "const { repo, branch = \"main\", suite, path = \"reports/llm-tester/report.json\" } = req.body || {};"
+        },
+        {
+          "type": "insert_after",
+          "match": "const summary = await execResp\\.json\\(\\);",
+          "replacement": "\n  logInfo('LT CI suite executed', { rid, suite, ok: summary?.ok, passed: summary?.summary?.passed, failed: summary?.summary?.failed });"
+        },
+        {
+          "type": "insert_after",
+          "match": "const commit = await putFile\\({[\\s\\S]*?}\\);",
+          "replacement": "\n  logInfo('LT CI github commit', { rid, path, branch, suite, commit: commit?.commit?.sha || null });"
+        },
+        {
+          "type": "insert_before",
+          "match": "res.json\\(\\{ ok: true, commit \\}\\);",
+          "replacement": "  logInfo('LT CI github/check ->', { rid, ok: true });"
+        }
+      ]
+    },
+    {
+      "op": "patch_text",
+      "path": "modular-framework/modules/llm-tester/src/routes/runs.js",
+      "description": "Add logging for run listing, get, and retry.",
+      "patches": [
+        {
+          "type": "insert_before",
+          "match": "const router = Router\\(\\);",
+          "replacement": "import { logInfo } from \"../logger.js\";\n\nconst router = Router();"
+        },
+        {
+          "type": "replace",
+          "match": "router.get\\(\"/\", \\(req, res\\) => \\{[\\s\\S]*?\\}\\);",
+          "replacement": "router.get(\"/\", (req, res) => {\n  const rid = req.id; const limit = req.query.limit ? parseInt(req.query.limit, 10) : 50;\n  logInfo('LT runs list', { rid, ip: req.ip, limit });\n  res.json({ items: Storage.listRuns(limit) });\n});"
+        },
+        {
+          "type": "replace",
+          "match": "router.get\\(\"/:runId\", \\(req, res\\) => \\{[\\s\\S]*?\\}\\);",
+          "replacement": "router.get(\"/:runId\", (req, res) => {\n  const rid = req.id; const run = Storage.getRun(req.params.runId);\n  logInfo('LT runs get', { rid, runId: req.params.runId, found: !!run });\n  if (!run) return res.status(404).json({ error: \"not_found\" });\n  res.json(run);\n});"
+        },
+        {
+          "type": "replace",
+          "match": "router.post\\(\"/:runId/retry\", \\(req, res\\) => \\{[\\s\\S]*?\\}\\);",
+          "replacement": "router.post(\"/:runId/retry\", (req, res) => {\n  const rid = req.id; const prev = Storage.getRun(req.params.runId);\n  logInfo('LT runs retry', { rid, runId: req.params.runId, exists: !!prev });\n  if (!prev) return res.status(404).json({ error: \"not_found\" });\n  res.status(400).json({ error: \"use_tests_execute\", message: `re-run using /tests/${prev.testId}/execute` });\n});"
+        }
+      ]
+    },
+    {
+      "op": "patch_text",
+      "path": "modular-framework/modules/llm-tester/src/routes/suites.js",
+      "description": "Add logging for suites CRUD and execution (including SSE).",
+      "patches": [
+        {
+          "type": "insert_before",
+          "match": "const router = Router\\(\\);",
+          "replacement": "import { logInfo, logDebug, logWarn } from \"../logger.js\";\n\nconst router = Router();"
+        },
+        {
+          "type": "replace",
+          "match": "router.get\\(\"/\", \\(req, res\\) => \\{[\\s\\S]*?\\}\\);",
+          "replacement": "router.get(\"/\", (req, res) => {\n  const rid = req.id; logInfo('LT suites list', { rid, ip: req.ip });\n  res.json({ items: Storage.listSuites() });\n});"
+        },
+        {
+          "type": "replace",
+          "match": "router.post\\(\"/\", \\(req, res\\) => \\{[\\s\\S]*?\\}\\);",
+          "replacement": "router.post(\"/\", (req, res) => {\n  const rid = req.id;\n  try {\n    const suite = Storage.saveSuite(req.body || {});\n    logInfo('LT suites save', { rid, name: suite?.name });\n    return res.json({ ok: true, suiteId: suite.name });\n  } catch (e) {\n    logWarn('LT suites save error', { rid, message: e.message });\n    return res.status(400).json({ error: \"invalid_suite\", message: e.message });\n  }\n});"
+        },
+        {
+          "type": "insert_after",
+          "match": "router.post\\(\"/:name/execute\", async \\(req, res\\) => \\{",
+          "replacement": "\n  const rid = req.id; logInfo('LT suite execute <-', { rid, name, stream: String(req.query.stream||'') });"
+        },
+        {
+          "type": "insert_after",
+          "match": "if \\(!suite\\) return res\\.status\\(404\\)\\.json\\(\\{ error: \"not_found\", message: \"suite not found\" \\}\\);",
+          "replacement": "\n  logDebug('LT suite found', { rid, name });"
+        },
+        {
+          "type": "insert_after",
+          "match": "if \\(doStream\\) openSSE\\(res\\), send\\(res, \\{ type: \"suite\", name \\}\\);",
+          "replacement": "\n  if (doStream) logDebug('LT suite SSE open', { rid, name });"
+        },
+        {
+          "type": "insert_after",
+          "match": "let passed = 0, failed = 0;",
+          "replacement": "\n  logInfo('LT suite selected tests', { rid, count: tests.length });"
+        },
+        {
+          "type": "insert_after",
+          "match": "const r = await fetch\\(url, \\{ method: \"POST\", headers: \\{ \"Content-Type\": \"application/json\" \\}, body: JSON\\.stringify\\(\\{\\}\\) \\} \\);",
+          "replacement": "\n    logDebug('LT suite -> execute test', { rid, testId: t.id, url });"
+        },
+        {
+          "type": "insert_after",
+          "match": "const j = await r\\.json\\(\\);",
+          "replacement": "\n    logDebug('LT suite <- execute result', { rid, testId: t.id, ok: j?.ok, runId: j?.runId });"
+        },
+        {
+          "type": "insert_before",
+          "match": "if \\(!doStream\\) \\{",
+          "replacement": "  logInfo('LT suite execute -> summary', { rid, ok, name, passed, failed, durationMs });\n  if (!doStream) {"
+        }
+      ]
+    },
+    {
+      "op": "patch_text",
+      "path": "modular-framework/modules/llm-tester/src/routes/tests.js",
+      "description": "Add logging for tests CRUD, execute (including artifact, RAG, LLM), and replay.",
+      "patches": [
+        {
+          "type": "insert_before",
+          "match": "const router = Router\\(\\);",
+          "replacement": "import { logInfo, logWarn, logError, logDebug } from \"../logger.js\";\n\nconst router = Router();"
+        },
+        {
+          "type": "replace",
+          "match": "router.get\\(\"/\", \\(req, res\\) => \\{[\\s\\S]*?\\}\\);",
+          "replacement": "router.get(\"/\", (req, res) => {\n  const rid = req.id; const { suite, tag, limit } = req.query;\n  logInfo('LT tests list', { rid, ip: req.ip, suite, tag, limit });\n  const items = Storage.listTests({ suite, tag, limit: limit ? parseInt(limit, 10) : undefined });\n  res.json({ items });\n});"
+        },
+        {
+          "type": "replace",
+          "match": "router.post\\(\"/\", \\(req, res\\) => \\{[\\s\\S]*?\\}\\);",
+          "replacement": "router.post(\"/\", (req, res) => {\n  const rid = req.id; const t = req.body || {};\n  logInfo('LT tests create <-', { rid, name: t?.name, suite: t?.suite, kind: t?.kind });\n  if (!t.name || !t.suite || !t.kind) return res.status(400).json({ error: \"name, suite, kind required\" });\n  const saved = Storage.saveTest(t);\n  logInfo('LT tests create ->', { rid, testId: saved.id });\n  res.json({ ok: true, testId: saved.id, version: saved.version });\n});"
+        },
+        {
+          "type": "replace",
+          "match": "router.get\\(\"/:id\", \\(req, res\\) => \\{[\\s\\S]*?\\}\\);",
+          "replacement": "router.get(\"/:id\", (req, res) => {\n  const rid = req.id; const t = Storage.getTest(req.params.id);\n  logInfo('LT tests get', { rid, id: req.params.id, found: !!t });\n  if (!t) return res.status(404).json({ error: \"not_found\" });\n  res.json(t);\n});"
+        },
+        {
+          "type": "replace",
+          "match": "router.put\\(\"/:id\", \\(req, res\\) => \\{[\\s\\S]*?\\}\\);",
+          "replacement": "router.put(\"/:id\", (req, res) => {\n  const rid = req.id; const existing = Storage.getTest(req.params.id);\n  if (!existing) { logWarn('LT tests update not_found', { rid, id: req.params.id }); return res.status(404).json({ error: \"not_found\" }); }\n  const saved = Storage.saveTest({ ...existing, ...req.body, id: existing.id });\n  logInfo('LT tests update ->', { rid, id: saved.id, version: saved.version });\n  res.json({ ok: true, testId: saved.id, version: saved.version });\n});"
+        },
+        {
+          "type": "insert_after",
+          "match": "router.post\\(\"/:id/execute\", async \\(req, res\\) => \\{",
+          "replacement": "\n  const rid = req.id; logInfo('LT test execute <-', { rid, id: req.params.id, stream: String(req.query.stream||'') });"
+        },
+        {
+          "type": "insert_after",
+          "match": "if \\(!test\\) return res\\.status\\(404\\)\\.json\\(\\{ error: \"not_found\" \\}\\);",
+          "replacement": "\n  logDebug('LT test found', { rid, id: test.id, suite: test.suite, kind: test.kind });"
+        },
+        {
+          "type": "insert_after",
+          "match": "if \\(doStream\\) openSSE\\(res\\), send\\(res, \\{ type: \"phase\", phase: \"prepare\" \\}\\);",
+          "replacement": "\n  if (doStream) logDebug('LT test SSE open', { rid, id: test.id });"
+        },
+        {
+          "type": "insert_after",
+          "match": "if \\(test\\.input\\?\\.artifact\\?\\.path\\) \\{",
+          "replacement": "\n      logInfo('LT test artifact fetch', { rid, path: test.input.artifact.path, branch: test.input.artifact.branch || 'main' });"
+        },
+        {
+          "type": "insert_after",
+          "match": "if \\(canUseRag\\) \\{",
+          "replacement": "\n      logInfo('LT test RAG retrieve', { rid, question: test.context.ragQuery.question });"
+        },
+        {
+          "type": "insert_after",
+          "match": "const t0 = Date\\.now\\(\\);",
+          "replacement": "\n    logInfo('LT test LLM call -> gateway', { rid, baseUrl: test.llmGateway?.baseUrl || '/llm-gateway/api', model: test.llmGateway?.model, messagesCount: messages.length });"
+        },
+        {
+          "type": "insert_after",
+          "match": "const latencyMs = Date\\.now\\(\\) - t0;",
+          "replacement": "\n    logInfo('LT test LLM call <-', { rid, latencyMs, contentLen: (content||'').length });"
+        },
+        {
+          "type": "insert_after",
+          "match": "Storage.saveRun\\(run\\);",
+          "replacement": "\n    logInfo('LT test run saved', { rid, runId: run.runId, ok });"
+        },
+        {
+          "type": "insert_after",
+          "match": "await notifyWebhooks\\(Storage\\.listWebhooks\\(\\), ok \\? \"run\\.finished\" : \"run\\.failed\", run\\);",
+          "replacement": "\n    logInfo('LT test webhooks notified', { rid, count: Storage.listWebhooks().length });"
+        },
+        {
+          "type": "insert_after",
+          "match": "} catch \\(e\\) \\{",
+          "replacement": "\n    logError('LT test execute error', { rid, id: req.params.id, message: e?.message || String(e) });"
+        },
+        {
+          "type": "insert_after",
+          "match": "router.get\\(\"/:id/replay\", async \\(req, res\\) => \\{",
+          "replacement": "\n  const rid = req.id; logInfo('LT test replay <-', { rid, id: req.params.id, includeRag: String(req.query.includeRag||'auto') });"
+        },
+        {
+          "type": "insert_before",
+          "match": "res\\.json\\(\\{\\s*ok: true,\\s*replay: payload,",
+          "replacement": "  logInfo('LT test replay ->', { rid, id: test.id, ragIncluded: includeRag });\n  res.json({"
+        }
+      ]
+    },
+    {
+      "op": "patch_text",
+      "path": "modular-framework/modules/llm-tester/src/github.js",
+      "description": "Add logging around GitHub Hub calls.",
+      "patches": [
+        {
+          "type": "insert_before",
+          "match": "function edge\\(path\\) \\{",
+          "replacement": "import { logInfo, logWarn } from './logger.js';\n\nfunction edge(path) {"
+        },
+        {
+          "type": "insert_after",
+          "match": "export async function getFile\\(\\{ path: filePath, branch = \"main\" \\}\\) \\{",
+          "replacement": "\n  logInfo('LT github getFile', { path: filePath, branch });"
+        },
+        {
+          "type": "insert_after",
+          "match": "const j = await r\\.json\\(\\);",
+          "replacement": "\n  if (!r.ok) logWarn('LT github getFile error', { status: r.status, message: j?.message });\n  else logInfo('LT github getFile ok', { size: (j?.decoded_content||'').length });"
+        },
+        {
+          "type": "insert_after",
+          "match": "export async function putFile\\(\\{ path: filePath, content, message, branch = \"main\", sha \\}\\) \\{",
+          "replacement": "\n  logInfo('LT github putFile', { path: filePath, branch, size: (content||'').length });"
+        },
+        {
+          "type": "insert_after",
+          "match": "const j = await r\\.json\\(\\);",
+          "replacement": "\n  if (!r.ok) logWarn('LT github putFile error', { status: r.status, message: j?.message });\n  else logInfo('LT github putFile ok', { sha: j?.commit?.sha || null });"
+        }
+      ]
+    },
+    {
+      "op": "patch_text",
+      "path": "modular-framework/modules/llm-tester/src/llm.js",
+      "description": "Add logging for gateway chatCompletion calls.",
+      "patches": [
+        {
+          "type": "insert_before",
+          "match": "function joinBase\\(base, path\\) \\{",
+          "replacement": "import { logInfo, logWarn } from './logger.js';\n\nfunction joinBase(base, path) {"
+        },
+        {
+          "type": "insert_after",
+          "match": "export async function chatCompletion\\(\\{ baseUrl, headers = \\{}, model, messages, stream = false \\}\\) \\{",
+          "replacement": "\n  const t0 = Date.now();"
+        },
+        {
+          "type": "insert_before",
+          "match": "const r = await fetch\\(url, \\{ method: \"POST\", headers: mergedHeaders, body: JSON\\.stringify\\(body\\) \\} \\);",
+          "replacement": "  logInfo('LT gateway chat ->', { url, model, messagesCount: Array.isArray(messages) ? messages.length : 0 });\n  const r = await fetch(url, { method: \"POST\", headers: mergedHeaders, body: JSON.stringify(body) });"
+        },
+        {
+          "type": "insert_after",
+          "match": "const j = await r\\.json\\(\\)\\.catch\\(\\(\\) => \\(\\{\\}\\)\\);",
+          "replacement": "\n  const dt = Date.now() - t0;\n  if (!r.ok) logWarn('LT gateway chat error', { status: r.status, dt, bodyHead: JSON.stringify(j).slice(0,300) });\n  else logInfo('LT gateway chat <-', { status: r.status, dt });"
+        }
+      ]
+    },
+    {
+      "op": "patch_text",
+      "path": "modular-framework/modules/llm-tester/src/rag.js",
+      "description": "Add logging for RAG retrieve calls.",
+      "patches": [
+        {
+          "type": "insert_before",
+          "match": "function rag\\(path\\) \\{",
+          "replacement": "import { logInfo, logWarn } from './logger.js';\n\nfunction rag(path) {"
+        },
+        {
+          "type": "insert_after",
+          "match": "export async function retrieve\\(\\{ question, top_k = 4 \\}\\) \\{",
+          "replacement": "\n  logInfo('LT RAG retrieve ->', { top_k, hasQuestion: !!question });"
+        },
+        {
+          "type": "insert_after",
+          "match": "const j = await r\\.json\\(\\);",
+          "replacement": "\n  if (!r.ok) logWarn('LT RAG retrieve error', { status: r.status, message: j?.message });\n  else logInfo('LT RAG retrieve <-', { snippets: (j?.snippets||[]).length });"
+        }
+      ]
+    },
+    {
+      "op": "patch_text",
+      "path": "modular-framework/modules/llm-tester/src/sse.js",
+      "description": "Add minimal logging for SSE lifecycle.",
+      "patches": [
+        {
+          "type": "insert_before",
+          "match": "export function openSSE\\(res\\) \\{",
+          "replacement": "import { logDebug } from './logger.js';\n\nexport function openSSE(res) {"
+        },
+        {
+          "type": "insert_after",
+          "match": "res\\.flushHeaders\\?\\.\\(\\);",
+          "replacement": "\n  try { logDebug('LT SSE open'); } catch {}\n"
+        },
+        {
+          "type": "insert_after",
+          "match": "export function send\\(res, obj\\) \\{",
+          "replacement": "\n  try { logDebug('LT SSE send', { type: obj?.type }); } catch {}\n"
+        },
+        {
+          "type": "insert_after",
+          "match": "export function close\\(res\\) \\{",
+          "replacement": "\n  try { logDebug('LT SSE close'); } catch {}\n"
+        }
+      ]
+    },
+    {
+      "op": "patch_text",
+      "path": "modular-framework/modules/llm-tester/src/webhook.js",
+      "description": "Log webhook notifications results.",
+      "patches": [
+        {
+          "type": "insert_before",
+          "match": "export async function notifyWebhooks",
+          "replacement": "import { logInfo } from './logger.js';\n\nexport async function notifyWebhooks"
+        },
+        {
+          "type": "replace",
+          "match": "export async function notifyWebhooks\\(webhooks, event, payload\\) \\{[\\s\\S]*?\\}\\n",
+          "replacement": "export async function notifyWebhooks(webhooks, event, payload) {\n  const body = JSON.stringify({ event, payload, sentAt: new Date().toISOString() });\n  const list = webhooks || [];\n  const results = await Promise.allSettled(\n    list.map(h => fetch(h.url, {\n      method: \"POST\",\n      headers: { \"Content-Type\": \"application/json\", ...(h.secret ? { \"X-Webhook-Secret\": h.secret } : {}) },\n      body\n    }))\n  );\n  const ok = results.filter(r => r.status === 'fulfilled').length;\n  const fail = results.length - ok;\n  logInfo('LT webhooks notify', { event, count: list.length, ok, fail });\n}\n"
+        }
+      ]
+    },
+    {
+      "op": "patch_text",
+      "path": "modular-framework/modules/llm-tester/.env.example",
+      "description": "Expose Splunk logging env variables and LOG_TO_CONSOLE in .env example.",
+      "patches": [
+        {
+          "type": "insert_after",
+          "match": "# OPTIONAL: if your LLM Gateway needs a token and you want to default-inject it",
+          "replacement": "# Logging (optional: Splunk HEC)\nSPLUNK_HEC_URL=\nSPLUNK_HEC_TOKEN=\nSPLUNK_SOURCE=llm-tester\nLOG_TO_CONSOLE=false\n\n# OPTIONAL: if your LLM Gateway needs a token and you want to default-inject it"
+        }
+      ]
+    },
+    {
+      "op": "patch_text",
+      "path": "modular-framework/modules/docker-compose.yml",
+      "description": "Enable Splunk logging env for llm-tester and add llm-tester to logging-orchestrator SERVICES. Also add dependency on splunk.",
+      "patches": [
+        {
+          "type": "replace",
+          "match": "llm-tester:\\n[\\s\\S]*?environment:[\\s\\S]*?NODE_EXTRA_CA_CERTS=/etc/ssl/certs/edge-dev.crt",
+          "replacement": "llm-tester:\n    build: ./llm-tester\n    container_name: llm-tester\n    ports:\n      - \"3040:3040\"\n    environment:\n      - EDGE_BASE=http://edge-nginx\n      - PORT=3040\n      - DATA_DIR=/app/data\n      - NODE_TLS_REJECT_UNAUTHORIZED=0\n      - NODE_EXTRA_CA_CERTS=/etc/ssl/certs/edge-dev.crt\n      # Logging to Splunk (optional)\n      - SPLUNK_HEC_URL=${SPLUNK_HEC_URL}\n      - SPLUNK_HEC_TOKEN=${SPLUNK_HEC_TOKEN}\n      - SPLUNK_SOURCE=llm-tester\n      - LOG_TO_CONSOLE=false\n    volumes:\n      - ./llm-tester/data:/app/data\n      - ./edge-nginx/certs/dev.crt:/etc/ssl/certs/edge-dev.crt:ro\n    networks:\n      - app-network\n    restart: unless-stopped\n    depends_on:\n      - splunk\n    healthcheck:\n      test: [\"CMD-SHELL\", \"wget -qO- http://localhost:3040/api/llm-tester/health || exit 1\"]\n      interval: 30s\n      timeout: 5s\n      retries: 5\n      start_period: 10s"
+        },
+        {
+          "type": "replace",
+          "match": "- SERVICES=\\[\\{\"name\":\"llm-gateway\",\"logging_url\":\"http://llm-gateway:3010/api/logging\"\\},\\{\"name\":\"rag\",\"logging_url\":\"http://rag-api-module:8000/admin-api/logging\"\\},\\{\"name\":\"llm-chat\",\"logging_url\":\"http://llm-chat-module:3004/admin-api/logging\"\\}\\]",
+          "replacement": "- SERVICES=[{\"name\":\"llm-gateway\",\"logging_url\":\"http://llm-gateway:3010/api/logging\"},{\"name\":\"rag\",\"logging_url\":\"http://rag-api-module:8000/admin-api/logging\"},{\"name\":\"llm-chat\",\"logging_url\":\"http://llm-chat-module:3004/admin-api/logging\"},{\"name\":\"llm-tester\",\"logging_url\":\"http://llm-tester:3040/api/logging\"}]"
+        }
+      ]
+    },
+    {
+      "op": "patch_text",
+      "path": "modular-framework/modules/logging-orchestrator/data/config.json",
+      "description": "Add llm-tester service to orchestrator managed services.",
+      "patches": [
+        {
+          "type": "insert_after",
+          "match": "\\{\\s*\"name\": \"llm-chat\",[\\s\\S]*?\\}",
+          "replacement": ",\n    {\n      \"name\": \"llm-tester\",\n      \"logging_url\": \"http://llm-tester:3040/api/logging\",\n      \"id\": \"llm-tester\"\n    }"
+        }
+      ]
+    }
+  ]
+}

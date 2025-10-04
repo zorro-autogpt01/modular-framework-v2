@@ -1,0 +1,131 @@
+{
+"root": ".",
+"changes": [
+{
+"op": "write",
+"path": "modular-framework/modules/llm-tester/src/routes/connectivity.js",
+"encoding": "utf-8",
+"content": "import { Router } from "express";\nimport fetch from "node-fetch";\nimport { logInfo, logError } from "../logger.js";\n\nconst router = Router();\n\nfunction edgeBase() {\n  const base = process.env.EDGE_BASE;\n  if (!base) throw new Error("EDGE_BASE is required");\n  return base.endsWith("/") ? base.slice(0, -1) : base;\n}\n\nasync function pingGateway({ baseUrl = "/llm-gateway/api", timeoutMs = 3000 } = {}) {\n  const base = edgeBase();\n  const url = `${base}${baseUrl}/v1/models`;\n  const controller = new AbortController();\n  const t = setTimeout(() => controller.abort(), timeoutMs);\n  const started = Date.now();\n  let ok = false, status = 0, err = null;\n  try {\n    const r = await fetch(url, { method: "GET", signal: controller.signal });\n    status = r.status; ok = r.ok;\n  } catch (e) {\n    err = e.message || String(e);\n  } finally { clearTimeout(t); }\n  const latencyMs = Date.now() - started;\n  return { ok, status, latencyMs, url, error: err };\n}\n\nasync function pingRag({ timeoutMs = 3000 } = {}) {\n  const base = edgeBase();\n  const url = `${base}/rag/retrieve`;\n  const controller = new AbortController();\n  const t = setTimeout(() => controller.abort(), timeoutMs);\n  const started = Date.now();\n  let ok = false, status = 0, err = null;\n  try {\n    const r = await fetch(url, {\n      method: "POST",\n      headers: { "Content-Type": "application/json" },\n      body: JSON.stringify({ query: "connectivity probe", top_k: 1, dedupe_by: "file" }),\n      signal: controller.signal\n    });\n    status = r.status; ok = r.ok;\n  } catch (e) {\n    err = e.message || String(e);\n  } finally { clearTimeout(t); }\n  const latencyMs = Date.now() - started;\n  return { ok, status, latencyMs, url, error: err };\n}\n\nrouter.get("/", async (req, res) => {\n  const rid = req.id;\n  try {\n    const [gw, rag] = await Promise.all([ pingGateway({}), pingRag({}) ]);\n    logInfo("LT connectivity summary", { rid, gw, rag }, "ops");\n    res.json({ ok: gw.ok && rag.ok, gateway: gw, rag });\n  } catch (e) {\n    logError("LT connectivity error", { rid, error: e.message || String(e) }, "ops");\n    res.status(500).json({ ok: false, error: e.message || "connectivity failed" });\n  }\n});\n\nrouter.get("/gateway", async (req, res) => {\n  const rid = req.id;\n  try {\n    const r = await pingGateway({});\n    logInfo("LT connectivity gateway", { rid, result: r }, "ops");\n    res.json(r);\n  } catch (e) {\n    logError("LT connectivity gateway error", { rid, error: e.message || String(e) }, "ops");\n    res.status(500).json({ ok: false, error: e.message || "gateway ping failed" });\n  }\n});\n\nrouter.get("/rag", async (req, res) => {\n  const rid = req.id;\n  try {\n    const r = await pingRag({});\n    logInfo("LT connectivity rag", { rid, result: r }, "ops");\n    res.json(r);\n  } catch (e) {\n    logError("LT connectivity rag error", { rid, error: e.message || String(e) }, "ops");\n    res.status(500).json({ ok: false, error: e.message || "rag ping failed" });\n  }\n});\n\nexport default router;\n"
+},
+{
+"op": "edit",
+"path": "modular-framework/modules/llm-tester/server.js",
+"steps": [
+{
+"action": "insert_after",
+"match": "^import loggingRouter from "\.\/src\/routes\/logging\.js";\nimport logsRouter from "\.\/src\/routes\/logs\.js";\nimport \{ stamp, logInfo \} from "\.\/src\/logger\.js";\n$",
+"replacement": "import connectivityRouter from "./src/routes/connectivity.js";\n",
+"regex": true,
+"strict": true
+},
+{
+"action": "insert_after",
+"match": "^app.use\(["\/api\/logs", "\/api\/llm-tester\/logs"\], logsRouter\);\n$",
+"replacement": "app.use(["/api/connectivity", "/api/llm-tester/connectivity"], connectivityRouter);\n",
+"regex": true,
+"strict": true
+}
+]
+},
+{
+"op": "edit",
+"path": "modular-framework/modules/llm-tester/src/llm.js",
+"steps": [
+{
+"action": "replace",
+"match": "import fetch from "node-fetch";\nimport \{ logError, logDebug \} from "\.\/logger\.js";\n",
+"replacement": "import fetch from "node-fetch";\nimport { logError, logDebug, logInfo } from "./logger.js";\n",
+"regex": true,
+"strict": true
+},
+{
+"action": "insert_after",
+"match": "logDebug\("LLM Gateway request", \{ url, model, messageCount: Array\.isArray\(messages\) \? messages\.length : 0 \ }, "llm"\);\n$",
+"replacement": "  // Log full outbound payload (message contents) for Splunk visibility\n  try { logInfo("LLM Gateway request payload", { url, model, messages }, "llm"); } catch {}\n",
+"regex": true,
+"strict": true
+},
+{
+"action": "insert_after",
+"match": "const content = extractContent\(json\);\nlogDebug\("LLM Gateway success", \{ contentLength: content\?\.length ?? 0 \}, "llm"\);\n$",
+"replacement": "// Log full inbound content (and small raw preview) for Splunk visibility\n  try {\n    const rawPreview = typeof json === "string" ? json.slice(0, 500) : undefined;\n    logInfo("LLM Gateway response content", { content, rawPreviewLength: (rawPreview||"").length }, "llm");\n  } catch {}\n",
+"regex": true,
+"strict": true
+}
+]
+},
+{
+"op": "edit",
+"path": "modular-framework/modules/llm-tester/src/rag.js",
+"steps": [
+{
+"action": "replace",
+"match": "import fetch from "node-fetch";\nimport \{ logError, logDebug \} from "\.\/logger\.js";\n",
+"replacement": "import fetch from "node-fetch";\nimport { logError, logDebug, logInfo } from "./logger.js";\n",
+"regex": true,
+"strict": true
+},
+{
+"action": "insert_after",
+"match": "logDebug\("RAG retrieve request", \{ question, top_k \ }, "rag"\);\n$",
+"replacement": "  // Log full outbound RAG query for Splunk\n  try { logInfo("RAG retrieve payload", { question, top_k }, "rag"); } catch {}\n",
+"regex": true,
+"strict": true
+},
+{
+"action": "insert_after",
+"match": "const snippets = \(json\.snippets || [\]\)\.map\(s => s\.text\)\.filter\(Boolean\);\n\s+logDebug\("RAG retrieve success", \{ \n\s+snippetCount: snippets\.length,\n\s+totalLength: snippets\.join\(""\)\.length \n\}, "rag"\);\n\s+return snippets\.join\("\n---\n"\);\n$",
+"replacement": "  // Log full inbound RAG snippets/content for Splunk\n  try { logInfo("RAG retrieve response", { snippetCount: snippets.length, snippets }, "rag"); } catch {}\n  return snippets.join("\n---\n");\n",
+"regex": true,
+"strict": true
+}
+]
+},
+{
+"op": "edit",
+"path": "modular-framework/modules/llm-tester/openapi.llm-tester.yaml",
+"steps": [
+{
+"action": "insert_after",
+"match": "^paths:\n",
+"replacement": "  /connectivity:\n    get:\n      summary: Check connectivity to LLM Gateway and RAG\n      responses:\n        "200":\n          description: Connectivity summary\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  ok: { type: boolean }\n                  gateway:\n                    type: object\n                    properties:\n                      ok: { type: boolean }\n                      status: { type: integer }\n                      latencyMs: { type: integer }\n                      url: { type: string }\n                      error: { type: string }\n                  rag:\n                    type: object\n                    properties:\n                      ok: { type: boolean }\n                      status: { type: integer }\n                      latencyMs: { type: integer }\n                      url: { type: string }\n                      error: { type: string }\n  /connectivity/gateway:\n    get:\n      summary: Check connectivity to LLM Gateway only\n      responses:\n        "200":\n          description: Gateway connectivity\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  ok: { type: boolean }\n                  status: { type: integer }\n                  latencyMs: { type: integer }\n                  url: { type: string }\n                  error: { type: string }\n  /connectivity/rag:\n    get:\n      summary: Check connectivity to RAG only\n      responses:\n        "200":\n          description: RAG connectivity\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  ok: { type: boolean }\n                  status: { type: integer }\n                  latencyMs: { type: integer }\n                  url: { type: string }\n                  error: { type: string }\n",
+"regex": true,
+"strict": true
+}
+]
+},
+{
+"op": "edit",
+"path": "modular-framework/modules/llm-tester/src/routes/admin.js",
+"steps": [
+{
+"action": "replace",
+"match": "const router = Router\(\);\n\nrouter\.post\("\/webhooks", \(req, res\) => \{\n  const rid = req\.id; logInfo\('LT admin webhook create <-', \{ rid, ip: req\.ip, body: \{ event, url: url \? url\.toString\(\) : null \ } \}\);\n\n  const \{ event, url, secret \} = req\.body || \{};\n",
+"replacement": "const router = Router();\n\nrouter.post("/webhooks", (req, res) => {\n  const rid = req.id; const { event, url, secret } = req.body || {};\n  logInfo('LT admin webhook create <-', { rid, ip: req.ip, body: { event, url: url ? url.toString() : null } });\n\n",
+"regex": true,
+"strict": true
+}
+]
+},
+{
+"op": "edit",
+"path": "modular-framework/modules/llm-tester/.env.example",
+"steps": [
+{
+"action": "insert_after",
+"match": "^EDGE_BASE=http:\/\/edge-nginx\n$",
+"replacement": "\n# Logging (Splunk HEC). When set, llm-tester will send rich request/response logs\nSPLUNK_HEC_URL=\nSPLUNK_HEC_TOKEN=\nSPLUNK_SOURCE=llm-tester\nSPLUNK_INDEX=\nLOG_TO_CONSOLE=false\n",
+"regex": true,
+"strict": true
+},
+{
+"action": "delete_between",
+"start": "# OPTIONAL: if your LLM Gateway needs a token and you want to default-inject it# Logging (optional: Splunk HEC)",
+"end": "LOG_TO_CONSOLE=false",
+"regex": false,
+"strict": true
+}
+]
+}
+]
+}
