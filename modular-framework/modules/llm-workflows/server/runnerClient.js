@@ -1,82 +1,99 @@
-// runnerClient.js -> delegate to llm-runner-controller
+// runnerClient.js
 const axios = require('axios');
 const { logWarn, logError } = require('./logger');
 
-const BASE = (process.env.RUNNER_CONTROLLER_BASE || 'http://llm-runner-controller:4015/api/llm-runner').replace(/\/+$/, '');
-function HDR() {
-  const t = process.env.INTERNAL_API_TOKEN || '';
-  return t ? { Authorization: `Bearer ${t}` } : {};
+const runners = new Map(); // local (legacy) mode
+const CTRL_BASE = (process.env.LLM_RUNNER_CONTROLLER_BASE || process.env.LLM_RUNNER_CONTROLLER_URL || '').replace(/\/+$/,'');
+
+// Helper
+function trim(u){ return String(u||'').replace(/\/+$/,''); }
+
+function getAdminHeaders() {
+  const tok = process.env.INTERNAL_API_TOKEN || '';
+  return tok ? { Authorization: `Bearer ${tok}` } : {};
 }
 
-function trim(u){ return String(u||'').replace(/\/+$/, ''); }
-
+/** Always returns an ARRAY. In controller mode we return controller agents (no tokens). */
 async function listRunners() {
-  try {
-    const r = await axios.get(`${BASE}/agents`, { headers: HDR(), timeout: 10000 });
-    const items = r.data?.items || [];
-    // never expose token
-    return items.map(a => ({ name: a.name, url: a.url, default_cwd: a.default_cwd }));
-  } catch (e) {
-    logWarn('controller_list_runners_failed', { msg: e.message });
-    return [];
+  if (CTRL_BASE) {
+    try {
+      const url = `${CTRL_BASE}/catalog`;
+      const r = await axios.get(url, { headers: getAdminHeaders(), timeout: 8000 });
+      const arr = Array.isArray(r.data?.agents) ? r.data.agents : [];
+      // Normalize to the shape the UI expects
+      // NOTE: controller catalog doesn’t include agent URL (by design).
+      return arr.map(a => ({
+        name: a.name,
+        url: null,                    // not exposed by controller
+        default_cwd: a.default_cwd || null,
+        status: a.status || 'offline',
+        via: 'controller'
+      }));
+    } catch (e) {
+      logWarn('ctrl_list_failed', { msg: e.message });
+      return [];
+    }
   }
+  // Legacy local mode (array)
+  return [...runners.values()].map(({ token, ...r }) => r);
 }
 
-async function getRunner(name) {
-  try {
-    const r = await axios.get(`${BASE}/agents/${encodeURIComponent(name)}`, { headers: HDR(), timeout: 7000 });
-    const a = r.data || null;
-    if (!a) return null;
-    return { name: a.name, url: a.url, default_cwd: a.default_cwd };
-  } catch {
-    return null;
+function getRunner(name) {
+  if (CTRL_BASE) {
+    // In controller mode, we resolve by name only; URL/token are not used directly.
+    return { name, via: 'controller' };
   }
+  return runners.get(name) || null;
 }
 
-async function upsertRunner({ name, url, token, default_cwd }) {
-  try {
-    const r = await axios.post(`${BASE}/agents`, { name, url: trim(url), token, default_cwd }, { headers: HDR(), timeout: 10000 });
-    const a = r.data?.agent || {};
-    return { name: a.name, url: a.url, default_cwd: a.default_cwd };
-  } catch (e) {
-    logError('controller_upsert_runner_failed', { msg: e.message });
-    throw e;
+/** In controller mode we ignore local upserts. */
+function upsertRunner({ name, url, token, default_cwd }) {
+  if (CTRL_BASE) {
+    // Provide a visible log line (you’re already seeing this)
+    require('./logger').logInfo('runner_upsert_ignored_controller_mode', { name });
+    return { name };
   }
+  if (!name || !url || !token) throw new Error('name, url, token required');
+  runners.set(name, { name, url: trim(url), token, default_cwd });
+  const { token: _t, ...safe } = runners.get(name);
+  return safe;
 }
 
-async function removeRunner(name) {
-  try {
-    await axios.delete(`${BASE}/agents/${encodeURIComponent(name)}`, { headers: HDR(), timeout: 10000 });
-  } catch (e) {
-    logError('controller_remove_runner_failed', { msg: e.message });
-  }
+function removeRunner(name) {
+  if (CTRL_BASE) return; // controller-managed
+  runners.delete(name);
 }
 
-async function pingRunner(name) {
-  try {
-    const r = await axios.get(`${BASE}/agents/${encodeURIComponent(name)}/health`, { headers: HDR(), timeout: 7000 });
-    return r.data;
-  } catch (e) {
-    const status = e?.response?.status || 0;
-    const msg = e?.response?.data?.error || e.message;
-    logWarn('controller_ping_runner_failed', { name, status, msg });
-    return { ok: false, error: msg };
-  }
-}
-
+/** Execute via controller when in controller mode, otherwise direct to runner. */
 async function execRemote({ target, kind, code, cwd, env, timeoutMs }) {
+  if (!target) throw new Error('runner target required');
+  const r = getRunner(target);
+  if (!r) throw new Error(`runner "${target}" not found`);
+
+  const body = kind === 'bash'
+    ? { type: 'bash', cmd: code, cwd, env, timeoutMs }
+    : { type: 'python', script: code, cwd, env, timeoutMs };
+
   try {
-    const body = (kind === 'bash')
-      ? { type:'bash', cmd: code, cwd, env, timeoutMs }
-      : { type:'python', script: code, cwd, env, timeoutMs };
-    const r = await axios.post(`${BASE}/agents/${encodeURIComponent(target)}/exec`, body, { headers: HDR(), timeout: Math.max(4000, Number(timeoutMs || 20000) + 5000) });
-    return r.data;
+    if (CTRL_BASE) {
+      // Use controller proxy: /api/llm-runner/agents/:id/exec
+      const url = `${CTRL_BASE}/agents/${encodeURIComponent(target)}/exec`;
+      const resp = await axios.post(url, body, { headers: getAdminHeaders(), timeout: Math.max(2000, Number(timeoutMs || 20000) + 2000) });
+      return resp.data;
+    } else {
+      // Legacy direct-to-runner
+      const resp = await axios.post(`${trim(r.url)}/exec`, body, {
+        headers: r.token ? { Authorization: `Bearer ${r.token}` } : {},
+        timeout: Math.max(2000, Number(timeoutMs || 20000) + 2000)
+      });
+      return resp.data;
+    }
   } catch (e) {
     const status = e?.response?.status || 0;
     const msg = e?.response?.data?.error || e.message;
-    logError('controller_exec_failed', { target, status, msg });
+    logError('runner_exec_failed', { target, status, msg });
     throw new Error(msg);
   }
 }
 
-module.exports = { listRunners, getRunner, pingRunner, execRemote, upsertRunner, removeRunner };
+module.exports = { listRunners, getRunner, upsertRunner, removeRunner, execRemote };

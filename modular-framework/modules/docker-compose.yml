@@ -78,6 +78,9 @@ services:
       - SPLUNK_HEC_TOKEN=$SPLUNK_HEC_TOKEN
       - NODE_TLS_REJECT_UNAUTHORIZED=${NODE_TLS_REJECT_UNAUTHORIZED}
       - NODE_ENV=production
+      - LLM_RUNNER_CONTROLLER_TOKEN=${LLM_RUNNER_CONTROLLER_TOKEN}
+      - LLM_RUNNER_CONTROLLER_BASE=http://llm-runner-controller:4015/api/llm-runner
+      - LOG_TO_CONSOLE=true 
       # INTERNAL_API_TOKEN:
       #   Protects "dangerous" backend endpoints (testStep with execute, run workflow).
       #   The frontend must send Authorization: Bearer <this token>.

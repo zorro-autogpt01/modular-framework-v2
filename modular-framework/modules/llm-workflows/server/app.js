@@ -6,6 +6,8 @@ const fs = require('fs');
 const axios = require('axios');
 const bodyParser = require('body-parser');
 const Ajv = require('ajv');
+const CTRL_BASE = (process.env.LLM_RUNNER_CONTROLLER_BASE || '').replace(/\/+$/, '');
+
 
 const { router: logsRouter } = require('./routes/logs');
 const { router: loggingRouter } = require('./routes/logging');
@@ -19,17 +21,20 @@ const {
 const BASE_PATH = (process.env.BASE_PATH || '').replace(/\/$/, ''); // e.g. /modules/llm-workflows
 const ALLOW_STEP_EXEC = String(process.env.ALLOW_STEP_EXEC || 'false').toLowerCase() === 'true';
 
-// Gateway endpoints:
+function trimSlash(s) { return String(s || '').replace(/\/+$/, ''); }
+
 const DEFAULT_GW_API = 'http://llm-gateway:3010/api';
 
-const LLM_GATEWAY_CHAT_URL =
+const LLM_GATEWAY_CHAT_URL = trimSlash(
   process.env.LLM_GATEWAY_URL ||
   process.env.LLM_GATEWAY_CHAT_URL ||
-  `${DEFAULT_GW_API}/compat/llm-workflows`;
+  `${DEFAULT_GW_API}/compat/llm-workflows`
+);
 
-const LLM_GATEWAY_API_BASE =
+const LLM_GATEWAY_API_BASE = trimSlash(
   process.env.LLM_GATEWAY_API_BASE ||
-  (LLM_GATEWAY_CHAT_URL.replace(/\/compat\/[^/]+(?:\/)?$/, '') || DEFAULT_GW_API);
+  (LLM_GATEWAY_CHAT_URL.replace(/\/compat\/[^/]+(?:\/)?$/, '') || DEFAULT_GW_API)
+);
 
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 const WF_FILE = path.join(DATA_DIR, 'workflows.json');
@@ -86,6 +91,26 @@ app.use((req, res, next) => {
   next();
 });
 
+async function fetchControllerRunners() {
+  if (!CTRL_BASE) return [];
+  try {
+    const r = await axios.get(`${CTRL_BASE}/catalog`, { timeout: 5000 });
+    const items = Array.isArray(r?.data?.agents) ? r.data.agents : [];
+    // Normalize for the UI
+    return items.map(a => ({
+      name: a.name,
+      url: a.url || null,               // can be null in controller mode
+      default_cwd: a.default_cwd || null,
+      status: a.status || 'offline',
+      via: 'controller'
+    }));
+  } catch (e) {
+    logWarn('ctrl_list_failed', { msg: e.message });
+    return [];
+  }
+}
+
+
 // Internal auth middleware (opt-in via env INTERNAL_API_TOKEN)
 function requireInternalAuth(req, res, next) {
   const token = process.env.INTERNAL_API_TOKEN;
@@ -141,16 +166,22 @@ if (BASE_PATH)
   );
 
 // --- API: list / ping runners ---
-app.get('/api/runners', (_req, res) => {
-  const redacted = (listRunners() || []).map(r => ({
-    name: r.name, url: r.url, default_cwd: r.default_cwd
-  }));
-  res.json({ runners: redacted });
+app.get('/api/runners', async (_req, res) => {
+  // 1) Prefer controller if configured
+  const fromCtrl = await fetchControllerRunners();
+  if (fromCtrl.length) return res.json({ runners: fromCtrl });
+
+  // 2) Fallback to local in-memory runners
+  try {
+    const redacted = (listRunners() || []).map(r => ({
+      name: r.name, url: r.url || null, default_cwd: r.default_cwd || null, via: 'local'
+    }));
+    return res.json({ runners: redacted });
+  } catch {
+    return res.json({ runners: [] });
+  }
 });
-if (BASE_PATH) app.get(`${BASE_PATH}/api/runners`, (req, res) => {
-  req.url = '/api/runners';
-  app._router.handle(req, res);
-});
+
 
 app.get('/api/runners/:name/health', requireInternalAuth, async (req, res) => {
   const { name } = req.params;
@@ -804,7 +835,7 @@ app.get('/api/llm-models', async (_req, res) => {
   const url = `${LLM_GATEWAY_API_BASE}/models`;
   logInfo('WF -> GW GET models', { url });
   try {
-    const r = await axios.get(url, { timeout: 10_000 });
+    const r = await axios.get(url)
     logInfo('WF <- GW models', { status: r.status, count: (r.data?.items || []).length });
     res.json(r.data);
   } catch (e) {

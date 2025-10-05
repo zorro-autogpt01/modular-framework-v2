@@ -10,7 +10,8 @@ ENV NODE_ENV=production
 ENV PORT=3005
 ENV ALLOW_STEP_EXEC=true
 ENV INTERNAL_API_TOKEN=supersecret
-ENV RUNNER_REG_TOKEN=supersecretENV RUNNER_CONTROLLER_BASE=http://llm-runner-controller:4015/api/llm-runner
+ENV RUNNER_REG_TOKEN=supersecret
+ENV RUNNER_CONTROLLER_BASE=http://llm-runner-controller:4015/api/llm-runner
 
 
 EXPOSE 3005
