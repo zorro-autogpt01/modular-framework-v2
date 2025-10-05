@@ -200,7 +200,7 @@ router.post("/:id/execute", async (req, res) => {
 
     const t0 = Date.now();
     const { content } = await chatCompletion({
-      baseUrl: test.llmGateway?.baseUrl || "/llm-gateway/api",
+      baseUrl: test.llmGateway?.baseUrl || "/api/v1/gateway/",
       headers: test.llmGateway?.headers || {},
       model: test.llmGateway?.model,
       messages,
@@ -227,7 +227,7 @@ router.post("/:id/execute", async (req, res) => {
       const tj = Date.now();
       try {
         const { content: judgeOut } = await chatCompletion({
-          baseUrl: j.judge.baseUrl || test.llmGateway?.baseUrl || "/llm-gateway/api",
+          baseUrl: j.judge.baseUrl || test.llmGateway?.baseUrl || "/api/v1/gateway/",
           headers: j.judge.headers || test.llmGateway?.headers || {},
           model: j.judge.model || test.llmGateway?.model,
           messages: judgePrompt
@@ -338,7 +338,7 @@ router.get("/:id/replay", async (req, res) => {
 
   const payload = {
     provider: "openai-compatible",
-    baseUrl: "/llm-gateway/api",
+    baseUrl: "/api/v1/gateway/",
     model: test.llmGateway?.model || "gpt-4o-mini",
     messages
   };

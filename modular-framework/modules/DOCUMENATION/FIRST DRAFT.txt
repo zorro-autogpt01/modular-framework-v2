@@ -1,0 +1,656 @@
+Here is a comprehensive API reference for the modular-framework project you. It lists all endpoints exposed by the (including those behind edge-nginx) with usage details, authentication hints, example requests/responses, the file in which endpoint is defined. After the endpoints, you’ll find a concise summary of each module’s purpose.
+
+Important notes
+- Many endpoints are exposed behind the edge-nginx reverse proxy. In code, the modules define their own HTTP paths; edge-nginx proxies and TLS-terminates for production deployments.
+- Where a module exposes internal admin/health endpoints, I’ve included them with their module path so you can locate their definitions.
+- For each endpoint, I provide:
+  - Endpoint (method and path)
+  - Purpose
+  - Authentication / headers
+  - Sample request (HTTP)
+  - Sample response (brief)
+  - Reference file where it is defined
+
+Table of contents
+- Edge & gateway related endpoints (framework routing, health, etc.)
+- GitHub Hub (github-hub module)
+- LLM Chat (llm-chat module)
+- LLM Gateway (llm-gateway module)
+- LLM Documentor (llm-documentor module)
+- LLM Tester (llm-tester module)
+- LLM Workflows (llm-workflows module)
+- SSH Terminal (ssh-terminal module)
+- LLM IDE (llm-ide module)
+- Data- & Admin-oriented modules (RAG, runner-agent, monitoring/logging)
+
+1) Edge proxy / framework gateway endpoints (where relevant)
+
+- Health check (framework + edge)
+  - Endpoint: GET /health
+  - Purpose: Basic container/service health check
+  - Auth: None (private health checks are handled inside modules; edge proxies typically permit this)
+  - Request: GET http(s)://.../health
+  - Response: { "status": "ok" } (varies per module; outer edge may proxy to internal service health)
+  - Defined in: edge proxy/nginx configuration; module health endpoints define specifics (see module references below)
+
+- Health for specific modules via edge proxy
+  - Example: edge-nginx proxies to modules’ internal health URLs like /api/health or /health depending on module
+  - Reference: Edge nginx.conf (modular-framework/modules/edge-nginx/nginx.conf)
+
+Note: These are proxying behaviors rather than standalone module API surface; endpoint docs for individual modules below.
+
+2) GitHub Hub module (modular-framework/modules/github-hub)
+
+Module purpose (summary)
+- Provides UI and API for browsing a GitHub repo (via Hub), performing Git operations, and manipulating repo contents (files, trees, branches, PRs) from within the framework.
+
+Key endpoints and usage
+
+- GET /api/health
+  - Purpose: Health for hub module
+  - Auth: None
+  - Usage: GET request to hub health
+  - Response: { "status": "ok" } (and in some setups more details)
+  - Defined in: modular-framework/modules/github-hub/app/main.py (route root: health)
+
+- GET /api/ (root) and GET /api/health
+  - Purpose: Hub UI root and health
+  - Auth: None
+  - Usage: GET /api/ health
+  - Response: health payload
+  - Defined in: modular-framework/modules/github-hub/app/main.py
+
+- GET /api/config
+  - Path: GET /api/config
+  - Purpose: Retrieve hub configuration (repo_url, default_branch, base_url)
+  - Auth: Public (for UI), token-protected edits depend on env
+  - Response: { repo_url, default_branch, branches, ... }
+  - Defined in: modular-framework/modules/github-hub/app/main.py
+
+- GET /api/branches
+  - Path: GET /api/branches
+  - Purpose: List branches for the configured repo
+  - Auth: Public (read)
+  - Response: { branches: ["main","dev", ...] }
+  - Defined in: modular-framework/modules/github-hub/app/main.py
+
+- GET /api/tree
+  - Path: GET /api/tree
+  - Purpose: Get full repository tree (optionally recursive)
+  - Query: branch (optional)
+  - Auth: Public
+  - Response: { branch: "...", items: [ { path, type, ...}, ... ] }
+  - Defined in: modular-framework/modules/github-hub/app/main.py
+
+- GET /api/file
+  - Path: GET /api/file?path=...&branch=...
+  - Purpose: Fetch a file's contents from the repo
+  - Auth: Public
+  - Response: { name, path, type, content, decoded_content, ... }
+  - Defined in: modular-framework/modules/github-hub/app/main.py
+
+- PUT /api/file
+  - Path: PUT /api/file
+  - Payload: { path, message, content, branch?, sha? }
+  - Purpose: Create or update a file in the repo
+  - Auth: Token-protected (requires GITHUB_TOKEN or token in config)
+  - Response: { content, commit? } or GitHub API response
+  - Defined in: modular-framework/modules/github-hub/app/main.py
+
+- DELETE /api/file
+  - Path: DELETE /api/file?path=...&message=...&sha=...&branch=...
+  - Purpose: Delete a file
+  - Auth: Token-protected
+  - Response: standard API deletion result
+  - Defined in: modular-framework/modules/github-hub/app/main.py
+
+- POST /api/batch/commit
+  - Path: POST /api/batch/commit
+  - Payload: { branch, message, changes: [ { path, content, mode? } ] }
+  - Purpose: Batch commit for multiple file changes
+  - Auth: Token-protected
+  - Response: { commit: { ... } }
+  - Defined in: modular-framework/modules/github-hub/app/main.py
+
+- POST /api/pr
+  - Path: POST /api/pr
+  - Payload: { title, head, base, body, draft }
+  - Purpose: Create a PR for a batch of changes
+  - Auth: Token-protected
+  - Response: { ok: true, pull_request: PR data }
+  - Defined in: modular-framework/modules/github-hub/app/main.py
+
+- (UI routes) /api/v1/github/ui/ and related
+  - Path: /api/v1/github/ui/ (UI for hub)
+  - Purpose: UI mount for hub
+  - Auth: None
+  - Defined in: modular-framework/modules/github-hub/app/main.py (mounts UI at /ui)
+
+- Store and config endpoints
+  - GET /api/config, POST /api/config
+  - GET /api/branches
+  - See above
+
+- Internal store endpoints (store.py / app/store.py)
+  - load_config, save_config
+  - getAnd set operations for local config (token encryption handling)
+  - Defined in: modular-framework/modules/github-hub/app/store.py
+
+Reference files
+- app/main.py (GitHub Hub API routes)
+- app/store.py (config load/save)
+- app/github_api.py (GitHub client)
+- app/public/* (UI assets)
+
+Module summaries
+- GitHub Hub: UI + API to interact with GitHub repos (browse, read, write, branches, PRs) via a central hub abstraction. Enables integration of repo-based modules in the framework.
+
+3) LLM Chat module (modular-framework/modules/llm-chat)
+
+Module purpose (summary)
+- Provides a chat UI and the backend logic to chat with LLMs through gateways (OpenAI, Ollama, etc.), with support for profiles, per-user configurations, RAG integration, and optional artifacts/memories.
+
+Public endpoints and usage (selected highlights)
+
+- Health API
+  - GET /api/health
+  - Purpose: Health check for lLM chat module
+  - Auth: None
+  - Response: { status: "ok", ... }
+  - File: modular-framework/modules/llm-chat/server/routes/health.js
+
+- Health/Info for API
+  - GET /api/info
+  - Included: modular-framework/modules/llm-chat/server/routes/info.js
+  - Purpose: Module info
+
+- Logging endpoints (internal)
+  - GET /api/logging
+  - PUT /api/logging
+  - POST /api/logging/test
+  - POST /api/logging/reload
+  - File: modular-framework/modules/llm-chat/server/routes/logging.js
+
+- Logs
+  - GET /api/logs
+  - POST /api/logs/clear
+  - File: modular-framework/modules/llm-chat/server/routes/logs.js
+
+- Chat endpoint (LLM chat)
+  - POST /api/chat
+  - Description: Stream-enabled or non-stream LLM chat; supports SSE
+  - Auth: Not always required; if you use the gateway calls directly, it’s the gateway behavior; internal calls require internal auth for test steps, etc.
+  - File: modular-framework/modules/llm-chat/server/routes/chat.js
+
+- Compatibility endpoints and/or alternatives
+  - POST /api/compat/llm-chat
+  - POST /api/compat/llm-workflows
+  - File: modular-framework/modules/llm-chat/server/routes/chat.js
+
+- Config & Profiles
+  - GET /api/config
+  - POST /api/config
+  - GET /api/models
+  - POST /api/models
+  - PUT /api/models/:id
+  - GET /api/generate
+  - File: modular-framework/modules/llm-chat/app/main.py and related config files
+  - Note: There are multiple JS files (config.embed.js, config.page.js, storage.js, toolbar.js, ui.js) in modular-framework/modules/llm-chat/public to support embedding configurations and runtime.
+
+Module summaries
+- LLM Chat: A chat interface and engine for LLM-based chat with pluggable gateways, profiles, RAG integration, and configuration for providers/models. It is the user-facing chat module that communicates with the LLM gateway.
+
+4) LLM Gateway module (modular-framework/modules/llm-gateway)
+
+Module purpose (summary)
+- Central LLM gateway; exposes an API to perform LLM chat (via /v1/chat) and supports various providers/models via a single gateway interface. Handles token usage, streaming options, and cost accounting.
+
+Public endpoints and usage (selected highlights)
+
+- Health
+  - GET /api/health
+  - Basic health for gateway
+  - File: modular-framework/modules/api/v1/gateway/server/routes/health.js
+
+- Info
+  - GET /api/info
+  - Basic module info
+  - File: modular-framework/modules/api/v1/gateway/server/routes/info.js
+
+- Logging
+  - GET /api/logging
+  - PUT /api/logging
+  - POST /api/logging/test
+  - POST /api/logging/reload
+  - File: modular-framework/modules/api/v1/gateway/server/routes/logging.js
+
+- Logs
+  - GET /api/logs
+  - POST /api/logs/clear
+  - File: modular-framework/modules/api/v1/gateway/server/routes/logs.js
+
+- Tokens
+  - POST /api/tokens
+  - Description: Token counting for a model and text/multi-part inputs
+  - File: modular-framework/modules/api/v1/gateway/server/routes/tokens.js
+
+- Usage
+  - GET /api/usage
+  - File: modular-framework/modules/api/v1/gateway/server/routes/usage.js
+
+- Chat endpoints (gateway)
+  - POST /v1/chat
+  - POST /compat/llm-chat
+  - POST /compat/llm-workflows
+  - These routes are defined in modular-framework/modules/api/v1/gateway/server/routes/chat.js
+  - Purpose: Accepts JSON payload with model/modeled inputs; supports streaming SSE; returns JSON { content } or SSE-delivered deltas.
+
+- Models (gateway)
+  - GET /api/models
+  - Implemented in modular-framework/modules/api/v1/gateway/server/routes/chat.js and llm-gateway/db.js
+  - Purpose: List and manage models via gateway DB
+
+- Graph / templates
+  - GET /api/templates
+  - GET /api/templates/{name}
+  - PUT /api/templates/{name}
+  - File: modular-framework/modules/llm-documentor/app/templates (and gateway code relying on templates)
+  - Gateway’s docs: purpose to supply specialized prompts to the gateway
+
+Module summaries
+- LLM Gateway: A central routing layer for LLM interactions; abstracts provider details and can route to different backends or call OpenAI/Ollama-like services. It also manages model metadata, usage tracking, and token economics.
+
+5) LLM Documentor module (modular-framework/modules/llm-documentor)
+
+Module purpose (summary)
+- Automated documentation generation for codebases and APIs. It extracts artifacts from code (structure, API specs, code files, schemas), chunks them into token-aware blocks, calls LLMs via a gateway, and produces documentation assets (MD files, etc.) with a verification stage and a packaging step (tarball).
+
+Public endpoints and usage (selected highlights)
+
+- Health
+  - GET /api/health
+  - Module health for doc generator
+  - File: modular-framework/modules/llm-documentor/app.py
+
+- Packs
+  - GET /api/packs
+  - GET list of packs (high-level, api, detailed, super-detailed, db, ops, cookbook)
+  - File: modular-framework/modules/llm-documentor/app.py
+
+- Default repo
+  - GET /api/default-repo
+  - Returns repo_url, default_branch, branches
+  - File: modular-framework/modules/llm-documentor/app.py
+
+- Models
+  - GET /api/models
+  - Fetch models from gateway
+  - File: modular-framework/modules/llm-documentor/app.py
+
+- Config
+  - GET /config
+  - PUT /config
+  - File: modular-framework/modules/llm-documentor/app.py
+
+- Ingestion
+  - POST /ingest/repo
+  - POST /ingest/pdf
+  - File: modular-framework/modules/llm-documentor/app.py
+
+- Query / generation
+  - POST /api/generate
+  - POST /query
+  - File: modular-framework/modules/llm-documentor/app.py
+
+- Output & artifacts
+  - GET /api/jobs
+  - GET /api/output/{job_id}
+  - GET /api/output/{job_id}/files
+  - GET /api/output/{job_id}/file
+  - GET /api/output/{job_id}/diff
+  - POST /api/publish/{job_id}
+  - File: modular-framework/modules/llm-documentor/app.py and llm-documentor/server/ routes
+
+- Templates
+  - GET /api/templates
+  - GET /api/templates/{name}
+  - PUT /api/templates/{name}
+  - File: modular-framework/modules/llm-documentor/app.py (templates engine)
+
+- Documentation validation
+  - POST /api/validate
+  - File: modular-framework/modules/llm-documentor/app.py
+
+Module summaries
+- LLM Documentor: Automates extraction, normalization, and documentation generation for code/docs via LLMs; produces structured docs and a tarball package for distribution.
+
+6) LLM Tester module (modular-framework/modules/llm-tester)
+
+Module purpose (summary)
+- A test framework to manage tests/suites/runs for LLMs; includes a REST API to create tests, run tests (streaming), manage suites, run pipelines, webhook notifications, logging, and template-driven test content.
+
+Public endpoints and usage (selected highlights)
+
+- Health
+  - GET /api/health
+  - Standard health; module version exposed via /api/health
+
+- Admin config
+  - GET /admin/config
+  - PUT /admin/config
+  - File: modular-framework/modules/llm-tester/server/routes/admin.js
+
+- Tests
+  - GET /api/tests
+  - POST /api/tests
+  - GET /api/tests/:id
+  - PUT /api/tests/:id
+  - POST /api/tests/:id/execute
+  - File: modular-framework/modules/llm-tester/server/routes/tests.js
+
+- Suites
+  - GET /api/suites
+  - POST /api/suites
+  - GET /api/suites/:name
+  - POST /api/suites/:name/execute
+  - File: modular-framework/modules/llm-tester/server/routes/suites.js
+
+- Runs
+  - GET /api/runs
+  - POST /api/runs? (via suites) and related
+  - GET /api/runs/:run_id
+  - File: modular-framework/modules/llm-tester/server/routes/runs.js
+
+- CI/Publishing
+  - POST /api/ci/github/check
+  - POST /admin-api/logging
+  - File: modular-framework/modules/llm-tester/server/routes/ci.js
+
+- Logging
+  - GET /api/logging
+  - PUT /api/logging
+  - POST /api/logging/test
+  - File: modular-framework/modules/llm-tester/server/routes/logging.js
+
+- Templates
+  - GET /api/templates
+  - GET /api/templates/{name}
+  - PUT /api/templates/{name}
+  - File: modular-framework/modules/llm-tester/app routes and templates code
+
+Module summaries
+- LLM Tester: A testing harness for LLM-driven prompts and evaluation pipelines; supports suites, tests, run tracking, and integration with a gateway.
+
+7) LLM Workflows module (modular-framework/modules/llm-workflows)
+
+Module purpose (summary)
+- Orchestrates execution of workflows for LLMs, including runner integration, test execution, and a simple REST API for managing workflows, runs, and logs. It integrates with an agent runner (runner-agent) and a gateway for model execution.
+
+Public endpoints and usage (selected highlights)
+
+- Health
+  - GET /health
+  - Health endpoint for module
+  - File: modular-framework/modules/llm-workflows/server/app.js
+
+- Admin endpoints
+  - GET /api/logging
+  - PUT /api/logging
+  - POST /api/logging/test
+  - POST /api/logging/reload
+  - File: modular-framework/modules/llm-workflows/server/routes/logs.js, logging.js
+
+- Runners
+  - GET /api/runners
+  - POST /api/runners
+  - DELETE /api/runners/:name
+  - POST /api/runners/register
+  - File: modular-framework/modules/llm-workflows/server/runnerClient.js and server/routes
+  - Note: This module relies on a runner-agent which is a separate container in Docker Compose
+
+- Workflows
+  - GET /api/workflows
+  - POST /api/workflows
+  - GET /api/workflows/:id
+  - POST /api/workflows/:id/run
+  - GET /api/runs
+  - POST /api/testStep
+  - Post publish endpoints: /api/publish/{job_id}
+  - File: modular-framework/modules/llm-workflows/server/app.js, server/routes, and related files (workflows.*)
+
+- Ingestion / Cache / Docs
+  - Ingest endpoints (ingest/repo, ingest/pdf)
+  - Docs endpoints (docs, repos)
+  - Query endpoints (query) and health
+  - File: modular-framework/modules/llm-workflows/server/app.js (and runner-related code)
+
+Module summaries
+- LLM Workflows: Provides a workflow orchestration layer to generate, test, and publish documentation or other pipeline steps using LLMs, with a gateway and runner integration.
+
+8) SSH Terminal module (modular-framework/modules/ssh-terminal)
+
+Module purpose (summary)
+- Exposes REST endpoints and a WebSocket bridge to establish SSH sessions, run commands, and manage a minimal SFTP-like file system over SSH. Intended for interactive shells and remote file manipulations.
+
+Public endpoints and usage
+
+- Health
+  - GET /health
+  - Module health (container) with status
+  - Modular code: modular-framework/modules/ssh-terminal/server/index.js and server.js
+
+- SSH session management
+  - POST /api/connect
+    - Body: { host, port, username, authMethod, password|privateKey, ... }
+    - Purpose: Initiate an SSH session; returns a sessionId
+  - GET /api/list?sessionId=...&path=...&depth=...
+    - Path listing in the SSH session; depth controls recursion
+  - GET /api/read?sessionId=...&path=...
+    - Read file contents
+  - POST /api/write
+    - Body: { sessionId, path, content }
+    - Write content to a path in the remote FS
+  - POST /api/mkdir
+    - Body: { sessionId, path, recursive }
+  - POST /api/disconnect
+    - Body: { sessionId }
+  - WebSocket /ssh?sessionId=...
+    - Real-time shell I/O; messages of type data, resize, etc.
+  - File tree operations and SFTP support are implemented in the SSH bridge code
+
+Files to review
+- modular-framework/modules/ssh-terminal/server.js (HTTP API definitions)
+- modular-framework/modules/ssh-terminal/public/index.html (UI)
+- modular-framework/modules/ssh-terminal/public/config.html (config)
+- modular-framework/modules/ssh-terminal/index.js (module wiring in UI)
+- modular-framework/modules/edge-nginx/nginx.conf (reverse proxy rules for SSH API)
+- modular-framework/modules/edge-nginx/Dockerfile (edge)
+
+Module summaries
+- SSH Terminal: SSH terminal bridge module; exposes REST + WS endpoints to connect, list, read, write, and manage SSH sessions and file system operations.
+
+9) LLM IDE module (modular-framework/modules/llm-ide)
+
+Module purpose (summary)
+- Provides an in-browser IDE with monaco editor integration, SSH-backed file editing, file explorer, and code manipulation tooling. Aimed at deploying a developer-centric IDE that can work with module code and remote containers.
+
+Public endpoints and usage
+
+- This module is primarily a web IDE; its backend powers:
+  - SSH bridging for remote work
+  - SSH file openings and edits
+  - Commands to fetch code, edit, andPush changes
+  - Endpoints are spread through modular-framework/modules/llm-ide/server/app.js and related submodules
+  - It also provides REST endpoints for SSH connections (via llm-ide/backend)
+
+Module summaries
+- LLM IDE: A browser-based integrated development environment with remote SSH support and file-tree navigation, enabling editing, building, and testing within modules.
+
+10) RAG module (modular-framework/modules/RAG)
+
+Module purpose (summary)
+- Production-grade Retrieval-Augmented Generation (RAG) stack: ingestion of code/docs, embedding via OpenAI embeddings, vector store via Qdrant, and a retrieval API. It supports ingestion of code/documents (GitHub, PDFs), embedding, retrieval, and conversation context.
+
+Public endpoints and usage
+
+- Ingest endpoints
+  - POST /api/ingest/repo
+  - POST /api/ingest/pdf
+  - File: modular-framework/modules/RAG/public/index.html (UI) and rag_system.py (server)
+
+- Query endpoint
+  - POST /query
+  - Purpose: Retrieve relevant context from code/docs and possibly other sources
+  - File: modular-framework/modules/RAG/rag_system.py (FastAPI)
+
+- Retrieve endpoint
+  - POST /retrieve
+  - Purpose: Retrieve snippets; supports code and docs, optionally build a prompt for LLM
+  - File: modular-framework/modules/RAG/rag_system.py
+
+- Tags, repos, docs
+  - /repos, /docs, /tags (admin-like endpoints)
+  - File: modular-framework/modules/RAG/rag_system.py (admin-like endpoints)
+
+Module summaries
+- RAG: A production retrieval system for contextual data used to augment LLM prompts; includes embedding, vector store indexing, retrieval, and a basic UI for management.
+
+11) Runner Agent
+
+Module purpose (summary)
+- Lightweight HTTP API for remote command execution. It runs commands in a sandboxed environment inside a runner agent (bash/python), enabling remote execution from workflows.
+
+Public endpoints and usage
+
+- Runner HTTP API
+  - POST /exec
+    - Body: { type: "bash" | "python", cmd/script, cwd, env, timeoutMs }
+    - Path: modular-framework/modules/runner-agent/server/index.js
+    - Auth: Bearer token (AGENT_TOKEN)
+  - GET /health
+  - POST /register (optional)
+  -  The runner-agent is typically used by llm-workflows to execute code in a controlled environment.
+  - Reference: runner-agent module
+
+Module summaries
+- Runner Agent: A simple service to execute commands remotely; integrates with llm-workflows runner logic to enable distributed execution.
+
+12) Documentation / Web UI modules (summary)
+
+- framework (static web UI)
+  - Serves framework UI; no public API beyond health-like endpoints
+  - Files: modular-framework/modules/framework/nginx.conf, Dockerfile
+
+- edge-nginx
+  - Edge proxy; reverse proxy to health endpoints of modules, internal API paths
+  - File: modular-framework/modules/edge-nginx/nginx.conf
+
+- HTML / UI modules
+  - framework/html/index.html (framework UI)
+  - modular-framework/modules/llm-chat/public/index.html, modular-framework/modules/llm-workflows/public/index.html, etc.
+
+- Documentation templates (llm-documentor/templates)
+  - Several template strings for doc generation; linked via code
+  - File: modular-framework/modules/llm-documentor/templates/__init__.py
+
+How to use this documentation to integrate a new module
+- Identify the new module's public surface:
+  - Expose REST endpoints using Express/FastAPI/your framework in a module directory under modular-framework/modules/your-module.
+  - Decide how the module will be exposed to edge-nginx (which paths to reverse proxy).
+  - Add a reference in edge-nginx/nginx.conf to route requests to your module container.
+- Implement endpoints:
+  - For each endpoint, clearly define:
+    - HTTP method and path
+    - Authentication requirements
+    - Request body format and types
+    - Response structure
+    - Error handling
+    - Where in code the endpoint lives (e.g., modular-framework/modules/your-module/server/routes/your_route.js)
+- Wire endpoints into the module’s app.js:
+  - Attach routes with app.use('/api', yourRouter)
+  - Expose health endpoints and configuration endpoints if needed for observability
+- External integration guidelines:
+  - If your module needs to call other modules (e.g., IaS gateway, code-extractor, or LLM gateway), follow the same patterns used by existing modules:
+    - Use gateway clients (e.g., modular-framework/modules/api/v1/gateway/server/routes/chat.js)
+    - Use the existing abstractions (e.g., GitHub hub API, embedding services, etc.)
+- Documentation generation readiness:
+  - If your module provides data for docs (like llm-documentor), ensure you implement:
+    - A well-defined API to produce artifacts
+    - A way to expose templates and configuration for docs
+- Testing:
+  - Consider adding a health endpoint for quick liveness checks
+  - If your module exposes endpoints for internal use, protect them with environment-based tokens (like INTERNAL_API_TOKEN) as seen in several modules
+
+Module-by-module quick references (where to look for endpoints)
+- Github Hub
+  - File references: modular-framework/modules/github-hub/app/main.py, store.py
+- LLM Chat
+  - File references: modular-framework/modules/llm-chat/server/routes/chat.js, health.js, info.js, logs.js, and modular-framework/modules/llm-chat/public
+- LLM Gateway
+  - File references: modular-framework/modules/api/v1/gateway/server/routes/chat.js, health.js, info.js, logs.js, tokens.js
+- LLM Documentor
+  - File references: modular-framework/modules/llm-documentor/app.py, engine/ submodules, server/app.js
+- LLM Tester
+  - File references: modular-framework/modules/llm-tester/server.js and server/routes/*.js
+- LLM Workflows
+  - File references: modular-framework/modules/llm-workflows/server/app.js, server/routes/*.js
+- SSH Terminal
+  - File references: modular-framework/modules/ssh-terminal/server.js
+- LLM IDE
+  - File references: modular-framework/modules/llm-ide/server/app.js, server/index.js, and frontend assets
+- RAG
+  - File references: modular-framework/modules/RAG/rag_system.py (main), modular-framework/modules/RAG/...
+- Runner Agent
+  - File references: modular-framework/modules/runner-agent/server/index.js, agent.js
+- Edge / Framework proxy
+  - File references: modular-framework/modules/edge-nginx/nginx.conf, Dockerfile
+
+Module-wise two-sentence summaries (for quick scan)
+
+- edge-nginx
+  - Purpose: Acts as TLS-terminating reverse proxy and router to all modules; central entry point for external clients. Defines how internal module endpoints are surfaced to the outside world.
+
+- framework
+  - Purpose: Static site hosting the framework’s UI (framework-web) served behind edge-nginx; includes health checks and config pages for the framework.
+
+- github-hub
+  - Purpose: Provides a GitHub Hub UI + API to read/write repos via a central hub; supports reading branches, repository trees, file contents, and batch commits.
+
+- llm-chat
+  - Purpose: Chat UI and backend that orchestrates LLM chat, profiles, and optional RAG context; integrates with gateway for model calls and supports streaming.
+
+- llm-gateway
+  - Purpose: Central gateway that abstracts LLM provider details; handles chat completion calls, token accounting, and model discovery; publishes an API surface for gateway usage.
+
+- llm-documentor
+  - Purpose: Generates documentation from code/docs; ingests code, structure, API specs, and other artifacts, chunks them, calls LLMs, and produces a packaged documentation output.
+
+- llm-tester
+  - Purpose: A testing environment for LLM prompts and evaluation; supports suites/tests, test steps, logging, and optional streaming of test results.
+
+- llm-workflows
+  - Purpose: Orchestrates end-to-end workflows for LLM-driven content generation; coordinates runners, steps, and actions with a job-based model.
+
+- ssh-terminal
+  - Purpose: SSH terminal bridge enabling SSH sessions from the browser; exposes REST + WebSocket endpoints to manage sessions and run commands remotely.
+
+- llm-ide
+  - Purpose: In-browser IDE with remote editing via SSH-backed sessions; supports Monaco, file trees, and editor orchestration to edit and run code in modules.
+
+- Rag (RAG)
+  - Purpose: Retrieval-Augmented Generation system for code/docs; ingests data, embeds content, stores in vector DB, and serves retrieval results for chat prompts.
+
+- runner-agent
+  - Purpose: Lightweight, isolated agent that executes commands remotely (bash/python) and reports back; used by workflows to run steps in a sandbox.
+
+- logging orchestrator
+  - Purpose: A central controller to configure, test, and push logging configurations to multiple modules; provides status and rollout facilities.
+
+- RAG related docs (admin UI)
+  - Purpose: Admin UI for RAG, to inspect repos, docs, tags, conversations, and playgrounds; helps with troubleshooting and benchmarking.
+
+- Additional notes on integrations
+  - Many modules expose admin APIs protected by tokens (e.g., INTERNAL_API_TOKEN) for mutation endpoints; use those tokens as needed for secure interactions.
+  - The system is designed to be extensible: new modules can reuse existing gateway clients, embedding services, and storage abstractions used by the current modules.
+
+If you’d like, I can export this as a clean Markdown file or a JSON/yaml-ready API reference. I can also tailor the docs toward a particular module you’re planning to add (e.g., a new data source, a new gateway, or a new UI).📋

@@ -86,7 +86,7 @@ function updatePromptPreview() {
 // Gateway models
 async function fetchGatewayModels() {
   try {
-    const r = await fetch('/llm-gateway/api/models', { credentials: 'include' });
+    const r = await fetch('/api/v1/gateway//models', { credentials: 'include' });
     const data = await safeJson(r);
     if (!r.ok) {
       console.warn('Failed to load gateway models:', data?.error || data);

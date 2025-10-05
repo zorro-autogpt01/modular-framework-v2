@@ -5,8 +5,8 @@ function edge(path) {
   const base = process.env.EDGE_BASE;
   if (!base) throw new Error("EDGE_BASE is required");
   const b = base.endsWith("/") ? base.slice(0, -1) : base;
-  // GitHub Hub is exposed at /api/github-hub/, its internal API prefix is /api
-  return b + "/api/github-hub/api" + path;
+  // GitHub Hub is exposed at /api/v1/github/, its internal API prefix is /api
+  return b + "/api/v1/github/api" + path;
 }
 
 export async function getFile({ path: filePath, branch = "main" }) {

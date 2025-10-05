@@ -5,8 +5,8 @@ const isSide = new URLSearchParams(location.search).get('embed') === 'side';
 // Examples:
 //  - http://host:3005/ui/           -> API = /api
 //  - http://host:3005/              -> API = /api
-//  - http://framework/api/github-hub/ui/ -> API = /api/github-hub/api
-//  - http://framework/api/github-hub/    -> API = /api/github-hub/api
+//  - http://framework/api/v1/github/ui/ -> API = /api/v1/github/api
+//  - http://framework/api/v1/github/    -> API = /api/v1/github/api
 const API = (() => {
   const p = location.pathname;
 
@@ -14,7 +14,7 @@ const API = (() => {
   const idx = p.indexOf('/ui/');
   if (idx !== -1) return p.slice(0, idx) + '/api';
 
-  // If we’re already under a proxied prefix like /api/github-hub/...
+  // If we’re already under a proxied prefix like /api/v1/github/...
   const m = p.match(/^(.*?\/api\/github-hub)(?:\/|$)/);
   if (m) return `${m[1]}/api`;
 

@@ -1,5 +1,5 @@
 <!-- BEGIN:url-validation-note -->
-<!-- NOTE: URL schema validated for edge-nginx split: / (framework-web static), /api/github-hub/, /api/llm-workflows/, /api/llm-chat/, /api/ssh-terminal/, /api/browser/, /llm-gateway/, /llm-gateway/api/, /rag/ are all reverse-proxied by edge-nginx to their respective containers. -->
+<!-- NOTE: URL schema validated for edge-nginx split: / (framework-web static), /api/v1/github/, /api/v1/workflows/, /api/v1/chat/, /api/v1/ssh-terminal/, /api/browser/, /api/v1/gateway/, /api/v1/gateway//, /api/v1/rag/ are all reverse-proxied by edge-nginx to their respective containers. -->
 <!-- END:url-validation-note -->
 <!DOCTYPE html>
 <html lang="en">
@@ -429,14 +429,14 @@
 
         // Known modules for one-click discovery
         const knownModules = [
-            { name: 'SSH Terminal', url: '/api/ssh-terminal/', type: 'terminal', configUrl: '/api/ssh-terminal/', description: 'SSH connection to remote systems' },
-            { name: 'LLM Workflows', url: '/api/llm-workflows/', type: 'dashboard', configUrl: '/api/llm-workflows/', description: 'Build, validate & execute JSON workflows' },
-            { name: 'LLM Chat', url: '/api/llm-chat/', type: 'other', configUrl: '/api/llm-chat/config', description: 'Chat with LLMs (OpenAI/Ollama/Compat)' },
-            { name: 'GitHub Hub', url: '/api/github-hub/ui/', type: 'viewer', configUrl: '/api/github-hub/ui/', description: 'Repo browser & GitHub API for all modules' },
-            { name: 'LLM Gateway', url: '/llm-gateway/', type: 'dashboard', configUrl: '/llm-gateway/', description: 'Gateway admin & keys' },
-            { name: 'RAG Admin', url: '/rag/admin/', type: 'dashboard', configUrl: '/rag/admin/', description: 'RAG Admin UI and API' },
-            { name: 'LLM Tester', url: '/llm-tester/', type: 'dashboard', configUrl: '/llm-tester/', description: 'Create and run LLM tests' },
-            { name: 'Documentor', url: '/documentor/', type: 'viewer', configUrl: '/documentor/', description: 'Generate docs using LLMs' }
+            { name: 'SSH Terminal', url: '/api/v1/ssh-terminal/', type: 'terminal', configUrl: '/api/v1/ssh-terminal/', description: 'SSH connection to remote systems' },
+            { name: 'LLM Workflows', url: '/api/v1/workflows/', type: 'dashboard', configUrl: '/api/v1/workflows/', description: 'Build, validate & execute JSON workflows' },
+            { name: 'LLM Chat', url: '/api/v1/chat/', type: 'other', configUrl: '/api/v1/chat/config', description: 'Chat with LLMs (OpenAI/Ollama/Compat)' },
+            { name: 'GitHub Hub', url: '/api/v1/github/ui/', type: 'viewer', configUrl: '/api/v1/github/ui/', description: 'Repo browser & GitHub API for all modules' },
+            { name: 'LLM Gateway', url: '/api/v1/gateway/', type: 'dashboard', configUrl: '/api/v1/gateway/', description: 'Gateway admin & keys' },
+            { name: 'RAG Admin', url: '/api/v1/rag/admin/', type: 'dashboard', configUrl: '/api/v1/rag/admin/', description: 'RAG Admin UI and API' },
+            { name: 'LLM Tester', url: '/api/v1/tester/', type: 'dashboard', configUrl: '/api/v1/tester/', description: 'Create and run LLM tests' },
+            { name: 'Documentor', url: '/api/v1/documentor/', type: 'viewer', configUrl: '/api/v1/documentor/', description: 'Generate docs using LLMs' }
         ];
 
         // Demo defaults (first-run only)
@@ -729,7 +729,7 @@
             if (!leftPaneContent) return;
             if (leftPaneHeader) leftPaneHeader.textContent = 'GitHub Hub';
             const iframe = document.createElement('iframe');
-            iframe.src = '/api/github-hub/ui/?embed=side';
+            iframe.src = '/api/v1/github/ui/?embed=side';
             iframe.style.width = '100%';
             iframe.style.height = '100%';
             iframe.style.border = 'none';

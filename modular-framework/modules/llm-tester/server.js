@@ -40,28 +40,28 @@ app.use((req, res, next) => {
 
 // Health
 app.get("/api/health", (req, res) => res.json({ status: "healthy" }));
-app.get("/api/llm-tester/health", (req, res) => res.json({ status: "healthy", version: "0.1.0" }));
+app.get("/api/v1/tester/health", (req, res) => res.json({ status: "healthy", version: "0.1.0" }));
 
 // OpenAPI + Swagger UI
 const openapiPath = path.join(process.cwd(), "openapi.llm-tester.yaml");
 const openapiDoc = YAML.parse(fs.readFileSync(openapiPath, "utf8"));
-app.get("/api/llm-tester/openapi.yaml", (req, res) => res.type("text/yaml").send(fs.readFileSync(openapiPath, "utf8")));
-app.use("/api/llm-tester/docs", swaggerUi.serve, swaggerUi.setup(openapiDoc, { explorer: true }));
+app.get("/api/v1/tester/openapi.yaml", (req, res) => res.type("text/yaml").send(fs.readFileSync(openapiPath, "utf8")));
+app.use("/api/v1/tester/docs", swaggerUi.serve, swaggerUi.setup(openapiDoc, { explorer: true }));
 
-// API routers (edge maps /api/llm-tester/* -> /api/* here)
-app.use(["/api/tests", "/api/llm-tester/tests"], testsRouter);
-app.use(["/api/suites", "/api/llm-tester/suites"], suitesRouter);
-app.use(["/api/runs", "/api/llm-tester/runs"], runsRouter);
-app.use(["/api/ci", "/api/llm-tester/ci"], ciRouter);
+// API routers (edge maps /api/v1/tester/* -> /api/* here)
+app.use(["/api/tests", "/api/v1/tester/tests"], testsRouter);
+app.use(["/api/suites", "/api/v1/tester/suites"], suitesRouter);
+app.use(["/api/runs", "/api/v1/tester/runs"], runsRouter);
+app.use(["/api/ci", "/api/v1/tester/ci"], ciRouter);
 // Logging admin + buffer APIs
 //app.use(["/api", "/api/llm-tester"], logsRouter);
 //app.use(["/api", "/api/llm-tester"], loggingRouter);
 
-app.use(["/api/admin", "/api/llm-tester/admin"], adminRouter);
-app.use(["/api/logging", "/api/llm-tester/logging"], loggingRouter);
-app.use(["/api/logs", "/api/llm-tester/logs"], logsRouter);
+app.use(["/api/admin", "/api/v1/tester/admin"], adminRouter);
+app.use(["/api/logging", "/api/v1/tester/logging"], loggingRouter);
+app.use(["/api/logs", "/api/v1/tester/logs"], logsRouter);
 
-// Static Admin UI (edge maps /llm-tester/ -> /)
+// Static Admin UI (edge maps /api/v1/tester/ -> /)
 const uiDir = path.join(process.cwd(), "ui");
 app.use(["/", "/llm-tester"], express.static(uiDir, { index: ["index.html"] }));
 

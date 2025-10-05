@@ -136,7 +136,8 @@ const dot = document.getElementById('dot');
 const healthText = document.getElementById('healthText');
 function setBusy(b){ if(!dot||!healthText) return; dot.classList.toggle('on', b); healthText.textContent = b ? 'Checking…' : 'Idle'; }
 const BASE = window.location.pathname.replace(/\/admin.*/, '');
-const API_BASE = `${BASE}/api`;   // "/api" when BASE == "", else "/llm-gateway/api"
+const API_BASE = "/api/v1/gateway/" 
+//const API_BASE = `${BASE}/api`;   // "/api" when BASE == "", else "/api/v1/gateway/"
 const HEALTH_PATH = `${BASE}/health`;
 
 const pName = document.getElementById('pName');

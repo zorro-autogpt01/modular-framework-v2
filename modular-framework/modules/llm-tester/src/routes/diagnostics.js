@@ -5,10 +5,10 @@ import { logInfo, logError } from '../logger.js';
 
 const router = Router();
 
-// GIT: /api/llm-tester/diagnostics/gateway
+// GIT: /api/v1/tester/diagnostics/gateway
 // Quick ping bypasses the Gateway api (PAST/v1/chat) with a mini-message and reports latency/content.
 router.get('/gateway', async (req, res) => { const rid = req.id;
-  const baseUrl = (req.query.baseUrl || "/llm-gateway/api").toString();
+  const baseUrl = (req.query.baseUrl || "/api/v1/gateway/").toString();
   const model = (req.query.model || "gpt-4o-mini").toString();
   const messages = [
     { role: "system", content: "Connectivity check. Reply with 'pong'." },
@@ -27,7 +27,7 @@ router.get('/gateway', async (req, res) => { const rid = req.id;
   }
 });
 
-// GIT: /api/llm-tester/diagnostics/rag
+// GIT: /api/v1/tester/diagnostics/rag
 // Run a basic RAG retrieve probe, with default question, and report snippets + combined text.
 router.get('/rag', async (req, res) => { const rid = req.id; const question = (req.query.question || "ping connectivity check").toString();
   const t0 = Date.now();
@@ -42,9 +42,9 @@ router.get('/rag', async (req, res) => { const rid = req.id; const question = (r
   }
 });
 
-// GIT: /api/llm-tester/diagnostics/connectivity
+// GIT: /api/v1/tester/diagnostics/connectivity
 // Performs both probes and returns a summary of results.
-router.get('/connectivity', async (req, res) => { const rid = req.id; const model = (req.query.model || "gpt-4o-mini").toString(); const baseUrl = (req.query.baseUrl || "/llm-gateway/api").toString(); const question = (req.query.question || "ping connectivity check").toString();
+router.get('/connectivity', async (req, res) => { const rid = req.id; const model = (req.query.model || "gpt-4o-mini").toString(); const baseUrl = (req.query.baseUrl || "/api/v1/gateway/").toString(); const question = (req.query.question || "ping connectivity check").toString();
   const results = { gateway: null, rag: null };
   // Gateway
   try {

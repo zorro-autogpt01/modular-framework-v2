@@ -295,7 +295,7 @@ export async function summarizeConversation() {
 
   const basePath = detectBasePath();
   const gw = getGatewayUrl();
-  const apiUrl = gw ? `${gw}/v1/chat` : `${basePath}api/chat`;
+  const apiUrl = gw ? `${gw}/api/v1/chat` : `${basePath}api/chat`;
 
   const placeholder = document.createElement('div');
   placeholder.className = 'msg assistant';
@@ -534,7 +534,7 @@ Use this information to answer the user's question accurately. If the knowledge 
 
   const basePath = detectBasePath();
   const gw = getGatewayUrl();
-  const apiUrl = gw ? `${gw}/v1/chat` : `${basePath}api/chat`;
+  const apiUrl = gw ? `${gw}/api/v1/chat` : `${basePath}api/chat`;
 
   state.controller = new AbortController();
   setBusy(true);

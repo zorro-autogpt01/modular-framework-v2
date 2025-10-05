@@ -18,7 +18,7 @@ router.post("/github/check", async (req, res) => {
   if (!suite) return res.status(400).json({ error: "suite_required" });
 
   const base = (process.env.EDGE_BASE?.replace(/\/$/, "")) || `http://localhost:${process.env.PORT || 3040}`;
-  const execUrl = `${base}/api/llm-tester/suites/${encodeURIComponent(suite)}/execute`;
+  const execUrl = `${base}/api/v1/tester/suites/${encodeURIComponent(suite)}/execute`;
   let exec;
   const t0 = Date.now();
   try {

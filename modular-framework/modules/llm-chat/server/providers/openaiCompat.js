@@ -131,7 +131,7 @@ async function handleOpenAICompat({
     return;
   }
 
-  const url = `${base}/v1/chat/completions`;
+  const url = `${base}/api/v1/chat/completions`;
   const body = { model, messages, stream: sseMode };
   if (typeof temperature === 'number' && !Number.isNaN(temperature)) body.temperature = temperature;
   if (max_tokens && !isGpt5) {

@@ -48,7 +48,7 @@ router.post("/:name/execute", async (req, res) => {
   // Sequential for simplicity (can parallelize with Promise.allSettled + rate limits)
   for (const t of tests) {
     const base = (process.env.EDGE_BASE?.replace(/\/$/, "")) || `http://localhost:${process.env.PORT || 3040}`;
-    const url = `${base}/api/llm-tester/tests/${encodeURIComponent(t.id)}/execute`;
+    const url = `${base}/api/v1/tester/tests/${encodeURIComponent(t.id)}/execute`;
 
     if (doStream) send(res, { type: "execute", testId: t.id, url });
     logInfo("Suite executing test", { rid, suite: name, testId: t.id, url }, "suites");

@@ -332,7 +332,7 @@ curl -fsS -X POST \\
     "url": "'"'\${RUNNER_URL}'"'",
     "token": "'"'\${RUNNER_TOKEN}'"'",
     "default_cwd": "'"'\${BASE_DIR}'"'"
-  }' "\${SERVER_BASE}/api/llm-workflows/api/runners/register"
+  }' "\${SERVER_BASE}/api/v1/workflows/api/runners/register"
 
 echo ">>> Done. Runner \"\${RUNNER_NAME}\" registered at \${RUNNER_URL}"
 `;

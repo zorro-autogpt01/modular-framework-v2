@@ -15,7 +15,7 @@
 
   <script type="text/babel">
     const apiBase = "/api/llm-tester";
-    const chatUiUrl = "/api/llm-chat/"; // existing Chat UI
+    const chatUiUrl = "/api/v1/chat/"; // existing Chat UI
 
     function Tabs({ tabs, current, onChange }) {
       return (
@@ -82,7 +82,7 @@
         suite: "summarizer-core",
         kind: "llm-judge",
         tags: ["nlp","acceptance"],
-        llmGateway: { baseUrl: "/llm-gateway/api", provider: "openai", model: "gpt-4o-mini" },
+        llmGateway: { baseUrl: "/api/v1/gateway/", provider: "openai", model: "gpt-4o-mini" },
         context: { static: "You are testing internal release notes.", disableRag: false, ragQuery: { question: "" } },
         input: {
           messages: [
@@ -101,7 +101,7 @@
           regex: ["(?m)^- .+$"],
           count: { bulletsMin: 5, bulletsMax: 5 },
           semantic: {
-            judge: { baseUrl: "/llm-gateway/api", provider: "openai", model: "gpt-4o-mini" },
+            judge: { baseUrl: "/api/v1/gateway/", provider: "openai", model: "gpt-4o-mini" },
             criteria: [
               { name: "Factual consistency", minScore: 0.9 },
               { name: "Coverage", minScore: 0.8 }

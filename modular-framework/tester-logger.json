@@ -265,7 +265,7 @@
         {
           "type": "insert_after",
           "match": "const t0 = Date\\.now\\(\\);",
-          "replacement": "\n    logInfo('LT test LLM call -> gateway', { rid, baseUrl: test.llmGateway?.baseUrl || '/llm-gateway/api', model: test.llmGateway?.model, messagesCount: messages.length });"
+          "replacement": "\n    logInfo('LT test LLM call -> gateway', { rid, baseUrl: test.llmGateway?.baseUrl || '/api/v1/gateway/', model: test.llmGateway?.model, messagesCount: messages.length });"
         },
         {
           "type": "insert_after",

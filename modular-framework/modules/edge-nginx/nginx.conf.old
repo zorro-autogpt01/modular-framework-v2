@@ -1,0 +1,384 @@
+events { worker_connections 1024; }
+
+http {
+  # --- WebSocket upgrade mapping ---
+  map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+  }
+
+  # --- CORS: allow localhost/dev + internal module hostnames ---
+  map $http_origin $cors_header {
+    default "";
+    "~^https?://[^/]+\\.local(:[0-9]+)?$" "$http_origin";
+    "~^https?://localhost(:[0-9]+)?$" "$http_origin";
+    "~^https?://127\\.0\\.0\\.1(:[0-9]+)?$" "$http_origin";
+    "~^https?://llm-chat-module(:[0-9]+)?$" "$http_origin";
+    "~^https?://github-hub-module(:[0-9]+)?$" "$http_origin";
+    "~^https?://llm-workflows-module(:[0-9]+)?$" "$http_origin";
+    "~^https?://llm-gateway(:[0-9]+)?$" "$http_origin";
+    "~^https?://llm-documentor(:[0-9]+)?$" "$http_origin";
+    "~^https?://llm-tester(:[0-9]+)?$" "$http_origin";
+  }
+
+  include /etc/nginx/mime.types;
+  default_type application/octet-stream;
+
+  log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                  '$status $body_bytes_sent "$http_referer" '
+                  '"$http_user_agent" "$http_x_forwarded_for"';
+  access_log /var/log/nginx/access.log main;
+  error_log  /var/log/nginx/error.log warn;
+
+  sendfile on;
+  keepalive_timeout 65;
+
+  # gzip for static + JSON
+  gzip on;
+  gzip_comp_level 5;
+  gzip_min_length 512;
+  gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript image/svg+xml;
+  gzip_vary on;
+
+  # --- HTTP server (redirect to HTTPS; keep /health + internal API proxy to avoid TLS redirect loops from containers) ---
+  server {
+    listen 80;
+    server_name _;
+
+    # Health for container health checks
+    location = /health { access_log off; return 200 "edge-ok\n"; add_header Content-Type text/plain; }
+
+    # Internal API exceptions: allow HTTP proxying so in-cluster services can call EDGE_BASE=http://edge-nginx without TLS/redirect issues.
+    # LLM Tester
+    location /api/llm-tester/ {
+      proxy_http_version 1.1;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto http;
+      proxy_buffering off;          # SSE-friendly
+      proxy_read_timeout 86400;
+      add_header 'Access-Control-Allow-Origin' $cors_header always;
+      add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS, PUT, DELETE' always;
+      add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
+      add_header 'Access-Control-Allow-Credentials' 'true' always;
+      if ($request_method = OPTIONS) { return 204; }
+      proxy_pass http://llm-tester:3040/api/;
+    }
+    # LLM Gateway canonical API
+    location /llm-gateway/api/ {
+      proxy_http_version 1.1;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto http;
+      proxy_buffering off;          # streaming-friendly
+      proxy_read_timeout 86400;
+      proxy_hide_header X-Frame-Options;
+      proxy_hide_header Content-Security-Policy;
+      add_header X-Frame-Options SAMEORIGIN always;
+      add_header Content-Security-Policy "frame-ancestors 'self'" always;
+      add_header 'Access-Control-Allow-Origin' $cors_header always;
+      add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS, PUT, DELETE' always;
+      add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
+      add_header 'Access-Control-Allow-Credentials' 'true' always;
+      if ($request_method = OPTIONS) { return 204; }
+      proxy_pass http://llm-gateway:3010;
+    }
+    # GitHub Hub
+    location /api/github-hub/ {
+      proxy_http_version 1.1;
+      proxy_set_header Host $host;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto http;
+
+      add_header 'Access-Control-Allow-Origin' $cors_header always;
+      add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS, PUT, DELETE' always;
+      add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
+      add_header 'Access-Control-Allow-Credentials' 'true' always;
+
+      if ($request_method = OPTIONS) {
+        add_header Content-Length 0;
+        add_header Content-Type text/plain;
+        return 204;
+      }
+
+      proxy_hide_header X-Frame-Options;
+      proxy_hide_header Content-Security-Policy;
+      add_header X-Frame-Options SAMEORIGIN always;
+      add_header Content-Security-Policy "frame-ancestors 'self'" always;
+
+      proxy_pass http://github-hub-module:3005/;
+    }
+    # RAG API/Admin
+    location /rag/ {
+      proxy_http_version 1.1;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto http;
+      proxy_read_timeout 86400;
+      proxy_hide_header X-Frame-Options;
+      proxy_hide_header Content-Security-Policy;
+      add_header X-Frame-Options SAMEORIGIN always;
+      add_header Content-Security-Policy "frame-ancestors 'self'" always;
+      proxy_pass http://rag-api-module:8000/;
+    }
+
+    # Everything else -> HTTPS
+    location / { return 301 https://$host$request_uri; }
+  }
+
+  # --- HTTPS server ---
+  server {
+    listen 443 ssl;
+    server_name _;
+
+    # TLS dev certs (mounted/generated)
+    ssl_certificate     /etc/nginx/certs/dev.crt;
+    ssl_certificate_key /etc/nginx/certs/dev.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers on;
+
+    # Security headers
+    add_header X-Frame-Options SAMEORIGIN always;
+    add_header Content-Security-Policy "frame-ancestors 'self'" always;
+
+    # Health endpoint
+    location = /health { access_log off; return 200 "edge-ok\n"; add_header Content-Type text/plain; }
+
+    # Root – framework-web static site
+    location / {
+      proxy_http_version 1.1;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto https;
+      proxy_pass http://framework-web:80;
+    }
+
+    # LLM Workflows (UI + API + SSE)
+    location /api/llm-workflows/ {
+      proxy_http_version 1.1;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto https;
+      proxy_buffering off;
+      proxy_read_timeout 86400;
+      proxy_hide_header X-Frame-Options;
+      proxy_hide_header Content-Security-Policy;
+      add_header X-Frame-Options SAMEORIGIN always;
+      add_header Content-Security-Policy "frame-ancestors 'self'" always;
+      proxy_pass http://llm-workflows-module:3005/;
+    }
+
+    # LLM Gateway admin + API
+    location /llm-gateway/ {
+      proxy_http_version 1.1;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto https;
+      proxy_hide_header X-Frame-Options;
+      proxy_hide_header Content-Security-Policy;
+      add_header X-Frame-Options SAMEORIGIN always;
+      add_header Content-Security-Policy "frame-ancestors 'self'" always;
+      add_header 'Access-Control-Allow-Origin' $cors_header always;
+      add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS, PUT, DELETE' always;
+      add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
+      add_header 'Access-Control-Allow-Credentials' 'true' always;
+      proxy_read_timeout 86400;
+      proxy_pass http://llm-gateway:3010;
+    }
+
+    # Canonical API subpath (streaming friendly)
+    location /llm-gateway/api/ {
+      proxy_http_version 1.1;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto https;
+      proxy_buffering off;
+      proxy_read_timeout 86400;
+      add_header 'Access-Control-Allow-Origin' $cors_header always;
+      add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS, PUT, DELETE' always;
+      add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
+      add_header 'Access-Control-Allow-Credentials' 'true' always;
+      proxy_hide_header X-Frame-Options;
+      proxy_hide_header Content-Security-Policy;
+      add_header X-Frame-Options SAMEORIGIN always;
+      add_header Content-Security-Policy "frame-ancestors 'self'" always;
+      proxy_pass http://llm-gateway:3010;
+    }
+
+    # LLM IDE - frontend
+    location /ide/ {
+      proxy_http_version 1.1;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto https;
+      add_header 'Access-Control-Allow-Origin' $cors_header always;
+      add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS' always;
+      add_header 'Access-Control-Allow-Headers' 'Content-Type, Authorization' always;
+      proxy_pass http://llm-ide-frontend:3020/;
+    }
+
+    # LLM IDE - backend API
+    location /ide/api/ {
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection $connection_upgrade;
+      proxy_http_version 1.1;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto https;
+      proxy_read_timeout 86400;
+      proxy_pass http://llm-ide-backend:3021/;
+    }
+
+    # GitHub Hub (UI + API)
+    location /api/github-hub/ {
+      proxy_http_version 1.1;
+      proxy_set_header Host $host;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto https;
+
+      add_header 'Access-Control-Allow-Origin' $cors_header always;
+      add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS, PUT, DELETE' always;
+      add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
+      add_header 'Access-Control-Allow-Credentials' 'true' always;
+
+      if ($request_method = OPTIONS) {
+        add_header Content-Length 0;
+        add_header Content-Type text/plain;
+        return 204;
+      }
+
+      proxy_hide_header X-Frame-Options;
+      proxy_hide_header Content-Security-Policy;
+      add_header X-Frame-Options SAMEORIGIN always;
+      add_header Content-Security-Policy "frame-ancestors 'self'" always;
+
+      proxy_pass http://github-hub-module:3005/;
+    }
+
+    # SSH Terminal API (REST)
+    location /api/ssh-terminal/ {
+      proxy_http_version 1.1;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto https;
+      proxy_read_timeout 86400;
+      proxy_pass http://ssh-terminal-module:3001/;
+    }
+
+    # SSH Terminal WebSocket
+    location /api/ssh-terminal/ssh {
+      proxy_http_version 1.1;
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection $connection_upgrade;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto https;
+      proxy_read_timeout 86400;
+      proxy_pass http://ssh-terminal-module:3001/ssh;
+    }
+
+    # LLM Chat (UI + API)
+    location /api/llm-chat/ {
+      proxy_http_version 1.1;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto https;
+      proxy_buffering off;
+      proxy_read_timeout 86400;
+      proxy_hide_header X-Frame-Options;
+      proxy_hide_header Content-Security-Policy;
+      add_header X-Frame-Options SAMEORIGIN always;
+      add_header Content-Security-Policy "frame-ancestors 'self'" always;
+      proxy_pass http://llm-chat-module:3004/;
+    }
+
+    # LLM Documentor Module
+    location /documentor/ {
+      proxy_http_version 1.1;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto https;
+      proxy_buffering off;
+      proxy_read_timeout 300;
+      proxy_hide_header X-Frame-Options;
+      proxy_hide_header Content-Security-Policy;
+      add_header X-Frame-Options SAMEORIGIN always;
+      add_header Content-Security-Policy "frame-ancestors 'self'" always;
+      add_header 'Access-Control-Allow-Origin' $cors_header always;
+      add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS' always;
+      add_header 'Access-Control-Allow-Headers' 'Content-Type, Authorization' always;
+      proxy_pass http://llm-documentor:3030/;
+    }
+
+    location /api/documentor/ {
+      proxy_http_version 1.1;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto https;
+      proxy_buffering off;
+      proxy_read_timeout 300;
+      add_header 'Access-Control-Allow-Origin' $cors_header always;
+      add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS, DELETE' always;
+      add_header 'Access-Control-Allow-Headers' 'Content-Type, Authorization' always;
+      add_header 'Access-Control-Allow-Credentials' 'true' always;
+      proxy_pass http://llm-documentor:3030/api/;
+    }
+
+    # LLM Testing UI & API
+    location /llm-tester/ {
+      proxy_http_version 1.1;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto https;
+      proxy_read_timeout 600;
+      proxy_pass http://llm-tester:3040/;
+    }
+
+    location /api/llm-tester/ {
+      proxy_http_version 1.1;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto https;
+      proxy_buffering off;   # important for SSE suite runs
+      proxy_read_timeout 86400;
+      proxy_redirect off;
+      add_header 'Access-Control-Allow-Origin' $cors_header always;
+      add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS, PUT, DELETE' always;
+      add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
+      add_header 'Access-Control-Allow-Credentials' 'true' always;
+      if ($request_method = OPTIONS) { return 204; }
+      proxy_pass http://llm-tester:3040/api/;
+    }
+
+    # RAG API + Admin
+    location /rag/ {
+      proxy_http_version 1.1;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto https;
+      proxy_read_timeout 86400;
+      proxy_hide_header X-Frame-Options;
+      proxy_hide_header Content-Security-Policy;
+      add_header X-Frame-Options SAMEORIGIN always;
+      add_header Content-Security-Policy "frame-ancestors 'self'" always;
+      proxy_pass http://rag-api-module:8000/;
+    }
+  }
+}

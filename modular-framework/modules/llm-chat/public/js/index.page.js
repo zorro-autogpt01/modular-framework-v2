@@ -49,12 +49,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // RAG controls
   document.getElementById('ingestBtn')?.addEventListener('click', () => {
-    window.open('/rag/docs', '_blank');
+    window.open('/api/v1/rag/docs', '_blank');
   });
   
   document.getElementById('statsBtn')?.addEventListener('click', async () => {
     try {
-      const response = await fetch('/rag/stats');
+      const response = await fetch('/api/v1/rag/stats');
       const stats = await response.json();
       alert(`RAG Statistics:\n\nCode chunks: ${stats.code_chunks}\nDocument chunks: ${stats.documents_chunks ?? stats.document_chunks}\nTotal: ${stats.total_chunks}`);
     } catch (error) {

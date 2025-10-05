@@ -355,7 +355,7 @@ paths:
                 repo: { type: string, description: "owner/repo (informational)" }
                 branch: { type: string }
                 suite: { type: string }
-                path: { type: string, default: "reports/llm-tester/report.json" }
+                path: { type: string, default: "reports/api/v1/tester/report.json" }
       responses:
         "200":
           description: Report committed
