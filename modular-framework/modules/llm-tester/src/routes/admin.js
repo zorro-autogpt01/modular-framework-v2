@@ -45,4 +45,49 @@ router.put("/config", (req, res) => {
   res.json({ ok: true, config: saved });
 });
 
+// Templates CRUD
+router.get("/templates", (req, res) => {
+  const rid = req.id; logInfo('LT admin templates list', { rid, ip: req.ip }, 'admin');
+  res.json({ items: Storage.listTemplates() });
+});
+
+router.post("/templates", (req, res) => {
+  const rid = req.id; const body = req.body || {};
+  logInfo('LT admin template create <-', { rid, name: body?.name, kind: body?.kind }, 'admin');
+  if (!body.name || !body.kind) return res.status(400).json({ error: "name_and_kind_required" });
+  try {
+    const saved = Storage.saveTemplate({ name: body.name, kind: body.kind, description: body.description || "", defaults: body.defaults || {} });
+    logInfo('LT admin template create ->', { rid, id: saved.id }, 'admin');
+    res.json({ ok: true, id: saved.id });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message || 'invalid_template' });
+  }
+});
+
+router.get("/templates/:id", (req, res) => {
+  const rid = req.id; const tpl = Storage.getTemplate(req.params.id);
+  logInfo('LT admin template get', { rid, id: req.params.id, found: !!tpl }, 'admin');
+  if (!tpl) return res.status(404).json({ error: "not_found" });
+  res.json(tpl);
+});
+
+router.put("/templates/:id", (req, res) => {
+  const rid = req.id; const existing = Storage.getTemplate(req.params.id);
+  if (!existing) return res.status(404).json({ error: "not_found" });
+  const merged = { ...existing, ...req.body, id: existing.id };
+  try {
+    const saved = Storage.saveTemplate(merged);
+    logInfo('LT admin template put', { rid, id: saved.id }, 'admin');
+    res.json({ ok: true, id: saved.id });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message || 'invalid_template' });
+  }
+});
+
+router.delete("/templates/:id", (req, res) => {
+  const rid = req.id;
+  const r = Storage.deleteTemplate(req.params.id);
+  logInfo('LT admin template delete', { rid, id: req.params.id, deleted: r.deleted }, 'admin');
+  res.json({ ok: true, ...r });
+});
 export default router;

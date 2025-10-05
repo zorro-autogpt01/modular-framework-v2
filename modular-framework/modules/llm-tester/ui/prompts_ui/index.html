@@ -8,14 +8,14 @@
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
   <script defer src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="icon" href="/llm-tester/favicon.svg" />
+  <link rel="icon" href="/favicon.svg" />
 </head>
 <body class="bg-slate-50">
   <div id="root"></div>
 
   <script type="text/babel">
     const apiBase = "/api/llm-tester";
-    const chatUiUrl = "/api/v1/chat/"; // existing Chat UI
+    const chatUiUrl = "/api/llm-chat/"; // existing Chat UI
 
     function Tabs({ tabs, current, onChange }) {
       return (
@@ -75,196 +75,98 @@
       );
     }
 
-    // -------- CREATE TEST (same as before, omitted for brevity) --------// -------- CREATE TEST (enhanced: templates + unit builder) --------
-function CreateTest({ onCreated }) {
-  const [templates, setTemplates] = React.useState([]);
-  const loadTemplates = async () => {
-    try {
-      const r = await fetch(`${apiBase}/admin/templates`);
-      const j = await r.json();
-      setTemplates(j.items || []);
-    } catch {}
-  };
-  React.useEffect(()=>{ loadTemplates(); }, []);
-
-  const [form, setForm] = React.useState({
-    name: "Summarizer produces five bullets",
-    suite: "summarizer-core",
-    kind: "llm-judge",
-    tags: ["nlp","acceptance"],
-    llmGateway: { baseUrl: "/llm-gateway/api", provider: "openai", model: "gpt-4o-mini" },
-    context: { static: "You are testing internal release notes.", disableRag: false, ragQuery: { question: "" } },
-    input: {
-      messages: [
-        { role: "system", content: "Write exactly 5 bullets." },
-        { role: "user", content: "Summarize: ${artifact.content}" }
-      ],
-      artifact: {
-        source: "github",
-        path: "CHANGELOG.md",
-        branch: "main",
-        optional: true,
-        fallback: "These are sample release notes about recent fixes and improvements. Focus on five clear bullet points."
-      }
-    },
-    assert: {
-      regex: ["(?m)^- .+$"],
-      count: { bulletsMin: 5, bulletsMax: 5 },
-      semantic: {
-        judge: { baseUrl: "/llm-gateway/api", provider: "openai", model: "gpt-4o-mini" },
-        criteria: [
-          { name: "Factual consistency", minScore: 0.9 },
-          { name: "Coverage", minScore: 0.8 }
-        ],
-        rubric: "Score each criterion 0..1 and justify briefly."
-      },
-      latencyMs: { p95Max: 2500 },
-      safety: { mustNotContain: ["API key","password"], policy: "company-safety-v1" }
-    },
-    runner: { retries: 0, timeoutSec: 90, stream: false }
-  });
-
-  const deepMerge = (a, b) => {
-    if (b === null || b === undefined) return a;
-    if (Array.isArray(a) || Array.isArray(b) || typeof a !== 'object' || typeof b !== 'object') return b;
-    const out = { ...a };
-    for (const k of Object.keys(b)) out[k] = deepMerge(a[k], b[k]);
-    return out;
-  };
-
-  const applyTemplate = (tplId) => {
-    const tpl = templates.find(t => t.id === tplId);
-    if (!tpl) return;
-    setForm(prev => {
-      const next = deepMerge(prev, tpl.defaults || {});
-      if (tpl.kind) next.kind = tpl.kind;
-      if (!next.name) next.name = tpl.name || "New Test";
-      return next;
-    });
-  };
-
-  const set = (path, value) => {
-    setForm(prev=>{
-      const next = structuredClone(prev);
-      const parts = path.split(".");
-      let cur = next;
-      for (let i=0; i<parts.length-1; i++) cur = cur[parts[i]];
-      cur[parts.at(-1)] = value;
-      return next;
-    });
-  };
-
-  // Unit Test Quick Builder (updates assert + minimal messages)
-  const [unit, setUnit] = React.useState({ type: "exact", value: "PASS", includeArtifact: true });
-  const applyUnitBuilder = () => {
-    setForm(prev => {
-      const next = structuredClone(prev);
-      next.kind = "unit";
-      // Minimal prompt
-      next.input = next.input || {};
-      next.input.messages = [
-        { role: "system", content: "Answer concisely." },
-        { role: "user", content: unit.includeArtifact ? "Use the provided artifact: ${artifact.content}" : "Answer the question." }
-      ];
-      // Assertions
-      next.assert = next.assert || {};
-      next.assert.exact = unit.type === "exact" ? [unit.value] : [];
-      next.assert.regex = unit.type === "regex" ? [unit.value] : (next.assert.regex || []);
-      // Ensure artifact presence if chosen
-      if (unit.includeArtifact && !next.input.artifact) {
-        next.input.artifact = { source: "github", path: "README.md", branch: "main", optional: true };
-      }
-      return next;
-    });
-  };
-
-  const submit = async (e) => {
-    e.preventDefault();
-    const r = await fetch(`${apiBase}/tests`, { method: "POST", headers: { "Content-Type":"application/json" }, body: JSON.stringify(form) });
-    const j = await r.json();
-    if (j.ok) { alert(`Created test ${j.testId}`); onCreated?.(); } else alert("Failed");
-  };
-
-  const [selectedTpl, setSelectedTpl] = React.useState("");
-
-  return (
-    <Section title="Create Test">
-      <form onSubmit={submit} className="grid grid-cols-1 gap-3">
-        {templates.length > 0 && (
-          <div className="grid grid-cols-3 gap-3 items-end">
-            <div className="col-span-2">
-              <label className="block text-sm text-slate-700 mb-1">Start from template</label>
-              <select className="border rounded-lg p-2 w-full" value={selectedTpl} onChange={(e)=>{ setSelectedTpl(e.target.value); applyTemplate(e.target.value); }}>
-                <option value="">-- Select template --</option>
-                {templates.map(t => <option key={t.id} value={t.id}>{t.name} ({t.kind})</option>)}
+    // -------- CREATE TEST (same as before, omitted for brevity) --------
+    function CreateTest({ onCreated }) {
+      const [form, setForm] = React.useState({
+        name: "Summarizer produces five bullets",
+        suite: "summarizer-core",
+        kind: "llm-judge",
+        tags: ["nlp","acceptance"],
+        llmGateway: { baseUrl: "/llm-gateway/api", provider: "openai", model: "gpt-4o-mini" },
+        context: { static: "You are testing internal release notes.", disableRag: false, ragQuery: { question: "" } },
+        input: {
+          messages: [
+            { role: "system", content: "Write exactly 5 bullets." },
+            { role: "user", content: "Summarize: ${artifact.content}" }
+          ],
+          artifact: {
+            source: "github",
+            path: "CHANGELOG.md",
+            branch: "main",
+            optional: true,
+            fallback: "These are sample release notes about recent fixes and improvements. Focus on five clear bullet points."
+          }
+        },
+        assert: {
+          regex: ["(?m)^- .+$"],
+          count: { bulletsMin: 5, bulletsMax: 5 },
+          semantic: {
+            judge: { baseUrl: "/llm-gateway/api", provider: "openai", model: "gpt-4o-mini" },
+            criteria: [
+              { name: "Factual consistency", minScore: 0.9 },
+              { name: "Coverage", minScore: 0.8 }
+            ],
+            rubric: "Score each criterion 0..1 and justify briefly."
+          },
+          latencyMs: { p95Max: 2500 },
+          safety: { mustNotContain: ["API key","password"], policy: "company-safety-v1" }
+        },
+        runner: { retries: 0, timeoutSec: 90, stream: false }
+      });
+      const set = (path, value) => {
+        setForm(prev=>{
+          const next = structuredClone(prev);
+          const parts = path.split(".");
+          let cur = next;
+          for (let i=0; i<parts.length-1; i++) cur = cur[parts[i]];
+          cur[parts.at(-1)] = value;
+          return next;
+        });
+      };
+      const submit = async (e) => {
+        e.preventDefault();
+        const r = await fetch(`${apiBase}/tests`, { method: "POST", headers: { "Content-Type":"application/json" }, body: JSON.stringify(form) });
+        const j = await r.json();
+        if (j.ok) { alert(`Created test ${j.testId}`); onCreated?.(); } else alert("Failed");
+      };
+      return (
+        <Section title="Create Test">
+          <form onSubmit={submit} className="grid grid-cols-1 gap-3">
+            <div className="grid grid-cols-3 gap-3">
+              <input className="border rounded-lg p-2" value={form.name} onChange={e=>set("name", e.target.value)} placeholder="Name"/>
+              <input className="border rounded-lg p-2" value={form.suite} onChange={e=>set("suite", e.target.value)} placeholder="Suite"/>
+              <select className="border rounded-lg p-2" value={form.kind} onChange={e=>set("kind", e.target.value)}>
+                {["unit","integration","system","acceptance","regression","performance","security","exploratory","llm-judge"].map(k=><option key={k} value={k}>{k}</option>)}
               </select>
             </div>
-            <button type="button" onClick={loadTemplates} className="px-3 py-2 rounded-lg bg-slate-200">Reload templates</button>
-          </div>
-        )}
-
-        <div className="grid grid-cols-3 gap-3">
-          <input className="border rounded-lg p-2" value={form.name} onChange={e=>set("name", e.target.value)} placeholder="Name"/>
-          <input className="border rounded-lg p-2" value={form.suite} onChange={e=>set("suite", e.target.value)} placeholder="Suite"/>
-          <select className="border rounded-lg p-2" value={form.kind} onChange={e=>set("kind", e.target.value)}>
-            {["unit","integration","system","acceptance","regression","performance","security","exploratory","llm-judge","llm"].map(k=><option key={k} value={k}>{k}</option>)}
-          </select>
-        </div>
-
-        <div className="grid grid-cols-3 gap-3">
-          <input className="border rounded-lg p-2" value={form.llmGateway?.baseUrl || ""} onChange={e=>set("llmGateway.baseUrl", e.target.value)} placeholder="Gateway baseUrl"/>
-          <input className="border rounded-lg p-2" value={form.llmGateway?.provider || ""} onChange={e=>set("llmGateway.provider", e.target.value)} placeholder="Provider"/>
-          <input className="border rounded-lg p-2" value={form.llmGateway?.model || ""} onChange={e=>set("llmGateway.model", e.target.value)} placeholder="Model"/>
-        </div>
-
-        <div className="bg-slate-50 rounded-xl p-3">
-          <div className="flex items-center gap-2 mb-2">
-            <input id="useRag" type="checkbox" checked={!form.context?.disableRag} onChange={e=>set("context.disableRag", !e.target.checked)} />
-            <label htmlFor="useRag">Use RAG (this test)</label>
-          </div>
-          <input className="border rounded-lg p-2 w-full" placeholder="RAG question (optional)"
-                value={form.context?.ragQuery?.question || ""}
-                onChange={e=>set("context.ragQuery.question", e.target.value)}
-                disabled={form.context?.disableRag}/>
-          <p className="text-xs text-slate-500 mt-1">If RAG is globally disabled, it is skipped regardless of this checkbox.</p>
-        </div>
-
-        <details className="bg-white rounded-xl p-3 border border-slate-200">
-          <summary className="cursor-pointer font-medium">Unit Test Quick Builder</summary>
-          <div className="mt-3 grid grid-cols-1 lg:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-sm text-slate-700 mb-1">Assertion type</label>
-              <select className="border rounded-lg p-2 w-full" value={unit.type} onChange={e=>setUnit(u=>({...u, type: e.target.value}))}>
-                <option value="exact">Contains text (exact)</option>
-                <option value="regex">Matches regex</option>
-              </select>
+            <div className="grid grid-cols-3 gap-3">
+              <input className="border rounded-lg p-2" value={form.llmGateway.baseUrl} onChange={e=>set("llmGateway.baseUrl", e.target.value)} placeholder="Gateway baseUrl"/>
+              <input className="border rounded-lg p-2" value={form.llmGateway.provider} onChange={e=>set("llmGateway.provider", e.target.value)} placeholder="Provider"/>
+              <input className="border rounded-lg p-2" value={form.llmGateway.model} onChange={e=>set("llmGateway.model", e.target.value)} placeholder="Model"/>
             </div>
-            <div className="lg:col-span-2">
-              <label className="block text-sm text-slate-700 mb-1">{unit.type==="exact"?"Exact text":"Regex pattern"}</label>
-              <input className="border rounded-lg p-2 w-full" value={unit.value} onChange={e=>setUnit(u=>({...u, value: e.target.value}))} placeholder={unit.type==="exact"?"PASS":"(?i)success"}/>
+            <div className="bg-slate-50 rounded-xl p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <input id="useRag" type="checkbox" checked={!form.context.disableRag} onChange={e=>set("context.disableRag", !e.target.checked)} />
+                <label htmlFor="useRag">Use RAG (this test)</label>
+              </div>
+              <input className="border rounded-lg p-2 w-full" placeholder="RAG question (optional)"
+                     value={form.context.ragQuery?.question || ""}
+                     onChange={e=>set("context.ragQuery.question", e.target.value)}
+                     disabled={form.context.disableRag}/>
+              <p className="text-xs text-slate-500 mt-1">If RAG is globally disabled, it is skipped regardless of this checkbox.</p>
             </div>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={unit.includeArtifact} onChange={e=>setUnit(u=>({...u, includeArtifact: e.target.checked}))}/>
-              Include artifact in prompt
-            </label>
-            <div className="lg:col-span-2 flex items-end">
-              <button type="button" onClick={applyUnitBuilder} className="px-3 py-2 rounded-lg bg-indigo-600 text-white">Apply to form</button>
+            <div className="flex gap-3">
+              <button className="px-4 py-2 rounded-xl bg-emerald-600 text-white">Create</button>
+              <details className="flex-1">
+                <summary className="cursor-pointer text-slate-700">Preview JSON</summary>
+                <pre className="bg-slate-900 text-slate-100 p-3 rounded-xl overflow-auto text-xs mt-2">{JSON.stringify(form, null, 2)}</pre>
+              </details>
             </div>
-          </div>
-        </details>
+          </form>
+        </Section>
+      );
+    }
 
-        <div className="flex gap-3">
-          <button className="px-4 py-2 rounded-xl bg-emerald-600 text-white">Create</button>
-          <details className="flex-1">
-            <summary className="cursor-pointer text-slate-700">Preview JSON</summary>
-            <pre className="bg-slate-900 text-slate-100 p-3 rounded-xl overflow-auto text-xs mt-2">{JSON.stringify(form, null, 2)}</pre>
-          </details>
-        </div>
-      </form>
-    </Section>
-  );
-}
-// -------- REPLAY DRAWER --------
     // -------- REPLAY DRAWER --------
     function ReplayDrawer({ test, onClose, chatReplayEnabled }) {
       const [payload, setPayload] = React.useState(null);
@@ -437,130 +339,6 @@ function CreateTest({ onCreated }) {
       );
     }
 
-// -------- TEMPLATES --------
-function Templates() {
-  const [items, setItems] = React.useState([]);
-  const [selected, setSelected] = React.useState(null);
-  const [json, setJson] = React.useState("");
-  const [name, setName] = React.useState("");
-  const [kind, setKind] = React.useState("unit");
-  const [desc, setDesc] = React.useState("");
-
-  const load = async () => {
-    const r = await fetch(`${apiBase}/admin/templates`);
-    const j = await r.json();
-    setItems(j.items || []);
-  };
-  React.useEffect(()=>{ load(); }, []);
-
-  const create = async () => {
-    const defaults = kind === "unit" ? {
-      kind: "unit",
-      llmGateway: { baseUrl: "/llm-gateway/api", provider: "openai", model: "gpt-4o-mini" },
-      input: {
-        messages: [
-          { role: "system", content: "Answer concisely." },
-          { role: "user", content: "Use the provided artifact to answer: ${artifact.content}" }
-        ],
-        artifact: { source: "github", path: "README.md", branch: "main", optional: true }
-      },
-      assert: { exact: ["PASS"], regex: [] },
-      context: { static: "" }
-    } : {
-      kind: kind,
-      llmGateway: { baseUrl: "/llm-gateway/api", provider: "openai", model: "gpt-4o-mini" },
-      input: {
-        messages: [
-          { role: "system", content: "Write exactly 5 bullets." },
-          { role: "user", content: "Summarize: ${artifact.content}" }
-        ],
-        artifact: { source: "github", path: "CHANGELOG.md", branch: "main", optional: true }
-      },
-      assert: { regex: ["(?m)^- .+$"], count: { bulletsMin: 5, bulletsMax: 5 } }
-    };
-    const r = await fetch(`${apiBase}/admin/templates`, {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ name, kind, description: desc, defaults })
-    });
-    const j = await r.json();
-    if (j.ok) { setName(""); setKind("unit"); setDesc(""); load(); } else alert("Failed");
-  };
-
-  const pick = async (id) => {
-    const r = await fetch(`${apiBase}/admin/templates/${id}`);
-    const j = await r.json();
-    setSelected(j);
-    setJson(JSON.stringify(j, null, 2));
-  };
-
-  const save = async () => {
-    try {
-      const obj = JSON.parse(json);
-      const r = await fetch(`${apiBase}/admin/templates/${obj.id}`, {
-        method: "PUT",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify(obj)
-      });
-      const j = await r.json();
-      if (j.ok) { alert("Saved"); load(); } else alert("Save failed");
-    } catch { alert("Invalid JSON"); }
-  };
-
-  const del = async (id) => {
-    if (!confirm("Delete template?")) return;
-    const r = await fetch(`${apiBase}/admin/templates/${id}`, { method: "DELETE" });
-    const j = await r.json();
-    if (j.ok) load(); else alert("Delete failed");
-  };
-
-  return (
-    <Section title="Templates" right={<button onClick={load} className="px-3 py-1 rounded-lg bg-slate-800 text-white">Refresh</button>}>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div>
-          <div className="mb-2 font-medium">Create Template</div>
-          <div className="grid grid-cols-1 gap-2">
-            <input className="border rounded-lg p-2" value={name} onChange={e=>setName(e.target.value)} placeholder="Template name"/>
-            <select className="border rounded-lg p-2" value={kind} onChange={e=>setKind(e.target.value)}>
-              {["unit","integration","system","acceptance","regression","performance","security","exploratory","llm-judge","llm"].map(k=><option key={k} value={k}>{k}</option>)}
-            </select>
-            <input className="border rounded-lg p-2" value={desc} onChange={e=>setDesc(e.target.value)} placeholder="Description (optional)"/>
-            <button onClick={create} className="px-3 py-2 rounded-lg bg-emerald-600 text-white w-max">Create</button>
-          </div>
-
-          <div className="mt-6">
-            <div className="mb-2 font-medium">Existing Templates</div>
-            <ul className="space-y-2">
-              {items.map(t=>(
-                <li key={t.id} className="border rounded-xl p-3 flex items-center justify-between">
-                  <div>
-                    <div className="font-medium">{t.name} <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">{t.kind}</span></div>
-                    <div className="text-sm text-slate-600">{t.description || ""}</div>
-                  </div>
-                  <div className="space-x-2">
-                    <button onClick={()=>pick(t.id)} className="px-3 py-1 rounded-lg bg-slate-200">Edit</button>
-                    <button onClick={()=>del(t.id)} className="px-3 py-1 rounded-lg bg-rose-600 text-white">Delete</button>
-                  </div>
-                </li>
-              ))}
-              {items.length===0 && <li className="text-slate-500">No templates yet</li>}
-            </ul>
-          </div>
-        </div>
-
-        <div className="flex flex-col">
-          <div className="mb-2 font-medium">{selected ? `Editing: ${selected.name}` : "Select a template to edit"}</div>
-          <textarea className="flex-1 w-full h-96 border rounded-xl p-3 font-mono text-xs"
-                    value={json} onChange={e=>setJson(e.target.value)}
-                    placeholder='{"id":"tpl_x","name":"...","kind":"unit","defaults":{...}}'/>
-          <div className="mt-2">
-            <button onClick={save} className="px-3 py-1 rounded-lg bg-emerald-600 text-white" disabled={!selected}>Save</button>
-          </div>
-        </div>
-      </div>
-    </Section>
-  );
-}
     // -------- SUITES (unchanged from previous extended version) --------
     function Suites() {
       const [suites, setSuites] = React.useState([]);
@@ -663,7 +441,7 @@ function Templates() {
         <div className="max-w-6xl mx-auto p-6 space-y-6">
           <div className="flex items-center justify-between">
             <h1 className="text-2xl font-bold text-slate-900">LLM Testing Admin</h1>
-            <Tabs tabs={["Tests","Suites","Runs","Templates","Settings"]} current={tab} onChange={setTab}/>
+            <Tabs tabs={["Tests","Suites","Runs","Settings"]} current={tab} onChange={setTab}/>
           </div>
           {tab==="Tests" && <>
             <CreateTest onCreated={()=>{}}/>
@@ -671,8 +449,6 @@ function Templates() {
           </>}
           {tab==="Suites" && <Suites />}
           {tab==="Runs" && <Runs />}
-          {tab==="Templates" && <Templates />}
-
           {tab==="Settings" && <Settings />}
         </div>
       );

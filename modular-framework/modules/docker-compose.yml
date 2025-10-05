@@ -52,6 +52,22 @@ services:
     networks:
       - app-network
     restart: unless-stopped
+      
+  llm-runner-controller:
+    build: ./llm-runner-controller
+    container_name: llm-runner-controller
+    restart: unless-stopped
+    environment:
+      - RUNNER_TOKEN=${RUNNER_TOKEN}
+      - RUNNER_BASE_DIR=/srv/runner
+      - RUNNER_DEFAULT_TIMEOUT_MS=30000
+      - RUNNER_ALLOW_ENV=HTTP_PROXY,HTTPS_PROXY
+    volumes:
+      - /srv/runner:/srv/runner
+    ports:
+      - "4010:4010"
+    networks:
+      - app-network
 
   llm-workflows-module:
     build: ./llm-workflows

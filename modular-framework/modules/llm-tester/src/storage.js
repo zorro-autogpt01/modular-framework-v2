@@ -8,12 +8,13 @@ const files = {
   suites: path.join(DATA_DIR, "suites.json"),
   runs: path.join(DATA_DIR, "runs.json"),
   webhooks: path.join(DATA_DIR, "webhooks.json"),
+  templates: path.join(DATA_DIR, "templates.json"),
   config: path.join(DATA_DIR, "config.json")
 };
 
 function ensure() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  for (const f of [files.tests, files.suites, files.runs, files.webhooks]) {
+  for (const f of [files.tests, files.suites, files.runs, files.webhooks, files.templates]) {
     if (!fs.existsSync(f)) fs.writeFileSync(f, JSON.stringify([], null, 2));
   }
   if (!fs.existsSync(files.config)) {
@@ -86,6 +87,27 @@ export const Storage = {
   },
   listWebhooks() { return read(files.webhooks); },
 
+// Templates
+listTemplates() { return read(files.templates); },
+getTemplate(id) { return read(files.templates).find(t => t.id === id); },
+saveTemplate(tpl) {
+  const arr = read(files.templates);
+  let existing = tpl.id ? arr.find(t => t.id === tpl.id) : undefined;
+  if (!tpl.id) tpl.id = "tpl_" + randomUUID();
+  if (existing) {
+    Object.assign(existing, tpl);
+  } else {
+    arr.push(tpl);
+  }
+  write(files.templates, arr);
+  return tpl;
+},
+deleteTemplate(id) {
+  const arr = read(files.templates);
+  const next = arr.filter(t => t.id !== id);
+  write(files.templates, next);
+  return { ok: true, deleted: arr.length - next.length };
+},
   // Config
   getConfig() {
     const cfg = read(files.config);

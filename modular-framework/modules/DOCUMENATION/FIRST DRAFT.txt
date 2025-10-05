@@ -1,3 +1,5 @@
+
+# modular-framework/modules/DOCUMENATION/FIRST DRAFT.txt
 Here is a comprehensive API reference for the modular-framework project you. It lists all endpoints exposed by the (including those behind edge-nginx) with usage details, authentication hints, example requests/responses, the file in which endpoint is defined. After the endpoints, you’ll find a concise summary of each module’s purpose.
 
 Important notes
@@ -10,6 +12,27 @@ Important notes
   - Sample request (HTTP)
   - Sample response (brief)
   - Reference file where it is defined
+
+Migration notes (edge-nginx routing changes)
+- Canonical API surface is now /api/v1/* behind edge-nginx.
+  - Gateway: /api/v1/gateway/... (legacy: /llm-gateway/ and /llm-gateway/api/; redirects apply)
+  - Chat: /api/v1/chat/... (legacy: /api/llm-chat/; redirects apply)
+  - Workflows: /api/v1/workflows/... (legacy: /api/llm-workflows/; redirects apply)
+  - GitHub Hub UI/API: /api/v1/github/ui/ and /api/v1/github/... (legacy paths redirect)
+  - Documentor: /api/v1/documentor/ (legacy: /documentor/ and /api/documentor/)
+  - RAG: /api/v1/rag/ (legacy: /rag/)
+  - SSH Terminal: /api/v1/ssh-terminal/ (WebSocket at /api/v1/ssh-terminal/ssh)
+  - LLM IDE: REST/WS at /api/v1/ide/ and frontend at /ide/
+- Edge-nginx redirects:
+  - /llm-gateway/ -> /api/v1/gateway/...
+  - /api/llm-chat/ -> /api/v1/chat/
+  - /api/llm-workflows/ -> /api/v1/workflows/
+  - /api/github-hub/ -> /api/v1/github/
+  - /documentor/ or /api/documentor/ -> /api/v1/documentor/
+  - /rag/ -> /api/v1/rag/
+  - /api/ssh-terminal/ -> /api/v1/ssh-terminal/
+  - /ide/ (and /ide/api/) -> /ide/ and /api/v1/ide/ respectively
+- Edge proxies also support CORS and streaming-friendly configurations (as per the updated nginx.conf).
 
 Table of contents
 - Edge & gateway related endpoints (framework routing, health, etc.)
@@ -44,19 +67,19 @@ Note: These are proxying behaviors rather than standalone module API surface; en
 Module purpose (summary)
 - Provides UI and API for browsing a GitHub repo (via Hub), performing Git operations, and manipulating repo contents (files, trees, branches, PRs) from within the framework.
 
-Key endpoints and usage
+Key endpoints and usage (updated for new path surface)
 
 - GET /api/health
   - Purpose: Health for hub module
   - Auth: None
   - Usage: GET request to hub health
-  - Response: { "status": "ok" } (and in some setups more details)
+  - Response: { "status": "ok" }
   - Defined in: modular-framework/modules/github-hub/app/main.py (route root: health)
 
 - GET /api/ (root) and GET /api/health
   - Purpose: Hub UI root and health
   - Auth: None
-  - Usage: GET /api/ health
+  - Usage: GET /api/health
   - Response: health payload
   - Defined in: modular-framework/modules/github-hub/app/main.py
 
@@ -150,7 +173,7 @@ Module summaries
 Module purpose (summary)
 - Provides a chat UI and the backend logic to chat with LLMs through gateways (OpenAI, Ollama, etc.), with support for profiles, per-user configurations, RAG integration, and optional artifacts/memories.
 
-Public endpoints and usage (selected highlights)
+Public endpoints and usage (selected highlights; updated for new paths)
 
 - Health API
   - GET /api/health
@@ -177,9 +200,9 @@ Public endpoints and usage (selected highlights)
   - File: modular-framework/modules/llm-chat/server/routes/logs.js
 
 - Chat endpoint (LLM chat)
-  - POST /api/chat
+  - POST /api/v1/chat/  (canonical external path)
   - Description: Stream-enabled or non-stream LLM chat; supports SSE
-  - Auth: Not always required; if you use the gateway calls directly, it’s the gateway behavior; internal calls require internal auth for test steps, etc.
+  - Auth: Not always required; internal calls require internal auth for test steps, etc.
   - File: modular-framework/modules/llm-chat/server/routes/chat.js
 
 - Compatibility endpoints and/or alternatives
@@ -205,7 +228,7 @@ Module summaries
 Module purpose (summary)
 - Central LLM gateway; exposes an API to perform LLM chat (via /v1/chat) and supports various providers/models via a single gateway interface. Handles token usage, streaming options, and cost accounting.
 
-Public endpoints and usage (selected highlights)
+Public endpoints and usage (selected highlights; updated for new path surface)
 
 - Health
   - GET /api/health
@@ -265,7 +288,7 @@ Module summaries
 Module purpose (summary)
 - Automated documentation generation for codebases and APIs. It extracts artifacts from code (structure, API specs, code files, schemas), chunks them into token-aware blocks, calls LLMs via a gateway, and produces documentation assets (MD files, etc.) with a verification stage and a packaging step (tarball).
 
-Public endpoints and usage (selected highlights)
+Public endpoints and usage (selected highlights; updated for new path surface)
 
 - Health
   - GET /api/health
@@ -329,7 +352,7 @@ Module summaries
 Module purpose (summary)
 - A test framework to manage tests/suites/runs for LLMs; includes a REST API to create tests, run tests (streaming), manage suites, run pipelines, webhook notifications, logging, and template-driven test content.
 
-Public endpoints and usage (selected highlights)
+Public endpoints and usage (selected highlights; updated for new path surface)
 
 - Health
   - GET /api/health
@@ -386,7 +409,7 @@ Module summaries
 Module purpose (summary)
 - Orchestrates execution of workflows for LLMs, including runner integration, test execution, and a simple REST API for managing workflows, runs, and logs. It integrates with an agent runner (runner-agent) and a gateway for model execution.
 
-Public endpoints and usage (selected highlights)
+Public endpoints and usage (selected highlights; updated for new path surface)
 
 - Health
   - GET /health
@@ -432,7 +455,7 @@ Module summaries
 Module purpose (summary)
 - Exposes REST endpoints and a WebSocket bridge to establish SSH sessions, run commands, and manage a minimal SFTP-like file system over SSH. Intended for interactive shells and remote file manipulations.
 
-Public endpoints and usage
+Public endpoints and usage (selected highlights)
 
 - Health
   - GET /health
@@ -626,13 +649,13 @@ Module-wise two-sentence summaries (for quick scan)
   - Purpose: Generates documentation from code/docs; ingests code, structure, API specs, and other artifacts, chunks them, calls LLMs, and produces a packaged documentation output.
 
 - llm-tester
-  - Purpose: A testing environment for LLM prompts and evaluation; supports suites/tests, test steps, logging, and optional streaming of test results.
+  - Purpose: A testing environment for LLM prompts and evaluation pipelines; supports suites, tests, run tracking, and integration with a gateway.
 
 - llm-workflows
-  - Purpose: Orchestrates end-to-end workflows for LLM-driven content generation; coordinates runners, steps, and actions with a job-based model.
+  - Purpose: Orchestrates end-to-end workflows for LLMs, including runner integration, test execution, and a simple REST API for managing workflows, runs, and logs. It integrates with an agent runner (runner-agent) and a gateway for model execution.
 
 - ssh-terminal
-  - Purpose: SSH terminal bridge enabling SSH sessions from the browser; exposes REST + WebSocket endpoints to manage sessions and run commands remotely.
+  - Purpose: SSH terminal bridge enabling SSH sessions from the browser; exposes REST + WS endpoints to manage sessions and run commands remotely.
 
 - llm-ide
   - Purpose: In-browser IDE with remote editing via SSH-backed sessions; supports Monaco, file trees, and editor orchestration to edit and run code in modules.
@@ -646,11 +669,9 @@ Module-wise two-sentence summaries (for quick scan)
 - logging orchestrator
   - Purpose: A central controller to configure, test, and push logging configurations to multiple modules; provides status and rollout facilities.
 
-- RAG related docs (admin UI)
+- RAG admin UI
   - Purpose: Admin UI for RAG, to inspect repos, docs, tags, conversations, and playgrounds; helps with troubleshooting and benchmarking.
 
 - Additional notes on integrations
   - Many modules expose admin APIs protected by tokens (e.g., INTERNAL_API_TOKEN) for mutation endpoints; use those tokens as needed for secure interactions.
   - The system is designed to be extensible: new modules can reuse existing gateway clients, embedding services, and storage abstractions used by the current modules.
-
-If you’d like, I can export this as a clean Markdown file or a JSON/yaml-ready API reference. I can also tailor the docs toward a particular module you’re planning to add (e.g., a new data source, a new gateway, or a new UI).📋

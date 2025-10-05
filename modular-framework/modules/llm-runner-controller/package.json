@@ -1,0 +1,21 @@
+{
+  "name": "llm-runner-controller",
+  "version": "0.1.0",
+  "description": "Runner Controller for managing LLM runner-agents (registry, health, exec proxy, configs, updates, installers, SSE events)",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "nodemon server/index.js"
+  },
+  "dependencies": {
+    "argon2": "^0.41.1",
+    "axios": "^1.7.2",
+    "better-sqlite3": "^9.6.0",
+    "body-parser": "^1.20.2",
+    "cors": "^2.8.5",
+    "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}
