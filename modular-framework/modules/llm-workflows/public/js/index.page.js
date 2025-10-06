@@ -86,7 +86,7 @@ function updatePromptPreview() {
 // Gateway models
 async function fetchGatewayModels() {
   try {
-    const r = await fetch('/api/v1/gateway/models', { credentials: 'include' });
+    const r = await fetch('./api/llm-models', { credentials: 'include' });
     const data = await safeJson(r);
     if (!r.ok) {
       console.warn('Failed to load gateway models:', data?.error || data);
@@ -223,7 +223,7 @@ function defaultActionSchema() {
           additionalProperties: false,
           required: ['type', 'content'],
           properties: {
-            type: { type: 'string', enum: ['bash', 'python', 'sql', 'http', 'plan', 'text'] },
+            type: { type: 'string', enum: ['bash', 'python', 'sql', 'http', 'plan', 'text', 'ssh'] },
             content: { type: 'string' },
             filename: { type: 'string' },
             cwd: { type: 'string' },
