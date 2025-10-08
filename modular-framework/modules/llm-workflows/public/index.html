@@ -649,6 +649,49 @@ function defaultActionSchema() {
 async function loadWorkflows() {
   try {
     const resp = await fetch('./api/workflows');
+
+    if (resp.status === 401) {
+      // Prompt for internal API token and retry once
+      promptSetToken();
+      updateTokenUi();
+      const resp2 = await fetch(`./api/workflows/${wf.id}/run`, {
+        method: 'POST',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ vars })
+      });
+      const data2 = await resp2.json();
+      if (!resp2.ok) {
+        toast('Run failed: ' + (data2.error || resp2.statusText));
+        return;
+      }
+      renderRunResult(data2);
+      await loadRuns();
+      return;
+    }
+
+    if (resp.status === 401) {
+      // Prompt for internal API token and retry once
+      promptSetToken();
+      updateTokenUi();
+      const resp2 = await fetch('./api/testStep', {
+        method: 'POST',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+          chat: wf.chat,
+          step,
+          vars,
+          execute: $('execInTest')?.checked === true
+        })
+      });
+      const data2 = await resp2.json();
+      if (!resp2.ok) {
+        toast('Step test failed: ' + (data2.error || resp2.statusText));
+        renderStepTestResult({ ok:false, error: data2.error || 'HTTP error', raw: data2.errorText || '' });
+        return;
+      }
+      renderStepTestResult(data2);
+      return;
+    }
     const data = await resp.json();
     state.workflows = data.workflows || [];
   } catch (e) {
@@ -911,7 +954,7 @@ function renderSteps() {
         <button class="danger">✕</button>
       </div>
     `;
-    const [_, bUp, bDown, bEdit, bRm] = row.querySelectorAll('button');
+    const [bUp, bDown, bEdit, bRm] = row.querySelectorAll('button');
     bUp.onclick = () => moveStep(idx, -1);
     bDown.onclick = () => moveStep(idx, +1);
     bEdit.onclick = () => { state.currentStepIdx = idx; renderStepEditor(); };
