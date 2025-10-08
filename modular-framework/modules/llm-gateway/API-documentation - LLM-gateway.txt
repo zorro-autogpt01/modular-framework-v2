@@ -1,0 +1,411 @@
+LLM Gateway API v1
+
+Base URL:
+
+/api/v1/gateway/api
+
+
+Purpose:
+The LLM Gateway acts as a central service for managing:
+
+LLM providers (OpenAI, Ollama, TogetherAI, etc.)
+
+Registered models under each provider
+
+Usage tracking and cost data per request
+
+A unified API surface for other modules (Chat, Workflows, Tester, etc.) to interact with LLMs in a consistent way.
+
+🔒 Authentication
+
+(Current version: unauthenticated; to be replaced by Basic Auth or JWT later.)
+Clients can access endpoints directly if they are on the same internal network.
+When authentication is added:
+
+Use the Authorization: Bearer <token> header for all endpoints.
+
+🩺 Health
+GET /health
+
+Description:
+Simple health probe used by load balancers, orchestrators, or the Admin UI.
+
+Response
+
+200 OK
+Content-Type: text/plain
+
+gateway-ok
+
+🧱 Providers API
+
+Providers are upstream LLM service connections (OpenAI, Ollama, etc.).
+
+Object Schema
+Field	Type	Description
+id	integer	Unique provider ID
+name	string	Logical name (openai, together, ollama-local, etc.)
+kind	string	One of openai, openai-compatible, or ollama
+base_url	string	Base URL of the provider’s REST API
+api_key	string	(optional) Authentication key for API access
+headers	object	(optional) Additional HTTP headers as JSON object
+GET /providers
+
+Description:
+List all configured providers.
+
+Response
+
+{
+  "items": [
+    {
+      "id": 1,
+      "name": "openai",
+      "kind": "openai",
+      "base_url": "https://api.openai.com",
+      "api_key": null,
+      "headers": { "User-Agent": "llm-gateway" }
+    }
+  ]
+}
+
+POST /providers
+
+Description:
+Register a new provider.
+
+Request Body
+
+{
+  "name": "openai",
+  "kind": "openai",
+  "base_url": "https://api.openai.com",
+  "api_key": "sk-xxxxx",
+  "headers": { "X-Client": "gateway" }
+}
+
+
+Response
+
+{
+  "provider": {
+    "id": 2,
+    "name": "openai",
+    "kind": "openai",
+    "base_url": "https://api.openai.com"
+  }
+}
+
+GET /providers/{id}
+
+Description:
+Retrieve detailed information for a single provider.
+
+Response
+
+{
+  "provider": {
+    "id": 2,
+    "name": "openai",
+    "kind": "openai",
+    "base_url": "https://api.openai.com",
+    "headers": {},
+    "api_key": null
+  }
+}
+
+PUT /providers/{id}
+
+Description:
+Update an existing provider.
+
+Request Body
+
+{
+  "name": "openai",
+  "kind": "openai",
+  "base_url": "https://api.openai.com/v1",
+  "headers": { "X-Client": "gateway" }
+}
+
+
+Response
+
+{
+  "provider": {
+    "id": 2,
+    "name": "openai",
+    "kind": "openai",
+    "base_url": "https://api.openai.com/v1",
+    "headers": { "X-Client": "gateway" }
+  }
+}
+
+DELETE /providers/{id}
+
+Description:
+Remove a provider by ID.
+
+Response
+
+{
+  "status": "deleted",
+  "id": 2
+}
+
+🧠 Models API
+
+Models define named logical configurations that reference upstream provider models.
+Each model is associated with a provider.
+
+Object Schema
+Field	Type	Description
+id	integer	Unique model ID
+provider_id	integer	Linked provider ID
+model_name	string	Name of upstream model (gpt-4o-mini, llama3, etc.)
+key	string	(optional) Unique internal alias (openai:gpt-4o-mini)
+display_name	string	(optional) Human-friendly name
+mode	string	auto, chat, or responses
+supports_responses	boolean	Whether model supports response mode
+supports_reasoning	boolean	Whether model supports reasoning mode
+input_cost_per_million	number	Cost for 1M input tokens
+output_cost_per_million	number	Cost for 1M output tokens
+currency	string	e.g. "USD"
+GET /models
+
+Description:
+List all models registered in the gateway.
+
+Response
+
+{
+  "items": [
+    {
+      "id": 10,
+      "provider_id": 1,
+      "model_name": "gpt-4o-mini",
+      "key": "openai:gpt-4o-mini",
+      "display_name": "GPT-4o Mini",
+      "mode": "chat",
+      "supports_responses": true,
+      "supports_reasoning": false,
+      "input_cost_per_million": 0.0015,
+      "output_cost_per_million": 0.002,
+      "currency": "USD"
+    }
+  ]
+}
+
+POST /models
+
+Description:
+Register a new model.
+
+Request Body
+
+{
+  "provider_id": 1,
+  "model_name": "gpt-4o-mini",
+  "key": "openai:gpt-4o-mini",
+  "display_name": "GPT-4o Mini",
+  "mode": "chat",
+  "supports_responses": true,
+  "supports_reasoning": false,
+  "input_cost_per_million": 0.0015,
+  "output_cost_per_million": 0.002,
+  "currency": "USD"
+}
+
+
+Response
+
+{
+  "model": {
+    "id": 10,
+    "provider_id": 1,
+    "model_name": "gpt-4o-mini",
+    "display_name": "GPT-4o Mini"
+  }
+}
+
+GET /models/{id}
+
+Description:
+Get details for a specific model.
+
+Response
+
+{
+  "model": {
+    "id": 10,
+    "provider_id": 1,
+    "model_name": "gpt-4o-mini",
+    "mode": "chat",
+    "supports_responses": true,
+    "input_cost_per_million": 0.0015,
+    "output_cost_per_million": 0.002,
+    "currency": "USD"
+  }
+}
+
+PUT /models/{id}
+
+Description:
+Update model parameters.
+
+Request Body
+
+{
+  "display_name": "GPT-4o Turbo",
+  "input_cost_per_million": 0.0012,
+  "output_cost_per_million": 0.0024
+}
+
+
+Response
+
+{
+  "model": {
+    "id": 10,
+    "display_name": "GPT-4o Turbo",
+    "input_cost_per_million": 0.0012,
+    "output_cost_per_million": 0.0024
+  }
+}
+
+DELETE /models/{id}
+
+Description:
+Delete a model definition.
+
+Response
+
+{
+  "status": "deleted",
+  "id": 10
+}
+
+📊 Usage API
+
+Tracks token usage and cost metrics for accounting and optimization.
+
+Object Schema
+Field	Type	Description
+id	integer	Unique record ID
+ts	timestamp	UTC timestamp of usage event
+model_id	integer	Associated model
+conversation_id	string	Optional conversation/session identifier
+input_tokens	integer	Number of tokens in request
+output_tokens	integer	Number of tokens in response
+cost	number	Calculated cost of this interaction
+GET /usage?limit={n}
+
+Description:
+Retrieve recent usage entries (default limit 100, max 500).
+
+Response
+
+{
+  "items": [
+    {
+      "id": 45,
+      "ts": "2025-10-08T12:22:31Z",
+      "model_id": 10,
+      "conversation_id": "conv_abc123",
+      "input_tokens": 200,
+      "output_tokens": 75,
+      "cost": 0.00055
+    }
+  ]
+}
+
+(Planned) POST /usage
+
+Description:
+Manually record a usage entry (normally internal).
+
+Request Body
+
+{
+  "model_id": 10,
+  "conversation_id": "conv_test",
+  "input_tokens": 150,
+  "output_tokens": 75,
+  "cost": 0.0004
+}
+
+🧩 Meta endpoints
+
+Used internally by modules or developers.
+
+GET /.well-known/module.json
+
+Description:
+Returns module metadata for auto-discovery by the framework UI.
+
+Response
+
+{
+  "name": "LLM Gateway",
+  "type": "dashboard",
+  "description": "Central gateway for all LLM interactions (providers, models, costs, usage).",
+  "configUrl": "/api/v1/gateway/admin/"
+}
+
+🖥️ Admin UI
+
+Location:
+
+/api/v1/gateway/admin/
+
+
+Description:
+Web interface for managing providers, models, and reviewing usage.
+The UI interacts with all endpoints above via the API_BASE = <gateway>/api prefix.
+
+🧠 Integration guidance for other modules
+Module	Typical Usage
+llm-chat	Query /models to list available models; call the corresponding model’s upstream endpoint via /api/v1/gateway/... proxy
+llm-workflows	Retrieve cost & model metadata; store usage via /usage
+llm-tester	Use /providers to verify which endpoints are online
+documentor / rag	Reference provider credentials centrally instead of storing keys locally
+ssh-terminal / others	Can hit /health to detect readiness before embedding the module
+🧩 Example Integration Flow
+1️⃣ Discover available models
+curl https://192.168.0.10:8443/api/v1/gateway/api/models
+
+2️⃣ Send a request via your own module
+
+You can store and reuse provider details from /providers.
+
+import requests
+
+gateway = "https://192.168.0.10:8443/api/v1/gateway/api"
+models = requests.get(f"{gateway}/models").json()["items"]
+
+model = next(m for m in models if m["display_name"] == "GPT-4o Mini")
+payload = {"prompt": "Hello world", "max_tokens": 50}
+
+# Example: direct call to upstream via LLM Gateway
+r = requests.post(f"{gateway}/proxy/{model['key']}", json=payload)
+print(r.json())
+
+🔧 Error Handling
+Code	Meaning	Typical cause
+400	Bad Request	Invalid input data
+401	Unauthorized	(future) Authentication missing
+404	Not Found	Invalid ID or route
+409	Conflict	Duplicate key (e.g., same model key)
+500	Internal Error	Database or provider failure
+
+Responses generally include:
+
+{ "error": "Descriptive error message" }
+
+🗂️ Versioning and Conventions
+Item	Value
+API prefix	/api/v1/gateway/api
+Content-Type	application/json
+Pagination	via ?limit= param
+Timezone	UTC
+Date format	ISO 8601 (YYYY-MM-DDTHH:mm:ssZ)
