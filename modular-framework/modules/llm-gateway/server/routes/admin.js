@@ -1,6 +1,6 @@
 const express = require('express'); const router = express.Router();
 const { ah } = require('../utils/asyncHandler');
-const { validate, str, oneOf, obj, num } = require('../utils/validate');
+const { validate, str, oneOf, obj, num, bool } = require('../utils/validate');
 const {
   listProviders, getProvider, createProvider, updateProvider, deleteProvider,
   listModels, getModel, getModelByKey, createModel, updateModel, deleteModel

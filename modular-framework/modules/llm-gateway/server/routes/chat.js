@@ -202,6 +202,7 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
   if (modelRow.provider_kind === 'ollama') {
     if (stream) {
       await callOllama({ ...upstream, onDelta, onDone, onError, rid });
+      telemetry.update(rid, { output: completionText });
       const completionChars = completionText.length;
       const outTok = countTextTokens(completionText, encName);
       const cost = calcCost({
@@ -247,6 +248,7 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
     } else {
       const { content } = await callOllama({ ...upstream, stream:false, rid });
       completionText = content || '';
+      telemetry.update(rid, { output: completionText });
       const completionChars = completionText.length;
       const outTok = countTextTokens(completionText, encName);
       const cost = calcCost({
@@ -293,6 +295,7 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
   // OpenAI / OpenAI-compatible
   if (stream) {
     await callOpenAICompat({ ...upstream, rid, onDelta, onDone, onError });
+    telemetry.update(rid, { output: completionText });
     const completionChars = completionText.length;
     const outTok = countTextTokens(completionText, encName);
     const cost = calcCost({
@@ -338,6 +341,7 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
     if (upstream.useResponses) {
       const textForAccounting = pickContentFromResponses(respPayload) || '';
       const completionChars = textForAccounting.length;
+      telemetry.update(rid, { output: textForAccounting });
       const outTok = countTextTokens(textForAccounting, encName);
       const cost = calcCost({
         inTok, outTok,
@@ -383,6 +387,7 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
 
     const completionTextLocal = (respPayload && respPayload.content) || '';
     const completionChars = completionTextLocal.length;
+    telemetry.update(rid, { output: completionTextLocal });
     const outTok = countTextTokens(completionTextLocal, encName);
     const cost = calcCost({
       inTok, outTok,
