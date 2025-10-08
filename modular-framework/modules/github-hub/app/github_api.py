@@ -120,6 +120,26 @@ class GHClient:
         r.raise_for_status()
         return r.json()
 
+    def compare_commits(self, owner: str, repo: str, base: str, head: str) -> Dict[str, Any]:
+        r = requests.get(
+            f"{self.base_url}/repos/{owner}/{repo}/compare/{base}...{head}",
+            headers=self._h(), timeout=30
+        )
+        r.raise_for_status()
+        return r.json()
+
+    def list_commits(self, owner: str, repo: str, sha: Optional[str] = None,
+                     path: Optional[str] = None, per_page: int = 100) -> List[Dict[str, Any]]:
+        params = {"sha": sha, "path": path, "per_page": per_page}
+        params = {k: v for k, v in params.items() if v is not None}
+        r = requests.get(
+            f"{self.base_url}/repos/{owner}/{repo}/commits",
+            headers=self._h(), params=params, timeout=30
+        )
+        r.raise_for_status()
+        return r.json()
+
+
     def batch_commit(self, owner: str, repo: str, branch: str, message: str, changes: List[Dict[str, str]]) -> Dict[str, Any]:
         """
         changes: [{ "path": "dir/file.txt", "content": "string", "mode": "100644" }]

@@ -140,14 +140,14 @@ services:
       context: ./github-hub
     container_name: github-hub-module
     environment:
-      - PORT=3005
+      - PORT=3002
       - GITHUB_TOKEN=${GITHUB_TOKEN}
       - GH_TOKEN_KEY=${GH_TOKEN_KEY}
       - DATA_DIR=/data
     volumes:
       - ./github-hub/data:/data
-    expose:
-      - "3005"
+    ports:
+      - "3002:3002"
     networks:
       - app-network
 

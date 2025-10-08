@@ -18,7 +18,7 @@ COPY public ./public
 # data dir for encrypted config/token
 RUN mkdir -p /data
 ENV DATA_DIR=/data
-ENV PORT=3005
+ENV PORT=3002
 
-EXPOSE 3005
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "3005"]
+EXPOSE 3002
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "3002"]

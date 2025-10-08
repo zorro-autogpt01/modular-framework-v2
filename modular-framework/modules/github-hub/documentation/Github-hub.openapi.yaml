@@ -1,0 +1,552 @@
+openapi: 3.0.3
+info:
+  title: GitHub Hub
+  version: 0.3.0
+  description: >
+    A lightweight GitHub gateway for your modular framework.
+    Supports multiple persistent repository connections and exposes
+    common GitHub/git-style operations via a simple HTTP API.
+servers:
+  - url: http://localhost:3002
+    description: Local container (uvicorn)
+  - url: /
+    description: Relative (useful when proxied behind the framework)
+
+tags:
+  - name: Health
+  - name: Connections
+  - name: GitHub
+  - name: Legacy
+
+paths:
+  /api/health:
+    get:
+      tags: [Health]
+      summary: Health check
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /api/connections:
+    get:
+      tags: [Connections]
+      summary: List connections (redacted)
+      responses:
+        "200":
+          description: Connection list with default
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  default_id:
+                    type: string
+                    nullable: true
+                  connections:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Connection"
+    post:
+      tags: [Connections]
+      summary: Create or update a connection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectionIn"
+      responses:
+        "200":
+          description: Saved and validated against GitHub
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean, example: true }
+                  id: { type: string }
+                  branches:
+                    type: array
+                    items: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /api/connections/{conn_id}:
+    delete:
+      tags: [Connections]
+      summary: Delete a connection
+      parameters: [ { $ref: "#/components/parameters/ConnIdPath" } ]
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean, example: true }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/connections/{conn_id}/default:
+    post:
+      tags: [Connections]
+      summary: Make a connection the default
+      parameters: [ { $ref: "#/components/parameters/ConnIdPath" } ]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, default_id]
+                properties:
+                  ok: { type: boolean }
+                  default_id: { type: string }
+
+  /api/connections/{conn_id}/health:
+    get:
+      tags: [Connections]
+      summary: Validate a connection by listing branches
+      parameters: [ { $ref: "#/components/parameters/ConnIdPath" } ]
+      responses:
+        "200":
+          description: GitHub responded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean, example: true }
+                  branches:
+                    type: array
+                    items: { type: string }
+        "502": { $ref: "#/components/responses/BadGateway" }
+
+  /api/config:
+    get:
+      tags: [Legacy]
+      summary: Legacy config view (multi-connection overview)
+      responses:
+        "200":
+          description: Multi-connection summary
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [default_id, connections]
+                properties:
+                  default_id: { type: string, nullable: true }
+                  connections:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        name: { type: string, nullable: true }
+                        repo_url: { type: string }
+                        default_branch: { type: string }
+                        base_url: { type: string }
+                        branches:
+                          type: array
+                          items: { type: string }
+
+  /api/branches:
+    get:
+      tags: [GitHub]
+      summary: List branches
+      parameters:
+        - $ref: "#/components/parameters/ConnIdQuery"
+        - $ref: "#/components/parameters/XConnHeader"
+      responses:
+        "200":
+          description: Branch names
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BranchList"
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/branch:
+    post:
+      tags: [GitHub]
+      summary: Create a branch from another branch
+      parameters:
+        - $ref: "#/components/parameters/NewBranchQuery"
+        - $ref: "#/components/parameters/FromBranchQuery"
+        - $ref: "#/components/parameters/ConnIdQuery"
+        - $ref: "#/components/parameters/XConnHeader"
+      responses:
+        "200":
+          description: Git ref object from GitHub
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/tree:
+    get:
+      tags: [GitHub]
+      summary: List repository tree (optionally filtered by prefix)
+      parameters:
+        - in: query
+          name: path
+          schema: { type: string }
+          description: Optional directory prefix to filter returned items
+        - in: query
+          name: branch
+          schema: { type: string }
+        - in: query
+          name: recursive
+          schema: { type: boolean, default: true }
+        - $ref: "#/components/parameters/ConnIdQuery"
+        - $ref: "#/components/parameters/XConnHeader"
+      responses:
+        "200":
+          description: Tree listing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TreeResponse"
+
+  /api/file:
+    get:
+      tags: [GitHub]
+      summary: Get a file (decoded content included)
+      parameters:
+        - in: query
+          name: path
+          required: true
+          schema: { type: string }
+        - in: query
+          name: branch
+          schema: { type: string }
+        - $ref: "#/components/parameters/ConnIdQuery"
+        - $ref: "#/components/parameters/XConnHeader"
+      responses:
+        "200":
+          description: File metadata + decoded content
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileContentResponse"
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [GitHub]
+      summary: Create or update a file
+      parameters:
+        - $ref: "#/components/parameters/ConnIdQuery"
+        - $ref: "#/components/parameters/XConnHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FilePut" }
+      responses:
+        "200":
+          description: GitHub content/commit response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400": { $ref: "#/components/responses/BadRequest" }
+    delete:
+      tags: [GitHub]
+      summary: Delete a file
+      parameters:
+        - in: query
+          name: path
+          required: true
+          schema: { type: string }
+        - in: query
+          name: message
+          required: true
+          schema: { type: string }
+        - in: query
+          name: sha
+          required: true
+          schema: { type: string }
+        - in: query
+          name: branch
+          schema: { type: string }
+        - $ref: "#/components/parameters/ConnIdQuery"
+        - $ref: "#/components/parameters/XConnHeader"
+      responses:
+        "200":
+          description: GitHub delete content response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /api/batch/commit:
+    post:
+      tags: [GitHub]
+      summary: Create a single commit that updates multiple files
+      parameters:
+        - $ref: "#/components/parameters/ConnIdQuery"
+        - $ref: "#/components/parameters/XConnHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BatchCommit" }
+      responses:
+        "200":
+          description: New commit SHA
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchCommitResult"
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /api/pr:
+    post:
+      tags: [GitHub]
+      summary: Create a pull request
+      parameters:
+        - $ref: "#/components/parameters/ConnIdQuery"
+        - $ref: "#/components/parameters/XConnHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PullRequestIn" }
+      responses:
+        "200":
+          description: PR object
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PRCreateResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /api/compare:
+    get:
+      tags: [GitHub]
+      summary: Compare two refs (base...head)
+      parameters:
+        - in: query
+          name: base
+          required: true
+          schema: { type: string }
+        - in: query
+          name: head
+          required: true
+          schema: { type: string }
+        - $ref: "#/components/parameters/ConnIdQuery"
+        - $ref: "#/components/parameters/XConnHeader"
+      responses:
+        "200":
+          description: GitHub compare response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompareResponse"
+
+  /api/commits:
+    get:
+      tags: [GitHub]
+      summary: List commits (optionally filtered)
+      parameters:
+        - in: query
+          name: sha
+          schema: { type: string }
+        - in: query
+          name: path
+          schema: { type: string }
+        - in: query
+          name: per_page
+          schema: { type: integer, default: 100, minimum: 1, maximum: 100 }
+        - $ref: "#/components/parameters/ConnIdQuery"
+        - $ref: "#/components/parameters/XConnHeader"
+      responses:
+        "200":
+          description: Commit list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/CommitObject" }
+
+components:
+  parameters:
+    ConnIdPath:
+      in: path
+      name: conn_id
+      required: true
+      schema: { type: string }
+      description: Connection ID
+    ConnIdQuery:
+      in: query
+      name: conn_id
+      required: false
+      schema: { type: string }
+      description: Connection ID. If omitted, the server uses the configured default connection.
+    XConnHeader:
+      in: header
+      name: X-GH-Conn
+      required: false
+      schema: { type: string }
+      description: Alternative to `conn_id` query for selecting a connection.
+    NewBranchQuery:
+      in: query
+      name: new
+      required: true
+      schema: { type: string }
+      description: New branch name
+    FromBranchQuery:
+      in: query
+      name: from
+      required: true
+      schema: { type: string }
+      description: Source branch name
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    BadGateway:
+      description: Upstream GitHub error
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        detail:
+          type: string
+          example: PR creation failed: ...
+    HealthResponse:
+      type: object
+      properties:
+        status: { type: string, example: ok }
+        default_id: { type: string, nullable: true }
+        connections:
+          type: array
+          items: { type: string }
+    ConnectionIn:
+      type: object
+      required: [id, repo_url]
+      properties:
+        id: { type: string, example: core-repo }
+        name: { type: string, nullable: true }
+        repo_url: { type: string, example: https://github.com/acme/core.git }
+        default_branch: { type: string, default: main }
+        base_url: { type: string, default: https://api.github.com }
+        token:
+          type: string
+          nullable: true
+          description: PAT for this connection (stored encrypted if key configured)
+    Connection:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string, nullable: true }
+        repo_url: { type: string }
+        default_branch: { type: string }
+        base_url: { type: string }
+        branches:
+          type: array
+          items: { type: string }
+    BranchList:
+      type: object
+      properties:
+        branches:
+          type: array
+          items: { type: string }
+    FilePut:
+      type: object
+      required: [path, message, content]
+      properties:
+        path: { type: string, example: README.md }
+        message: { type: string, example: "chore: update README" }
+        content: { type: string, description: Raw file content (server base64-encodes) }
+        branch: { type: string, nullable: true }
+        sha:
+          type: string
+          nullable: true
+          description: Required by GitHub when updating an existing file
+    BatchChange:
+      type: object
+      required: [path, content]
+      properties:
+        path: { type: string }
+        content: { type: string }
+        mode: { type: string, default: "100644" }
+    BatchCommit:
+      type: object
+      required: [branch, message, changes]
+      properties:
+        branch: { type: string }
+        message: { type: string }
+        changes:
+          type: array
+          items: { $ref: "#/components/schemas/BatchChange" }
+    BatchCommitResult:
+      type: object
+      properties:
+        commit_sha: { type: string }
+    PullRequestIn:
+      type: object
+      required: [title, head, base]
+      properties:
+        title: { type: string }
+        head: { type: string, description: "branch or user:branch" }
+        base: { type: string, description: target branch }
+        body: { type: string, nullable: true }
+        draft: { type: boolean, default: false }
+    PRCreateResponse:
+      type: object
+      properties:
+        ok: { type: boolean, example: true }
+        pull_request:
+          type: object
+          additionalProperties: true
+    TreeItem:
+      type: object
+      properties:
+        path: { type: string }
+        mode: { type: string }
+        type: { type: string, enum: [blob, tree, commit] }
+        sha: { type: string }
+        size: { type: integer, nullable: true }
+      additionalProperties: true
+    TreeResponse:
+      type: object
+      properties:
+        branch: { type: string }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/TreeItem" }
+    FileContentResponse:
+      type: object
+      description: GitHub "contents" response plus server-added decoded content
+      properties:
+        decoded_content: { type: string }
+        sha: { type: string }
+      additionalProperties: true
+    CompareResponse:
+      type: object
+      additionalProperties: true
+    CommitObject:
+      type: object
+      additionalProperties: true

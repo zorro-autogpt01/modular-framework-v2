@@ -5,6 +5,7 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'/>">
   <title>GitHub Hub</title>
   <link rel="stylesheet" href="./css/theme.css"/>
   <style>
@@ -68,6 +69,13 @@
   <div class="wrap">
     <div class="side">
       <h3>Repository</h3>
+      <div class="connbar">
+        <select id="connSelect" title="Active connection"></select>
+        <button class="ghost" id="manageConnsBtn" title="Manage connections">Manage</button>
+        <div class="grow"></div>
+        <button class="ghost" id="openPrBtn" title="Create Pull Request">New PR</button>
+      </div>
+      <input type="search" id="filterInput" placeholder="Filter files (glob or /regex/)" />
       <label>Repo URL</label>
       <input id="repoUrl" placeholder="https://github.com/owner/repo" />
       <label>Branch</label>
@@ -94,8 +102,6 @@
       </div>
       <div id="tree" class="tree"></div>
     </div>
-    <h3 style="margin-top:10px">Structure</h3>
-
     <!-- Hidden in embed=side -->
     <div class="main">
       <h3>Selected File</h3>
@@ -107,16 +113,71 @@
       </div>
     </div>
   </div>
-  <script type="module">
-    import { loadConfig, loadBranches, loadTree, saveConfig, saveFile } from './js/app.js';
-    const $ = (id)=>document.getElementById(id);
-    $('saveCfgBtn')?.addEventListener('click', saveConfig);
-    $('reloadBtn')?.addEventListener('click', loadTree);
-    $('saveFileBtn')?.addEventListener('click', saveFile);
-    $('branchSelect')?.addEventListener('change', loadTree);
-    document.addEventListener('DOMContentLoaded', async ()=>{
-      await loadConfig(); await loadTree();
-    });
-</script>
+<div id="connModal" class="modal">
+  <div class="box">
+    <h3>Connections</h3>
+    <h4 style="margin:6px 0 8px">Add / Edit</h4>
+      <div class="grid2">
+        <div>
+          <label>ID</label><input id="mId" placeholder="owner-repo or any slug" />
+          <label>Name (display)</label><input id="mName" placeholder="My Repo" />
+          <label>Repo URL</label><input id="mRepo" placeholder="https://github.com/owner/repo" />
+          <label>Default Branch</label><input id="mBranch" value="main" />
+        </div>
+        <div>
+          <label>Base API URL</label><input id="mBase" placeholder="https://api.github.com" />
+          <label>Token (PAT)</label><input id="mTok" placeholder="ghp_..." />
+        </div>
+      </div>
+    <div id="connList" class="muted" style="margin:6px 0 10px">Loading…</div>
+    <hr/>
+
+    <h4 style="margin:6px 0 8px">Add / Edit</h4>
+    <div class="grid2">
+      <div>
+        <label>Name (display)</label><input id="mName" placeholder="My Repo" />
+        <label>Repo URL</label><input id="mRepo" placeholder="https://github.com/owner/repo" />
+        <label>Default Branch</label><input id="mBranch" value="main" />
+      </div>
+      <div>
+        <label>Base API URL</label><input id="mBase" placeholder="https://api.github.com" />
+        <label>Token (PAT)</label><input id="mTok" placeholder="ghp_..." />
+      </div>
+    </div>
+
+    <div class="row">
+      <button id="saveConnBtn">Save</button>
+      <button class="ghost" id="closeConnBtn">Close</button>
+    </div>
+    <small class="muted">Tokens are stored encrypted if a key is configured on the server.</small>
+  </div>
+</div>
+
+<!-- New PR modal -->
+<div id="prModal" class="modal">
+  <div class="box">
+    <h3>New Pull Request</h3>
+    <div class="grid2">
+      <div>
+        <label>Title</label><input id="prTitle" />
+        <label>Base (target)</label><input id="prBase" placeholder="main" />
+      </div>
+      <div>
+        <label>Head (source)</label><input id="prHead" placeholder="feature/my-change" />
+        <label>Draft?</label>
+        <select id="prDraft"><option value="false">No</option><option value="true">Yes</option></select>
+      </div>
+    </div>
+    <label>Body (markdown)</label>
+    <textarea id="prBody" rows="6"></textarea>
+    <div class="row">
+      <button id="createPrBtn">Create PR</button>
+      <button class="ghost" id="closePrBtn">Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+<script type="module" src="./js/app.js"></script>
 </body>
 </html>

@@ -27,6 +27,17 @@ const fileCache = new Map();
 
 /** Robust tokenizer loader with local+CDN fallback and safe approximation */
 let _encPromise = null;
+let HAS_MULTI = false;
+let EDITING_CONN = null;
+
+function slugify(s){
+  return (s||'').toLowerCase()
+    .replace(/https?:\/\/github\.com\//,'')
+    .replace(/[^\w\-]+/g,'-')
+    .replace(/-+/g,'-')
+    .replace(/^-|-$/g,'');
+}
+
 async function getEncoder() {
   if (!_encPromise) {
     _encPromise = (async () => {
@@ -91,11 +102,153 @@ async function buildClipboardText(paths, branch) {
 }
 
 
-async function api(path, init){
-  const r = await fetch(`${API}${path}`, init);
-  if (!r.ok) throw new Error(await r.text());
-  return r.json();
+let ACTIVE_CONN = null;   // current connection id (null => default)
+const endpointProbeCache = new Map();
+
+async function hasEndpoint(path) {
+  // checks for 2xx/3xx, caches per path
+  if (endpointProbeCache.has(path)) return endpointProbeCache.get(path);
+  try {
+    const r = await fetch(`${API}${path}`, { method: 'OPTIONS' });
+    const ok = r.ok || (r.status >= 200 && r.status < 400);
+    endpointProbeCache.set(path, ok);
+    return ok;
+  } catch {
+    endpointProbeCache.set(path, false);
+    return false;
+  }
 }
+
+async function api(path, init) {
+  // Build absolute URL so we can mutate search params safely
+  const url = new URL(`${API}${path}`, location.origin);
+
+  // If the caller already set conn_id explicitly, respect it. Otherwise inject ACTIVE_CONN.
+  if (ACTIVE_CONN && !url.searchParams.has('conn_id')) {
+    url.searchParams.set('conn_id', ACTIVE_CONN);
+  }
+
+  const headers = { ...(init?.headers || {}), 'X-Requested-With': 'github-hub' };
+  if (ACTIVE_CONN) headers['X-GH-Conn'] = ACTIVE_CONN;
+
+  const res = await fetch(url.toString(), { ...init, headers });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+async function loadConnections() {
+  const sel = $('connSelect');
+  const manageBtn = $('manageConnsBtn');
+
+  // Try new multi-conn endpoint first
+  let multi = false;
+  try {
+    const r = await api('/connections');
+    const conns = r.connections || [];
+    const def = r.default_id || r.defaultId || null;
+
+    sel.innerHTML = '';
+    conns.forEach(c => {
+      const o = new Option(c.name || c.id || c.repo_url, c.id);
+      sel.appendChild(o);
+    });
+    ACTIVE_CONN = def || conns[0]?.id || null;
+    if (ACTIVE_CONN) sel.value = ACTIVE_CONN;
+
+    manageBtn.disabled = false;
+    HAS_MULTI = true;
+   const active = conns.find(c => c.id === (ACTIVE_CONN || def)) || conns[0];
+   if (active) {
+     $('repoUrl').value = (active.repo_url || '').replace(/\/+$/,'');
+     $('baseUrl').value = active.base_url || 'https://api.github.com';
+   }
+    multi = true;
+  } catch {
+    // Fallback to legacy single-connection config
+    const c = await api('/config');
+    sel.innerHTML = '';
+    const o = new Option((c.repo_url || 'Default').replace(/\/+$/,''), 'default');
+    sel.appendChild(o);
+    ACTIVE_CONN = null;            // legacy: no conn_id
+    sel.value = 'default';
+    manageBtn.disabled = true;     // disable manager when backend lacks it
+    HAS_MULTI = false;
+  }
+
+  // show/hide manage button
+  if (!multi) manageBtn.classList.add('hidden'); else manageBtn.classList.remove('hidden');
+}
+
+function toast(msg, ok = true) {
+  const t = $('toast'); if (!t) return;
+  t.textContent = msg;
+  t.style.borderColor = ok ? '#2d7d46' : '#a1260d';
+  t.classList.add('show');
+  setTimeout(()=> t.classList.remove('show'), 2000);
+}
+
+function openModal(id){ $(id)?.classList.add('show'); }
+function closeModal(id){ $(id)?.classList.remove('show'); }
+
+async function openConnManager() {
+  try {
+    const r = await api('/connections');
+    const list = r.connections || [];
+    const def = r.default_id || r.defaultId;
+    const box = $('connList');
+    if (!box) return;
+
+    if (!list.length) {
+      box.innerHTML = '<div class="muted">No connections yet.</div>';
+      return;
+    }
+
+    box.innerHTML = list.map(c => {
+      const isDef = c.id === def;
+      return `
+        <div class="item" style="display:flex;gap:8px;align-items:center;justify-content:space-between;border:1px solid var(--line);border-radius:6px;padding:6px 8px;margin:6px 0">
+          <div>
+            <strong>${c.name || c.id}</strong>
+            <div class="muted">${(c.repo_url||'').replace(/\/+$/,'')} • ${c.default_branch || 'main'}</div>
+          </div>
+          <div>
+            <button class="ghost" data-default="${c.id}" ${isDef?'disabled':''}>${isDef?'Default':'Make default'}</button>
+            <button class="ghost" data-edit="${c.id}">Edit</button>
+            <button class="danger" data-del="${c.id}">Delete</button>
+          </div>
+        </div>`;
+    }).join('');
+
+    // wire actions
+    box.querySelectorAll('button[data-default]')?.forEach(b => b.onclick = async () => {
+      const id = b.getAttribute('data-default');
+      try { await api(`/connections/${encodeURIComponent(id)}/default`, { method:'POST' });await api(`/connections/${encodeURIComponent(id)}/default`, { method:'PUT' }); toast('Default updated'); await loadConnections(); await openConnManager(); } catch(e){ toast(e.message,false); }
+    });
+    box.querySelectorAll('button[data-del]')?.forEach(b => b.onclick = async () => {
+      const id = b.getAttribute('data-del');
+      if (!confirm('Delete connection?')) return;
+      try { await api(`/connections/${encodeURIComponent(id)}`, { method:'DELETE' }); toast('Deleted'); await loadConnections(); await openConnManager(); } catch(e){ toast(e.message,false); }
+    });
+    box.querySelectorAll('button[data-edit]')?.forEach(b => b.onclick = async () => {
+      const id = b.getAttribute('data-edit');
+      const c = (r.connections||[]).find(x => x.id === id);
+      if (!c) return;
+      EDITING_CONN = id;
+      $('mId').value = c.id || '';
+      $('mName').value = c.name || '';
+      $('mRepo').value = c.repo_url || '';
+      $('mBranch').value = c.default_branch || 'main';
+      $('mBase').value = c.base_url || 'https://api.github.com';
+      $('mTok').value = ''; // never prefill token
+    });
+
+    openModal('connModal');
+  } catch {
+    toast('Multi-connection API not available', false);
+  }
+}
+
+
 
 export async function loadConfig(){
   try{
@@ -107,18 +260,23 @@ export async function loadConfig(){
 }
 
 export async function saveConfig(){
-  const body = {
-    repo_url: $('repoUrl').value.trim(),
-    default_branch: $('branchSelect').value || 'main',
-  };
-  const tok = $('token').value.trim(); if (tok) body.token = tok;
-  const base = $('baseUrl').value.trim(); if (base) body.base_url = base;
+  const repo_url = $('repoUrl').value.trim();
+  const default_branch = $('branchSelect').value || 'main';
+  const base_url = $('baseUrl').value.trim() || 'https://api.github.com';
+  const token = $('token').value.trim();
 
-  await api("/config", {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify(body)
-  });
+  if (HAS_MULTI) {
+    const id = ACTIVE_CONN || slugify(repo_url) || 'default';
+    const b = { id, repo_url, default_branch, base_url };
+    if (token) b.token = token;
+    await api('/connections', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(b) });
+    toast('Connection saved');
+    await loadConnections();
+  } else {
+    await api('/config', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ repo_url, default_branch, base_url, token: token || undefined })
+    });
+  }
   $('token').value = '';
   await loadBranches();
   await loadTree();
@@ -169,6 +327,57 @@ export async function saveFile(){
   await loadTree();
   await openFile(currentFile);
 }
+
+function matchFilter(path, value) {
+  if (!value) return true;
+  const v = value.trim();
+  if (v.startsWith('/') && v.endsWith('/') && v.length > 2) {
+    try { return new RegExp(v.slice(1,-1), 'i').test(path); }
+    catch { return true; }
+  }
+  return path.toLowerCase().includes(v.toLowerCase());
+}
+
+function applyFilter(){
+  const treeEl = $('tree'); const q = $('filterInput')?.value || '';
+  if (!treeEl) return;
+  // toggle files
+  treeEl.querySelectorAll('li.file').forEach(li=>{
+    const p = li.dataset.path || '';
+    li.style.display = matchFilter(p, q) ? '' : 'none';
+  });
+  // toggle directories with no visible children
+  treeEl.querySelectorAll('li.dir').forEach(li=>{
+    const hasVisible = li.querySelector(':scope li.file:not([style*="display: none"])') ||
+                       li.querySelector(':scope li.dir:not([style*="display: none"])');
+    li.style.display = hasVisible ? '' : 'none';
+  });
+}
+
+async function createPR(){
+  const title = $('prTitle').value.trim();
+  const head  = $('prHead').value.trim();
+  const base  = $('prBase').value.trim() || 'main';
+  const body  = $('prBody').value;
+  const draft = $('prDraft').value === 'true';
+
+  if (!title || !head) { toast('Title and head are required', false); return; }
+
+  try{
+    const res = await api('/pr', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ title, head, base, body, draft })
+    });
+    const url = res?.pull_request?.html_url || '';
+    toast('PR created');
+    closeModal('prModal');
+    if (url) window.open(url, '_blank');
+  }catch(e){
+    toast(`PR failed: ${e.message}`, false);
+  }
+}
+
 
 // -------- Tree (collapsed by default, folder-select selects all descendants) ----------
 export async function loadTree(){
@@ -398,6 +607,7 @@ export async function loadTree(){
   }catch(e){
     treeEl.innerHTML = `<div class="muted">Failed to load tree: ${e.message}</div>`;
   }
+  applyFilter();
 }
 
 // ---------- one-time UI wiring ----------
@@ -405,17 +615,58 @@ let _wired = false;
 function wireUIOnce(){
   if (_wired) return;
   _wired = true;
+
   $('saveCfgBtn')?.addEventListener('click', saveConfig);
   $('reloadBtn')?.addEventListener('click', loadTree);
   $('saveFileBtn')?.addEventListener('click', saveFile);
   $('branchSelect')?.addEventListener('change', loadTree);
+
+  $('connSelect')?.addEventListener('change', async (e) => {
+    ACTIVE_CONN = (e.target.value === 'default') ? null : e.target.value;
+    await loadBranches();
+    await loadTree();
+  });
+  $('manageConnsBtn')?.addEventListener('click', openConnManager);
+  $('closeConnBtn')?.addEventListener('click', ()=> closeModal('connModal'));
+  $('saveConnBtn')?.addEventListener('click', async ()=>{
+  const id = $('mId').value.trim() || EDITING_CONN ||
+             slugify($('mName').value) || slugify($('mRepo').value) ||
+             ('conn-' + Date.now());
+  const body = {
+    id,
+      name: $('mName').value.trim(),
+      repo_url: $('mRepo').value.trim(),
+      default_branch: $('mBranch').value.trim() || 'main',
+      base_url: $('mBase').value.trim() || 'https://api.github.com'
+    };
+    const tok = $('mTok').value.trim(); if (tok) body.token = tok;
+    try {
+      await api('/connections', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+      toast('Connection saved');
+      $('mTok').value = '';
+      $('mId').value = '';
+      EDITING_CONN = null;
+      closeModal('connModal');
+      await loadConnections();
+      await loadBranches();
+      await loadTree();
+    } catch (e) { toast(e.message, false); }
+  });
+
+  $('openPrBtn')?.addEventListener('click', ()=> openModal('prModal'));
+  $('closePrBtn')?.addEventListener('click', ()=> closeModal('prModal'));
+  $('createPrBtn')?.addEventListener('click', createPR);
+
+  $('filterInput')?.addEventListener('input', applyFilter);
 }
 
 // Init
 window.addEventListener('DOMContentLoaded', async ()=>{
   wireUIOnce();
-  await loadConfig();     // reads saved config (if any)
-  await loadBranches();   // populates branch list
-  await loadTree();       // builds collapsed tree
+  await loadConfig();     // legacy config still supported
+  await loadConnections();// populate connSelect (multi or legacy)
+  await loadBranches();   // uses ACTIVE_CONN via api()
+  await loadTree();       // builds tree
 });
+
 

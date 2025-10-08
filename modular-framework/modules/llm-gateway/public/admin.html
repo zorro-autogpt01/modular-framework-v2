@@ -11,14 +11,16 @@
     <div class="inline">
       <span class="dot" id="dot"></span>
       <strong>LLM Gateway</strong>
-      <span class="tab active">Admin</span>
+      <span class="tab active" id="tabAdmin">Admin</span>
+      <span class="tab" id="tabLive">Live</span>
     </div>
     <div class="grow"></div>
     <button id="healthBtn" class="ghost">Health Check</button>
     <span id="healthText" class="muted">Idle</span>
   </div>
 
-  <div class="pane">
+  <!-- Admin pane -->
+  <div class="pane" id="adminPane">
     <h2 style="margin:10px 0 12px">⚙️ LLM Gateway – Admin</h2>
 
     <!-- Providers -->
@@ -129,21 +131,44 @@
         <tbody></tbody>
       </table>
     </div>
+  </div>
 
-    <!-- Live telemetry -->
+  <!-- Live Interactions pane -->
+  <div class="pane" id="livePane" style="display:none">
+    <h2 style="margin:10px 0 12px">📡 Live LLM Interactions</h2>
     <div class="card">
-      <h3>Live LLM Interactions</h3>
-      <div class="inline" style="margin-bottom:8px">
-        <button id="connectLive" class="ghost">Connect</button>
-        <button id="disconnectLive" class="ghost">Disconnect</button>
-        <span id="liveStatus" class="muted">Disconnected</span>
+      <div class="row-live" style="margin-bottom:10px">
+        <div class="inline">
+          <label style="margin:0 8px 0 0">Scope</label>
+          <select id="scopeSel">
+            <option value="live">Live</option>
+            <option value="conversation">Conversation</option>
+          </select>
+          <input id="convId" placeholder="conversation_id (when Scope=Conversation)" style="width:320px; margin-left:8px">
+          <button id="followBtn" class="ghost">Follow latest</button>
+        </div>
+        <div class="tiny">Subscribed to <code class="mono" id="sseUrlTxt"></code></div>
       </div>
-      <div id="liveList" class="live-list"></div>
+      <div class="two-cols">
+        <div>
+          <label>Interactions</label>
+          <div id="liveList" class="list list-scroll"></div>
+        </div>
+        <div>
+          <div class="row-live" style="margin-bottom:6px">
+            <label class="inline">Transcript</label>
+            <div class="inline">
+              <button id="copyTranscript" class="copy-btn">Copy transcript</button>
+            </div>
+          </div>
+          <div id="detail" style="min-height:180px"></div>
+        </div>
+      </div>
     </div>
   </div>
 
 <script>
-/* Small status helpers */
+/* ---------------- Small status helpers ---------------- */
 const dot = document.getElementById('dot');
 const healthText = document.getElementById('healthText');
 function setBusy(b){ if(!dot||!healthText) return; dot.classList.toggle('on', b); healthText.textContent = b ? 'Checking…' : 'Idle'; }
@@ -151,29 +176,19 @@ const BASE = window.location.pathname.replace(/\/admin.*/, '');
 const API_BASE = `${BASE}/api`;
 const HEALTH_PATH = `${BASE}/health`;
 
-const pName = document.getElementById('pName');
-const pKind = document.getElementById('pKind');
-const pBaseUrl = document.getElementById('pBaseUrl');
-const pApiKey = document.getElementById('pApiKey');
-const pHeaders = document.getElementById('pHeaders');
-const saveProvider = document.getElementById('saveProvider');
-const resetProvider = document.getElementById('resetProvider');
+/* ---------------- Tabs ---------------- */
+const tabAdmin = document.getElementById('tabAdmin');
+const tabLive = document.getElementById('tabLive');
+const adminPane = document.getElementById('adminPane');
+const livePane = document.getElementById('livePane');
 
-const mProviderId = document.getElementById('mProviderId');
-const mModelName = document.getElementById('mModelName');
-const mKey = document.getElementById('mKey');
-const mDisplayName = document.getElementById('mDisplayName');
-const mMode = document.getElementById('mMode');
-const mResp = document.getElementById('mResp');
-const mReason = document.getElementById('mReason');
-const mCurrency = document.getElementById('mCurrency');
-const mInCost = document.getElementById('mInCost');
-const mOutCost = document.getElementById('mOutCost');
+function showAdmin(){ tabAdmin.classList.add('active'); tabLive.classList.remove('active'); adminPane.style.display='block'; livePane.style.display='none'; }
+function showLive(){ tabLive.classList.add('active'); tabAdmin.classList.remove('active'); adminPane.style.display='none'; livePane.style.display='block'; ensureSSE(); }
 
-const saveModel = document.getElementById('saveModel');
-const resetModel = document.getElementById('resetModel');
+tabAdmin?.addEventListener('click', showAdmin);
+tabLive?.addEventListener('click', showLive);
 
-/* API helper */
+/* ---------------- API helper ---------------- */
 async function api(path, method='GET', body) {
   const res = await fetch(`${API_BASE}${path}`, {
     method,
@@ -184,7 +199,7 @@ async function api(path, method='GET', body) {
   return await res.json();
 }
 
-/* Health check */
+/* ---------------- Health check ---------------- */
 document.getElementById('healthBtn')?.addEventListener('click', async () => {
   try{
     setBusy(true);
@@ -199,7 +214,15 @@ document.getElementById('healthBtn')?.addEventListener('click', async () => {
   }
 });
 
-/* Providers */
+/* ---------------- Providers ---------------- */
+const pName = document.getElementById('pName');
+const pKind = document.getElementById('pKind');
+const pBaseUrl = document.getElementById('pBaseUrl');
+const pApiKey = document.getElementById('pApiKey');
+const pHeaders = document.getElementById('pHeaders');
+const saveProvider = document.getElementById('saveProvider');
+const resetProvider = document.getElementById('resetProvider');
+
 let editProviderId = null;
 async function refreshProviders() {
   const data = await api('/providers');
@@ -244,7 +267,21 @@ saveProvider.onclick = async () => {
 };
 resetProvider.onclick = ()=>{ editProviderId=null; pName.value=''; pBaseUrl.value=''; pApiKey.value=''; pHeaders.value='{}'; };
 
-/* Models */
+/* ---------------- Models ---------------- */
+const mProviderId = document.getElementById('mProviderId');
+const mModelName = document.getElementById('mModelName');
+const mKey = document.getElementById('mKey');
+const mDisplayName = document.getElementById('mDisplayName');
+const mMode = document.getElementById('mMode');
+const mResp = document.getElementById('mResp');
+const mReason = document.getElementById('mReason');
+const mCurrency = document.getElementById('mCurrency');
+const mInCost = document.getElementById('mInCost');
+const mOutCost = document.getElementById('mOutCost');
+
+const saveModel = document.getElementById('saveModel');
+const resetModel = document.getElementById('resetModel');
+
 let editModelId=null;
 async function refreshModels() {
   const data = await api('/models');
@@ -294,7 +331,7 @@ saveModel.onclick = async ()=>{
 };
 resetModel.onclick = ()=> { editModelId=null; mProviderId.value=''; mModelName.value=''; mKey.value=''; mDisplayName.value=''; };
 
-/* Usage */
+/* ---------------- Usage ---------------- */
 async function refreshUsage() {
   const data = await api('/usage?limit=200');
   const tb = document.querySelector('#usageTbl tbody'); tb.innerHTML='';
@@ -308,113 +345,132 @@ async function refreshUsage() {
 }
 document.getElementById('refreshUsage').onclick = refreshUsage;
 
-/* LIVE TELEMETRY UI */
-const liveStatus = document.getElementById('liveStatus');
+/* ---------------- Live telemetry (SSE) ---------------- */
+const sseUrlTxt = document.getElementById('sseUrlTxt');
+const scopeSel = document.getElementById('scopeSel');
+const convId = document.getElementById('convId');
+const followBtn = document.getElementById('followBtn');
 const liveList = document.getElementById('liveList');
+const detail = document.getElementById('detail');
+const copyTranscript = document.getElementById('copyTranscript');
+
 let es = null;
-const items = new Map();
+let itemsById = new Map();
+let selectedId = null;
+let followLatest = true;
 
-function escapeHtml(s=''){ return s.replace(/[&<>"']/g, (c)=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+followBtn.onclick = () => { followLatest = !followLatest; followBtn.textContent = followLatest ? 'Follow latest' : 'Manual'; };
 
-function renderItem(rec) {
-  const id = rec.id;
-  let el = document.getElementById(`live-${id}`);
-  const started = rec.started_at ? new Date(rec.started_at).toLocaleTimeString() : '';
-  const finished = rec.finished_at ? new Date(rec.finished_at).toLocaleTimeString() : '';
-  const state = rec.state || 'running';
-  const model = rec.model || '';
-  const provider = rec.provider || '';
-  const conv = rec.meta?.conversation_id || '';
-  const msgs = Array.isArray(rec.meta?.messages) ? rec.meta.messages : [];
-  const promptText = msgs.map(m => `• ${m.role || 'role'}: ${m.content || ''}`).join('\n');
-
-  if (!el) {
-    el = document.createElement('div');
-    el.className = 'live-item';
-    el.id = `live-${id}`;
-    el.innerHTML = `
-      <div class="live-head">
-        <div class="live-title">
-          <span class="badge ${state}">${state}</span>
-          <strong class="mono">${escapeHtml(id)}</strong>
-          <span class="muted">(${escapeHtml(provider)} · ${escapeHtml(model)})</span>
-          <span class="muted">conv: ${escapeHtml(String(conv || '—'))}</span>
-        </div>
-        <div class="live-times muted">${escapeHtml(started)} ${finished ? '→ '+escapeHtml(finished) : ''}</div>
-      </div>
-      <div class="live-body">
-        <div class="live-col">
-          <label>Input</label>
-          <pre class="mono live-pre">${escapeHtml(promptText || '')}</pre>
-        </div>
-        <div class="live-col">
-          <label>Assistant (live)</label>
-          <pre class="mono live-pre" id="out-${escapeHtml(id)}"></pre>
-          <div class="live-meta muted" id="meta-${escapeHtml(id)}"></div>
-        </div>
-      </div>
-    `;
-    liveList.prepend(el);
-  }
-  // Update state badge and times
-  el.querySelector('.badge').textContent = state;
-  el.querySelector('.badge').className = `badge ${state}`;
-  el.querySelector('.live-times').textContent = `${started} ${finished ? '→ '+finished : ''}`;
-
-  // Update output + meta if present
-  if (typeof rec.output_so_far === 'string') {
-    const out = document.getElementById(`out-${id}`);
-    if (out) {
-      out.textContent = rec.output_so_far;
-      // autoscroll to bottom
-      out.scrollTop = out.scrollHeight;
+function ensureSSE() {
+  const url = `${API_BASE}/telemetry/live`;
+  sseUrlTxt.textContent = url.replace(location.origin, '');
+  if (es) return;
+  es = new EventSource(url);
+  es.onmessage = (ev) => {
+    const msg = JSON.parse(ev.data);
+    if (msg.type === 'snapshot') {
+      itemsById = new Map();
+      (msg.live || []).forEach(addOrUpdate);
+      (msg.recent || []).forEach(addOrUpdate);
+      renderList();
+      if (followLatest) autoSelectLatest();
+      return;
     }
+    if (msg.type === 'started' || msg.type === 'updated' || msg.type === 'finished') {
+      addOrUpdate(msg.data);
+      renderList();
+      if (followLatest) autoSelectLatest();
+      if (selectedId) renderDetail(selectedId);
+    }
+  };
+  es.onerror = () => { /* auto-reconnect */ };
+}
+
+function addOrUpdate(rec) {
+  if (!rec || !rec.id) return;
+  const existing = itemsById.get(rec.id) || {};
+  itemsById.set(rec.id, { ...existing, ...rec });
+}
+
+function filterMatches(rec) {
+  const scope = scopeSel.value;
+  if (scope === 'conversation') {
+    const want = convId.value.trim();
+    if (!want) return false;
+    const has = rec?.meta?.conversation_id || rec?.conversation_id;
+    return has === want;
   }
-  const metaEl = document.getElementById(`meta-${id}`);
-  if (metaEl) {
-    const parts = [];
-    if (rec.input_tokens != null) parts.push(`inTok: ${rec.input_tokens}`);
-    if (rec.output_tokens != null) parts.push(`outTok: ${rec.output_tokens}`);
-    if (rec.output_chars != null) parts.push(`outChars: ${rec.output_chars}`);
-    if (rec.cost != null) parts.push(`cost: ${rec.cost}`);
-    metaEl.textContent = parts.join(' · ');
+  return true; // 'live'
+}
+
+function renderList() {
+  const arr = Array.from(itemsById.values())
+    .sort((a,b) => String(b.started_at||'').localeCompare(String(a.started_at||'')));
+  liveList.innerHTML = '';
+  for (const r of arr) {
+    if (!filterMatches(r)) continue;
+    const el = document.createElement('div');
+    el.className = 'item';
+    el.style.cursor = 'pointer';
+    const status = r.state === 'done' ? '✅' : (r.state === 'error' ? '❌' : '⏳');
+    const conv = (r.meta && r.meta.conversation_id) ? ` · conv:${r.meta.conversation_id}` : '';
+    el.innerHTML = `
+      <div class="w-clip">
+        <span class="pill">${status}</span>
+        <span class="tiny">${r.started_at?.slice(11,19) || ''}</span>
+        <strong>${r.model || ''}</strong> <span class="tiny">(${r.provider || ''})</span>
+        <span class="tiny">${conv}</span>
+      </div>
+      <div class="tiny">${(r.output || '').length} chars</div>
+    `;
+    el.onclick = ()=>{ selectedId = r.id; renderDetail(selectedId); };
+    liveList.appendChild(el);
   }
 }
 
-function handleEvt(evt) {
-  if (!evt || !evt.data) return;
-  const payload = JSON.parse(evt.data);
-  if (payload.type === 'snapshot') {
-    (payload.live || []).forEach(r => { items.set(r.id, r); renderItem(r); });
-    (payload.recent || []).forEach(r => { items.set(r.id, r); renderItem(r); });
-    return;
-  }
-  if (payload.type === 'started' || payload.type === 'updated' || payload.type === 'finished') {
-    const rec = payload.data || {};
-    const prev = items.get(rec.id) || {};
-    const merged = { ...prev, ...rec, meta: { ...(prev.meta || {}), ...(rec.meta || {}) } };
-    items.set(rec.id, merged);
-    renderItem(merged);
-  }
+function renderDetail(id) {
+  const r = itemsById.get(id);
+  if (!r) { detail.innerHTML = '<div class="tiny">No details</div>'; return; }
+  const msgs = Array.isArray(r.messages) ? r.messages : [];
+  const bubbles = msgs.map(m => `<div class="bubble ${m.role==='assistant'?'assistant':'user'}"><div class="tiny">${m.role}</div>${escapeHtml(m.content||'')}</div>`).join('');
+  const out = r.output ? `<div class="bubble assistant"><div class="tiny">assistant (live)</div>${escapeHtml(r.output)}</div>` : '';
+  const head = `
+    <div class="tiny" style="margin-bottom:6px">
+      <strong>ID</strong> ${r.id} · <strong>Model</strong> ${r.model||''} (${r.provider||''})
+      ${r.meta?.conversation_id ? ' · <strong>conversation_id</strong> '+r.meta.conversation_id : ''}
+      ${typeof r.inTok==='number' ? ' · <strong>inTok</strong> '+r.inTok : ''}
+      ${typeof r.outTok==='number' ? ' · <strong>outTok</strong> '+r.outTok : ''}
+      ${typeof r.cost==='number' ? ' · <strong>cost</strong> $'+r.cost : ''}
+    </div>`;
+  detail.innerHTML = head + bubbles + out;
+  detail.scrollTop = detail.scrollHeight;
 }
 
-function connectLive() {
-  if (es) es.close();
-  es = new EventSource(`${API_BASE}/telemetry/live`);
-  liveStatus.textContent = 'Connecting…';
-  es.onopen = () => { liveStatus.textContent = 'Live (connected)'; };
-  es.onerror = () => { liveStatus.textContent = 'Disconnected (error)'; };
-  es.onmessage = handleEvt;
+function autoSelectLatest() {
+  const arr = Array.from(itemsById.values())
+    .filter(filterMatches)
+    .sort((a,b) => String(b.started_at||'').localeCompare(String(a.started_at||'')));
+  if (arr.length) { selectedId = arr[0].id; renderDetail(selectedId); }
 }
-function disconnectLive() {
-  if (es) { es.close(); es = null; }
-  liveStatus.textContent = 'Disconnected';
-}
-document.getElementById('connectLive').onclick = connectLive;
-document.getElementById('disconnectLive').onclick = disconnectLive;
 
-/* Boot */
-refreshProviders(); refreshModels(); refreshUsage(); connectLive();
+copyTranscript.onclick = async () => {
+  const r = itemsById.get(selectedId);
+  if (!r) return;
+  const msgs = Array.isArray(r.messages) ? r.messages : [];
+  const lines = [];
+  msgs.forEach(m => lines.push(`${m.role}: ${m.content||''}`));
+  if (r.output) lines.push(`assistant: ${r.output}`);
+  const txt = lines.join('\n\n');
+  try { await navigator.clipboard.writeText(txt); copyTranscript.textContent='Copied'; setTimeout(()=>copyTranscript.textContent='Copy transcript',1000);}catch{}
+};
+
+function escapeHtml(s='') {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* ---------------- Boot ---------------- */
+refreshProviders(); refreshModels(); refreshUsage();
+// default view = Admin; click "Live" to start SSE
 </script>
 </body>
 </html>

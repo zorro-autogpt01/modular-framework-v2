@@ -41,7 +41,6 @@ app.use((req, res, next) => {
   next();
 });
 
-
 // Static admin UI
 const pub = path.join(__dirname, '..', 'public');
 app.use(express.static(pub));
@@ -50,7 +49,7 @@ app.use(express.static(pub));
 app.use('/', healthRouter);          // /health
 app.use('/api', infoRouter);         // /api/info
 
-// Admin API// Log buffer API
+// Log buffer + logging config APIs
 app.use('/api', logsRouter);
 app.use('/api', loggingRouter);
 
@@ -58,14 +57,15 @@ app.use('/api', loggingRouter);
 app.use('/api', adminRouter);        // /api/providers, /api/models
 
 // Chat/gateway API
-app.use('/api', chatRouter);         // /api/v1/chat, /api/compat/llm-chat
+app.use('/api', chatRouter);         // /api/v1/chat, /api/compat/llm-chat, /api/compat/llm-workflows
 
 // Usage log API
 app.use('/api', usageRouter);        // /api/usage
+
 // Tokenization API
 app.use('/api', tokensRouter);       // /api/tokens
 
-// Telemetry API (live SSE + snapshots)
+// Telemetry (live SSE + snapshots)
 app.use('/api', telemetryRouter);    // /api/telemetry/*
 
 // Central error handler (ensures JSON + logs)
@@ -73,7 +73,6 @@ app.use((err, _req, res, _next) => {
   try { logError('unhandled_error', { message: err?.message || String(err), stack: err?.stack }); } catch {}
   res.status(500).json({ error: 'Internal Server Error' });
 });
-
 
 // Also serve under BASE_PATH (reverse proxy friendly)
 if (BASE_PATH) {
@@ -85,6 +84,7 @@ if (BASE_PATH) {
   app.use(`${BASE_PATH}/api`, usageRouter);
   app.use(`${BASE_PATH}/api`, tokensRouter);
   app.use(`${BASE_PATH}/api`, logsRouter);
+  app.use(`${BASE_PATH}/api`, loggingRouter);
   app.use(`${BASE_PATH}/api`, telemetryRouter);
 
   // Error handler for BASE_PATH-mounted routes as well
