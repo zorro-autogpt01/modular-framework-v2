@@ -94,7 +94,7 @@ services:
       - LLM_GATEWAY_CHAT_URL=http://llm-gateway:3010/api/compat/llm-workflows
       - LLM_GATEWAY_API_BASE=http://llm-gateway:3010/api
       # Serve UI under a path (module also supports root)
-      - BASE_PATH=/llm-workflows
+      #- BASE_PATH=/llm-workflows
       # Allow step execution (local or via runners)
       - ALLOW_STEP_EXEC=true
     ports:

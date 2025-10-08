@@ -1,4 +1,4 @@
-// app.js
+// app.js - Fully integrated with llm-gateway
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -6,8 +6,6 @@ const fs = require('fs');
 const axios = require('axios');
 const bodyParser = require('body-parser');
 const Ajv = require('ajv');
-const CTRL_BASE = (process.env.LLM_RUNNER_CONTROLLER_BASE || '').replace(/\/+$/, '');
-
 
 const { router: logsRouter } = require('./routes/logs');
 const { router: loggingRouter } = require('./routes/logging');
@@ -18,13 +16,14 @@ const {
   upsertRunner, removeRunner
 } = require('./runnerClient');
 
-const BASE_PATH = (process.env.BASE_PATH || '').replace(/\/$/, ''); // e.g. /modules/llm-workflows
+const BASE_PATH = (process.env.BASE_PATH || '').replace(/\/$/, '');
 const ALLOW_STEP_EXEC = String(process.env.ALLOW_STEP_EXEC || 'false').toLowerCase() === 'true';
 
 function trimSlash(s) { return String(s || '').replace(/\/+$/, ''); }
 
 const DEFAULT_GW_API = 'http://llm-gateway:3010/api';
 
+// Use the workflows-compatible endpoint
 const LLM_GATEWAY_CHAT_URL = trimSlash(
   process.env.LLM_GATEWAY_URL ||
   process.env.LLM_GATEWAY_CHAT_URL ||
@@ -38,13 +37,12 @@ const LLM_GATEWAY_API_BASE = trimSlash(
 
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 const WF_FILE = path.join(DATA_DIR, 'workflows.json');
-const RUNNERS_FILE = path.join(DATA_DIR, 'runners.json'); // NEW
+const RUNNERS_FILE = path.join(DATA_DIR, 'runners.json');
 
 ensureDir(DATA_DIR);
 ensureFile(WF_FILE, JSON.stringify({ workflows: [] }, null, 2));
-ensureFile(RUNNERS_FILE, JSON.stringify({ runners: [] }, null, 2)); // NEW
+ensureFile(RUNNERS_FILE, JSON.stringify({ runners: [] }, null, 2));
 
-// Seed runners from file on boot (NEW)
 function seedRunnersFromFile() {
   try {
     const raw = fs.readFileSync(RUNNERS_FILE, 'utf8');
@@ -64,16 +62,14 @@ function seedRunnersFromFile() {
     logWarn('runners_seed_failed', { message: e.message });
   }
 }
-seedRunnersFromFile(); // call once at startup
+seedRunnersFromFile();
 
 const app = express();
 app.use(cors({ origin: true, credentials: true }));
 app.use(bodyParser.json({ limit: '2mb' }));
-
-// Attach request id to each request
 app.use(stamp);
 
-// Lightweight http access logging compatible with Splunk
+// HTTP access logging
 app.use((req, res, next) => {
   const start = process.hrtime.bigint();
   res.on('finish', () => {
@@ -91,30 +87,10 @@ app.use((req, res, next) => {
   next();
 });
 
-async function fetchControllerRunners() {
-  if (!CTRL_BASE) return [];
-  try {
-    const r = await axios.get(`${CTRL_BASE}/catalog`, { timeout: 5000 });
-    const items = Array.isArray(r?.data?.agents) ? r.data.agents : [];
-    // Normalize for the UI
-    return items.map(a => ({
-      name: a.name,
-      url: a.url || null,               // can be null in controller mode
-      default_cwd: a.default_cwd || null,
-      status: a.status || 'offline',
-      via: 'controller'
-    }));
-  } catch (e) {
-    logWarn('ctrl_list_failed', { msg: e.message });
-    return [];
-  }
-}
-
-
-// Internal auth middleware (opt-in via env INTERNAL_API_TOKEN)
+// Internal auth middleware
 function requireInternalAuth(req, res, next) {
   const token = process.env.INTERNAL_API_TOKEN;
-  if (!token) return next(); // disabled if token not set
+  if (!token) return next();
   const hdr = req.headers['authorization'] || '';
   if (hdr === `Bearer ${token}`) return next();
   return res.status(401).json({ error: 'unauthorized' });
@@ -128,17 +104,16 @@ function requireRunnerRegToken(req, res, next) {
   return res.status(401).json({ error: 'unauthorized' });
 }
 
-
 // Static UI
 const pub = path.join(__dirname, '..', 'public');
 app.use(express.static(pub));
 
-// Log buffer and dynamic logging config
+// Log routes
 app.use('/api', logsRouter);
 app.use('/api', loggingRouter);
 
-if (BASE_PATH) app.use(BASE_PATH, express.static(pub));
 if (BASE_PATH) {
+  app.use(BASE_PATH, express.static(pub));
   app.use(`${BASE_PATH}/api`, logsRouter);
   app.use(`${BASE_PATH}/api`, loggingRouter);
 }
@@ -152,7 +127,14 @@ app.get('/health', (_req, res) =>
     status: 'healthy',
     gatewayChatUrl: LLM_GATEWAY_CHAT_URL,
     gatewayApiBase: LLM_GATEWAY_API_BASE,
-    allowStepExec: ALLOW_STEP_EXEC
+    allowStepExec: ALLOW_STEP_EXEC,
+    features: {
+      telemetry: true,
+      templates: true,
+      costTracking: true,
+      replay: true,
+      dryRun: true
+    }
   })
 );
 if (BASE_PATH)
@@ -164,217 +146,6 @@ if (BASE_PATH)
       allowStepExec: ALLOW_STEP_EXEC
     })
   );
-
-// --- API: list / ping runners ---
-app.get('/api/runners', async (_req, res) => {
-  // 1) Prefer controller if configured
-  const fromCtrl = await fetchControllerRunners();
-  if (fromCtrl.length) return res.json({ runners: fromCtrl });
-
-  // 2) Fallback to local in-memory runners
-  try {
-    const redacted = (listRunners() || []).map(r => ({
-      name: r.name, url: r.url || null, default_cwd: r.default_cwd || null, via: 'local'
-    }));
-    return res.json({ runners: redacted });
-  } catch {
-    return res.json({ runners: [] });
-  }
-});
-
-
-app.get('/api/runners/:name/health', requireInternalAuth, async (req, res) => {
-  const { name } = req.params;
-  const r = await pingRunner(name);
-  if (!r.ok) return res.status(502).json(r);
-  res.json(r);
-});
-if (BASE_PATH) app.get(`${BASE_PATH}/api/runners/:name/health`, (req, res) => {
-  req.url = `/api/runners/${req.params.name}/health`;
-  app._router.handle(req, res);
-});
-
-// Admin upsert (protected by INTERNAL_API_TOKEN)
-app.post('/api/runners', requireInternalAuth, (req, res) => {
-  const { name, url, token, default_cwd } = req.body || {};
-  if (!name || !url || !token) return res.status(400).json({ ok:false, error:'name, url, token required' });
-  try {
-    const r = upsertRunner({ name, url, token, default_cwd });
-    return res.json({ ok:true, runner: { name:r.name, url:r.url, default_cwd:r.default_cwd } });
-  } catch (e) {
-    logError('runner_upsert_error', { message: e.message });
-    return res.status(500).json({ error: 'Internal Server Error' });
-  }
-});
-if (BASE_PATH) app.post(`${BASE_PATH}/api/runners`, (req, res) => {
-  req.url = '/api/runners';
-  app._router.handle(req, res);
-});
-
-
-app.post('/api/runners/reload', requireInternalAuth, (req, res) => {
-  try {
-    seedRunnersFromFile();
-    res.json({ ok: true });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: e.message || 'reload failed' });
-  }
-});
-if (BASE_PATH) app.post(`${BASE_PATH}/api/runners/reload`, (req, res) => {
-  req.url = '/api/runners/reload';
-  app._router.handle(req, res);
-});
-
-// Admin delete (protected)
-app.delete('/api/runners/:name', requireInternalAuth, (req, res) => {
-  try {
-    removeRunner(req.params.name);
-    return res.json({ ok:true });
-  } catch (e) {
-    logError('runner_delete_error', { message: e.message });
-    return res.status(500).json({ error: 'Internal Server Error' });
-  }
-});
-
-if (BASE_PATH) app.delete(`${BASE_PATH}/api/runners/:name`, (req, res) => {
-  req.url = `/api/runners/${req.params.name}`;
-  app._router.handle(req, res);
-});
-
-// Agent self-registration (protected by RUNNER_REG_TOKEN)
-app.post('/api/runners/register', requireRunnerRegToken, (req, res) => {
-  const { name, url, token, default_cwd } = req.body || {};
-  if (!name || !url || !token) return res.status(400).json({ ok:false, error:'name, url, token required' });
-  try {
-    const r = upsertRunner({ name, url, token, default_cwd });
-    return res.json({ ok:true, runner: { name:r.name, url:r.url, default_cwd:r.default_cwd } });
-  } catch (e) {
-    logError('runner_register_error', { message: e.message });
-    return res.status(500).json({ error: 'Internal Server Error' });
-  }
-});
-
-if (BASE_PATH) app.post(`${BASE_PATH}/api/runners/register`, (req, res) => {
-  req.url = '/api/runners/register';
-  app._router.handle(req, res);
-});
-
-
-// --- Installer: runner-agent one-liner ---
-// Returns a bash script that runs a runner-agent Docker container and self-registers it
-app.get('/install/runner.sh', (_req, res) => {
-  const REG_TOKEN = process.env.RUNNER_REG_TOKEN || '';
-  // Note: We do not try to guess the external server URL here; pass ?server=http://host:8080 when curling.
-  // The token is embedded intentionally for dev/test convenience. Treat your REG_TOKEN as secret.
-  res.setHeader('Content-Type', 'text/x-shellscript');
-  const script = `#!/usr/bin/env bash
-set -euo pipefail
-
-# Usage:
-#   curl -fsSL "$0" | bash -s -- --name myrunner --server http://localhost:8080 --port 4010 --base-dir /tmp/runner --token supersecret
-# Flags:
-#   --name        Runner name to register (default: agent-$(hostname))
-#   --server      Base URL of the framework edge/nginx (e.g., http://localhost:8080)
-#   --runner-url  Public URL the workflows server can reach for this runner (default: http://localhost:\${RUNNER_PORT})
-#   --port        Local port to expose (default: 4010)
-#   --token       Runner auth token (default: random)
-#   --base-dir    Base directory restriction for runner (default: /tmp/runner-agent)
-#   --allow-env   Comma list of env vars to pass through (default: "")
-#   --image       Runner image (default: ghcr.io/modular-framework/runner-agent:latest)
-
-RUNNER_NAME=""
-SERVER_BASE=""
-RUNNER_URL=""
-RUNNER_PORT="4010"
-RUNNER_TOKEN=""
-BASE_DIR="/tmp/runner-agent"
-ALLOW_ENV=""
-RUNNER_IMAGE="ghcr.io/modular-framework/runner-agent:latest"
-
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --name) RUNNER_NAME="$2"; shift 2;;
-    --server) SERVER_BASE="$2"; shift 2;;
-    --runner-url) RUNNER_URL="$2"; shift 2;;
-    --port) RUNNER_PORT="$2"; shift 2;;
-    --token) RUNNER_TOKEN="$2"; shift 2;;
-    --base-dir) BASE_DIR="$2"; shift 2;;
-    --allow-env) ALLOW_ENV="$2"; shift 2;;
-    --image) RUNNER_IMAGE="$2"; shift 2;;
-    *) echo "Unknown arg: $1"; exit 1;;
-  esac
-done
-
-if ! command -v docker >/dev/null 2>&1; then
-  echo "Docker is required on the target machine." >&2
-  exit 1
-fi
-
-if [[ -z "\${RUNNER_NAME}" ]]; then
-  RUNNER_NAME="agent-$(hostname)-$(date +%s)"
-fi
-if [[ -z "\${RUNNER_TOKEN}" ]]; then
-  RUNNER_TOKEN="$(tr -dc A-Za-z0-9 </dev/urandom | head -c 24)"
-fi
-if [[ -z "\${SERVER_BASE}" ]]; then
-  echo "Missing --server (e.g., http://localhost:8080)" >&2
-  exit 1
-fi
-if [[ -z "\${RUNNER_URL}" ]]; then
-  RUNNER_URL="http://localhost:\${RUNNER_PORT}"
-fi
-
-echo ">>> Starting runner: \${RUNNER_NAME} on port \${RUNNER_PORT}"
-mkdir -p "\${BASE_DIR}"
-
-# Stop/remove previous container if any
-if docker ps -a --format '{{.Names}}' | grep -q "^runner-agent-\${RUNNER_NAME}\$"; then
-  docker rm -f "runner-agent-\${RUNNER_NAME}" >/dev/null 2>&1 || true
-fi
-
-docker run -d --name "runner-agent-\${RUNNER_NAME}" --restart unless-stopped \\
-  -p "\${RUNNER_PORT}:4010" \\
-  -e RUNNER_TOKEN="\${RUNNER_TOKEN}" \\
-  -e RUNNER_BASE_DIR="\${BASE_DIR}" \\
-  -e RUNNER_DEFAULT_TIMEOUT_MS="30000" \\
-  -e RUNNER_ALLOW_ENV="\${ALLOW_ENV}" \\
-  -v "\${BASE_DIR}:\${BASE_DIR}" \\
-  "\${RUNNER_IMAGE}"
-
-echo ">>> Waiting for health..."
-for i in $(seq 1 30); do
-  if curl -fsS -H "Authorization: Bearer \${RUNNER_TOKEN}" "\${RUNNER_URL}/health" >/dev/null 2>&1; then
-    echo "Runner healthy."
-    break
-  fi
-  sleep 1
-  if [[ "$i" == "30" ]]; then
-    echo "Runner did not become healthy in time." >&2
-    exit 1
-  fi
-done
-
-echo ">>> Registering runner in llm-workflows..."
-curl -fsS -X POST \\
-  -H "Authorization: Bearer ${REG_TOKEN}" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "name": "'"'\${RUNNER_NAME}'"'",
-    "url": "'"'\${RUNNER_URL}'"'",
-    "token": "'"'\${RUNNER_TOKEN}'"'",
-    "default_cwd": "'"'\${BASE_DIR}'"'"
-  }' "\${SERVER_BASE}/api/v1/workflows/api/runners/register"
-
-echo ">>> Done. Runner \"\${RUNNER_NAME}\" registered at \${RUNNER_URL}"
-`;
-  res.send(script);
-});
-
-if (BASE_PATH) app.get(`${BASE_PATH}/install/runner.sh`, (req, res) => {
-  req.url = '/install/runner.sh';
-  app._router.handle(req, res);
-});
-
 
 // Storage helpers
 function ensureDir(p) { if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true }); }
@@ -397,15 +168,15 @@ function uuid() {
   return (global.crypto?.randomUUID?.() || require('crypto').randomUUID());
 }
 
-// In-memory run history (ring buffer)
+// In-memory run history
 const RUN_MAX = Number(process.env.RUN_MAX || 100);
-const runs = []; // { id, workflowId, name, startedAt, finishedAt, status, logs[], artifacts[], outputByStep: {} }
+const runs = [];
 function addRun(r) {
   runs.push(r);
   while (runs.length > RUN_MAX) runs.shift();
 }
 
-// --- Template helpers ---
+// Template helpers
 function renderTemplate(tpl, vars) {
   return (tpl || '').replace(/\{\{\s*([\w.\-]+)\s*\}\}/g, (_m, k) => {
     const val = lookup(vars, k);
@@ -422,7 +193,7 @@ function lookup(obj, pathStr) {
   return cur;
 }
 
-// --- Schema handling ---
+// Schema handling
 const BUILTIN_SCHEMAS = { 'actions.v1': defaultActionSchema() };
 function resolveSchema(schemaLike) {
   if (!schemaLike) return defaultActionSchema();
@@ -433,7 +204,6 @@ function resolveSchema(schemaLike) {
   return schemaLike;
 }
 
-// System prompt for JSON schema compliance
 function buildSystemGuard(schema) {
   const schemaObj = resolveSchema(schema);
   const schemaStr = JSON.stringify(schemaObj, null, 2);
@@ -448,7 +218,7 @@ function buildSystemGuard(schema) {
   ].join('\n');
 }
 
-// Validate JSON result against schema
+// Validate JSON
 const ajv = new Ajv({ allErrors: true, strict: false });
 function validateAgainstSchema(json, schema) {
   try {
@@ -461,12 +231,11 @@ function validateAgainstSchema(json, schema) {
   }
 }
 
-// --- JSON parsing helpers (robust) ---
+// JSON parsing helpers
 function tryParseJson(text) {
   if (text == null) return null;
   const s = String(text).trim();
 
-  // 1) fast path
   try {
     const once = JSON.parse(s);
     if (typeof once === 'string') {
@@ -475,7 +244,6 @@ function tryParseJson(text) {
     return once;
   } catch {}
 
-  // 2) fenced ```json
   const m = s.match(/```json\s*([\s\S]*?)```/i);
   if (m) {
     try {
@@ -485,7 +253,6 @@ function tryParseJson(text) {
     } catch {}
   }
 
-  // 3) balanced brace blocks (first valid wins)
   const blocks = [];
   let depth = 0, start = -1, inStr = false, esc = false;
   for (let i = 0; i < s.length; i++) {
@@ -522,25 +289,6 @@ function firstDefined(...vals) {
   return undefined;
 }
 
-function pickContentFromResponses(data) {
-  if (!data || typeof data !== 'object') return '';
-  // OpenAI Responses API: output[].message.content[] parts
-  if (Array.isArray(data.output)) {
-    const msg = data.output.find(p => p?.type === 'message');
-    const parts = msg?.content;
-    if (Array.isArray(parts)) {
-      const ot = parts.find(p => p?.type === 'output_text' && typeof p?.text === 'string');
-      if (ot?.text) return ot.text;
-      if (typeof parts[0]?.text === 'string') return parts[0].text;
-      if (typeof parts[0]?.content === 'string') return parts[0].content;
-    }
-  }
-  if (typeof data.text === 'string') return data.text;
-  if (typeof data.content === 'string') return data.content;
-  return '';
-}
-
-/** Normalizes gateway responses into a single string. */
 function pickContentFromGateway(data) {
   if (typeof data === 'string') return data;
 
@@ -567,16 +315,9 @@ function pickContentFromGateway(data) {
     }
   }
 
-  // wrapper support — if body is { content:"", raw:{...Responses...} }
   if (!content && data && typeof data === 'object' && data.raw) {
-    const fromRaw = pickContentFromResponses(data.raw);
+    const fromRaw = pickContentFromGateway(data.raw);
     if (fromRaw) return fromRaw;
-  }
-
-  // Responses payload directly
-  if (!content && data && typeof data === 'object' && data.output) {
-    const fromResponses = pickContentFromResponses(data);
-    if (fromResponses) return fromResponses;
   }
 
   if (!content && typeof data === 'object') {
@@ -590,30 +331,38 @@ function pickContentFromGateway(data) {
   return typeof content === 'string' ? content : '';
 }
 
-// --- Gateway call (uses extractor) ---
-async function callgateway({ model, temperature, max_tokens, messages, corr, ctx }) {
+// **ENHANCED**: Gateway call with conversation tracking and metadata
+async function callgateway({ model, temperature, max_tokens, messages, corr, ctx, metadata }) {
   const url = LLM_GATEWAY_CHAT_URL;
-  const body = { model, messages, stream: false };
+  const body = { 
+    model, 
+    messages, 
+    stream: false,
+    metadata: {
+      ...(metadata || {}),
+      workflows_correlation_id: corr,
+      workflows_context: ctx
+    }
+  };
   if (typeof temperature === 'number') body.temperature = temperature;
   if (typeof max_tokens === 'number') body.max_tokens = max_tokens;
 
-  logInfo('WF -> GW POST', { ctx, corr, url, model, temperature, max_tokens, messagesCount: Array.isArray(messages) ? messages.length : 0 });
+  logInfo('WF -> GW POST', { 
+    ctx, 
+    corr, 
+    url, 
+    model, 
+    temperature, 
+    max_tokens, 
+    messagesCount: Array.isArray(messages) ? messages.length : 0,
+    hasMetadata: !!metadata
+  });
 
   try {
     const resp = await axios.post(url, body, { timeout: 60_000 });
-
     const rawData = resp?.data;
-    const shape = rawData && typeof rawData === 'object'
-      ? Object.keys(rawData).slice(0, 12)
-      : typeof rawData;
-    const hasOutput = !!(rawData && rawData.output && Array.isArray(rawData.output));
-    const hasChoices = !!(rawData && rawData.choices);
-    const hasContent = !!(rawData && rawData.content);
-    const hasText = !!(rawData && rawData.text);
-
     let content = pickContentFromGateway(rawData) ?? '';
 
-    // Ultra-safe fallback for brace extraction by parser
     if (!content && rawData && typeof rawData === 'object') {
       try { content = JSON.stringify(rawData); } catch {}
     }
@@ -622,8 +371,6 @@ async function callgateway({ model, temperature, max_tokens, messages, corr, ctx
       ctx, corr,
       status: resp.status,
       contentLen: String(content || '').length,
-      shape,
-      hasOutput, hasChoices, hasContent, hasText,
       contentHead: String(content || '').slice(0, 500)
     });
 
@@ -636,13 +383,23 @@ async function callgateway({ model, temperature, max_tokens, messages, corr, ctx
   }
 }
 
-// --- Engine: run a single step ---
-async function runStep({ chatConfig, step, vars, ctx = 'runStep', corr }) {
+// **ENHANCED**: Run step with conversation tracking
+async function runStep({ chatConfig, step, vars, ctx = 'runStep', corr, conversationId, workflowId, stepIndex }) {
   const logs = [];
   function log(level, msg, meta) {
     const entry = { ts: new Date().toISOString(), level, msg, meta };
     logs.push(entry);
-    const base = { ctx, corr, stepId: step?.id || null, stepName: step?.name || null, model: step?.model || chatConfig?.model || null, ...(meta || {}) };
+    const base = { 
+      ctx, 
+      corr, 
+      conversationId,
+      workflowId,
+      stepIndex,
+      stepId: step?.id || null, 
+      stepName: step?.name || null, 
+      model: step?.model || chatConfig?.model || null, 
+      ...(meta || {}) 
+    };
     if (level === 'debug') logDebug(msg, base);
     else if (level === 'info') logInfo(msg, base);
     else if (level === 'warn') logWarn(msg, base);
@@ -651,8 +408,8 @@ async function runStep({ chatConfig, step, vars, ctx = 'runStep', corr }) {
 
   const effectiveSchema = resolveSchema(step.schema || defaultActionSchema());
   const sys = step.systemGuard === false ? (step.system || '') : buildSystemGuard(effectiveSchema);
-
   const user = renderTemplate(step.prompt || '', vars || {});
+  
   log('info', 'Prepared prompt', {
     systemPreview: sys.slice(0, 800),
     userPreview: user.slice(0, 800)
@@ -671,7 +428,6 @@ async function runStep({ chatConfig, step, vars, ctx = 'runStep', corr }) {
     max_tokens: step.max_tokens || chatConfig.max_tokens
   };
 
-  // For GPT-5/O family, let backend handle token/temperature semantics
   if (/^(gpt-5|o5)/i.test(mergedChat.model || '')) {
     delete mergedChat.max_tokens;
     delete mergedChat.temperature;
@@ -679,27 +435,58 @@ async function runStep({ chatConfig, step, vars, ctx = 'runStep', corr }) {
 
   const redacted = { ...mergedChat, apiKey: mergedChat.apiKey ? '***REDACTED***' : undefined };
   log('debug', 'Merged chat config', redacted);
-  log('debug', 'Messages summary', { count: messages.length });
 
   if (!mergedChat.model) {
     log('error', 'Chat config incomplete: missing model');
-    return { ok: false, logs, raw: '', json: null, validation: { valid: false, errors: [{ message: 'Model is required' }] } };
+    return { 
+      ok: false, 
+      logs, 
+      raw: '', 
+      json: null, 
+      validation: { valid: false, errors: [{ message: 'Model is required' }] } 
+    };
   }
 
   let raw = '';
   try {
-    raw = await callgateway({ model: mergedChat.model, temperature: mergedChat.temperature, max_tokens: mergedChat.max_tokens, messages, corr, ctx });
+    raw = await callgateway({ 
+      model: mergedChat.model, 
+      temperature: mergedChat.temperature, 
+      max_tokens: mergedChat.max_tokens, 
+      messages, 
+      corr, 
+      ctx,
+      metadata: {
+        conversation_id: conversationId,
+        workflow_id: workflowId,
+        step_index: stepIndex,
+        step_id: step?.id,
+        step_name: step?.name
+      }
+    });
     log('info', 'LLM returned', { length: raw.length, head: raw.slice(0, 200) });
     if (!raw.length) log('warn', 'LLM response was empty', { length: 0 });
   } catch (e) {
     log('error', 'LLM call failed', { message: e.message });
-    return { ok: false, logs, raw, json: null, validation: { valid: false, errors: [{ message: 'LLM call failed: ' + e.message }] } };
+    return { 
+      ok: false, 
+      logs, 
+      raw, 
+      json: null, 
+      validation: { valid: false, errors: [{ message: 'LLM call failed: ' + e.message }] } 
+    };
   }
 
   const parsed = tryParseJson(raw);
   if (!parsed) {
     log('error', 'Failed to parse JSON', { rawHead: raw.slice(0, 500), length: raw.length });
-    return { ok: false, logs, raw, json: null, validation: { valid: false, errors: [{ message: 'JSON parse failed' }] } };
+    return { 
+      ok: false, 
+      logs, 
+      raw, 
+      json: null, 
+      validation: { valid: false, errors: [{ message: 'JSON parse failed' }] } 
+    };
   }
 
   const validation = validateAgainstSchema(parsed, effectiveSchema);
@@ -757,7 +544,189 @@ function defaultActionSchema() {
   };
 }
 
-// --- API: list workflows ---
+// --- Runner APIs ---
+app.get('/api/runners', async (_req, res) => {
+  try {
+    const items = await listRunners();
+    res.json({ runners: items });
+  } catch {
+    res.json({ runners: [] });
+  }
+});
+if (BASE_PATH) app.get(`${BASE_PATH}/api/runners`, (req, res) => {
+  req.url = '/api/runners';
+  app._router.handle(req, res);
+});
+
+app.get('/api/runners/:name/health', requireInternalAuth, async (req, res) => {
+  const { name } = req.params;
+  const r = await pingRunner(name);
+  if (!r.ok) return res.status(502).json(r);
+  res.json(r);
+});
+if (BASE_PATH) app.get(`${BASE_PATH}/api/runners/:name/health`, (req, res) => {
+  req.url = `/api/runners/${req.params.name}/health`;
+  app._router.handle(req, res);
+});
+
+app.post('/api/runners', requireInternalAuth, (req, res) => {
+  const { name, url, token, default_cwd } = req.body || {};
+  if (!name || !url || !token) return res.status(400).json({ ok: false, error: 'name, url, token required' });
+  try {
+    const r = upsertRunner({ name, url, token, default_cwd });
+    return res.json({ ok: true, runner: { name: r.name, url: r.url, default_cwd: r.default_cwd } });
+  } catch (e) {
+    logError('runner_upsert_error', { message: e.message });
+    return res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+if (BASE_PATH) app.post(`${BASE_PATH}/api/runners`, (req, res) => {
+  req.url = '/api/runners';
+  app._router.handle(req, res);
+});
+
+app.post('/api/runners/reload', requireInternalAuth, (req, res) => {
+  try {
+    seedRunnersFromFile();
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message || 'reload failed' });
+  }
+});
+if (BASE_PATH) app.post(`${BASE_PATH}/api/runners/reload`, (req, res) => {
+  req.url = '/api/runners/reload';
+  app._router.handle(req, res);
+});
+
+app.delete('/api/runners/:name', requireInternalAuth, (req, res) => {
+  try {
+    removeRunner(req.params.name);
+    return res.json({ ok: true });
+  } catch (e) {
+    logError('runner_delete_error', { message: e.message });
+    return res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+if (BASE_PATH) app.delete(`${BASE_PATH}/api/runners/:name`, (req, res) => {
+  req.url = `/api/runners/${req.params.name}`;
+  app._router.handle(req, res);
+});
+
+app.post('/api/runners/register', requireRunnerRegToken, (req, res) => {
+  const { name, url, token, default_cwd } = req.body || {};
+  if (!name || !url || !token) return res.status(400).json({ ok: false, error: 'name, url, token required' });
+  try {
+    const r = upsertRunner({ name, url, token, default_cwd });
+    return res.json({ ok: true, runner: { name: r.name, url: r.url, default_cwd: r.default_cwd } });
+  } catch (e) {
+    logError('runner_register_error', { message: e.message });
+    return res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+if (BASE_PATH) app.post(`${BASE_PATH}/api/runners/register`, (req, res) => {
+  req.url = '/api/runners/register';
+  app._router.handle(req, res);
+});
+
+// Runner installer
+app.get('/install/runner.sh', (_req, res) => {
+  const REG_TOKEN = process.env.RUNNER_REG_TOKEN || '';
+  res.setHeader('Content-Type', 'text/x-shellscript');
+  const script = `#!/usr/bin/env bash
+set -euo pipefail
+
+RUNNER_NAME=""
+SERVER_BASE=""
+RUNNER_URL=""
+RUNNER_PORT="4010"
+RUNNER_TOKEN=""
+BASE_DIR="/tmp/runner-agent"
+ALLOW_ENV=""
+RUNNER_IMAGE="ghcr.io/modular-framework/runner-agent:latest"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --name) RUNNER_NAME="$2"; shift 2;;
+    --server) SERVER_BASE="$2"; shift 2;;
+    --runner-url) RUNNER_URL="$2"; shift 2;;
+    --port) RUNNER_PORT="$2"; shift 2;;
+    --token) RUNNER_TOKEN="$2"; shift 2;;
+    --base-dir) BASE_DIR="$2"; shift 2;;
+    --allow-env) ALLOW_ENV="$2"; shift 2;;
+    --image) RUNNER_IMAGE="$2"; shift 2;;
+    *) echo "Unknown arg: $1"; exit 1;;
+  esac
+done
+
+if ! command -v docker >/dev/null 2>&1; then
+  echo "Docker is required." >&2
+  exit 1
+fi
+
+if [[ -z "\${RUNNER_NAME}" ]]; then
+  RUNNER_NAME="agent-$(hostname)-$(date +%s)"
+fi
+if [[ -z "\${RUNNER_TOKEN}" ]]; then
+  RUNNER_TOKEN="$(tr -dc A-Za-z0-9 </dev/urandom | head -c 24)"
+fi
+if [[ -z "\${SERVER_BASE}" ]]; then
+  echo "Missing --server" >&2
+  exit 1
+fi
+if [[ -z "\${RUNNER_URL}" ]]; then
+  RUNNER_URL="http://localhost:\${RUNNER_PORT}"
+fi
+
+echo ">>> Starting runner: \${RUNNER_NAME} on port \${RUNNER_PORT}"
+mkdir -p "\${BASE_DIR}"
+
+if docker ps -a --format '{{.Names}}' | grep -q "^runner-agent-\${RUNNER_NAME}\$"; then
+  docker rm -f "runner-agent-\${RUNNER_NAME}" >/dev/null 2>&1 || true
+fi
+
+docker run -d --name "runner-agent-\${RUNNER_NAME}" --restart unless-stopped \\
+  -p "\${RUNNER_PORT}:4010" \\
+  -e RUNNER_TOKEN="\${RUNNER_TOKEN}" \\
+  -e RUNNER_BASE_DIR="\${BASE_DIR}" \\
+  -e RUNNER_DEFAULT_TIMEOUT_MS="30000" \\
+  -e RUNNER_ALLOW_ENV="\${ALLOW_ENV}" \\
+  -v "\${BASE_DIR}:\${BASE_DIR}" \\
+  "\${RUNNER_IMAGE}"
+
+echo ">>> Waiting for health..."
+for i in $(seq 1 30); do
+  if curl -fsS -H "Authorization: Bearer \${RUNNER_TOKEN}" "\${RUNNER_URL}/health" >/dev/null 2>&1; then
+    echo "Runner healthy."
+    break
+  fi
+  sleep 1
+  if [[ "$i" == "30" ]]; then
+    echo "Runner did not become healthy in time." >&2
+    exit 1
+  fi
+done
+
+echo ">>> Registering runner..."
+curl -fsS -X POST \\
+  -H "Authorization: Bearer ${REG_TOKEN}" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "name": "'"'\${RUNNER_NAME}'"'",
+    "url": "'"'\${RUNNER_URL}'"'",
+    "token": "'"'\${RUNNER_TOKEN}'"'",
+    "default_cwd": "'"'\${BASE_DIR}'"'"
+  }' "\${SERVER_BASE}/api/v1/workflows/api/runners/register"
+
+echo ">>> Done."
+`;
+  res.send(script);
+});
+if (BASE_PATH) app.get(`${BASE_PATH}/install/runner.sh`, (req, res) => {
+  req.url = '/install/runner.sh';
+  app._router.handle(req, res);
+});
+
+// --- Workflow APIs ---
 app.get('/api/workflows', (_req, res) => {
   const { workflows } = readStore();
   res.json({ workflows });
@@ -767,7 +736,6 @@ if (BASE_PATH) app.get(`${BASE_PATH}/api/workflows`, (req, res) => {
   res.json({ workflows });
 });
 
-// --- API: get workflow ---
 app.get('/api/workflows/:id', (req, res) => {
   const { id } = req.params;
   const { workflows } = readStore();
@@ -783,7 +751,6 @@ if (BASE_PATH) app.get(`${BASE_PATH}/api/workflows/:id`, (req, res) => {
   res.json({ workflow: wf });
 });
 
-// --- API: create/update workflow ---
 app.post('/api/workflows', (req, res) => {
   const payload = req.body || {};
   const store = readStore();
@@ -804,7 +771,6 @@ if (BASE_PATH) app.post(`${BASE_PATH}/api/workflows`, (req, res) => {
   app._router.handle(req, res);
 });
 
-// --- API: delete workflow ---
 app.delete('/api/workflows/:id', (req, res) => {
   const { id } = req.params;
   const store = readStore();
@@ -819,7 +785,6 @@ if (BASE_PATH) app.delete(`${BASE_PATH}/api/workflows/:id`, (req, res) => {
   app._router.handle(req, res);
 });
 
-// --- API: validate JSON against schema ---
 app.post('/api/validate', (req, res) => {
   const { json, schema } = req.body || {};
   const result = validateAgainstSchema(json, schema || defaultActionSchema());
@@ -830,12 +795,12 @@ if (BASE_PATH) app.post(`${BASE_PATH}/api/validate`, (req, res) => {
   app._router.handle(req, res);
 });
 
-// --- API: proxy to fetch models from llm-gateway ---
+// **NEW**: Gateway models proxy
 app.get('/api/llm-models', async (_req, res) => {
   const url = `${LLM_GATEWAY_API_BASE}/models`;
   logInfo('WF -> GW GET models', { url });
   try {
-    const r = await axios.get(url)
+    const r = await axios.get(url);
     logInfo('WF <- GW models', { status: r.status, count: (r.data?.items || []).length });
     res.json(r.data);
   } catch (e) {
@@ -848,19 +813,131 @@ if (BASE_PATH) app.get(`${BASE_PATH}/api/llm-models`, (req, res) => {
   app._router.handle(req, res);
 });
 
-// --- API: test single step ---
-app.post('/api/testStep', requireInternalAuth, async (req, res) => {
-  const { chat, step, vars, execute=false } = req.body || {};
-  const corr = `test_${uuid()}`;
+// **NEW**: Gateway templates proxy
+app.get('/api/llm-templates', async (_req, res) => {
+  const url = `${LLM_GATEWAY_API_BASE}/templates`;
   try {
-    logInfo('WF TEST_STEP start', { corr, ip: req.ip, model: step?.model || chat?.model, stepId: step?.id || null, hasVars: !!vars, execute, allowExec: ALLOW_STEP_EXEC });
-    const result = await runStep({ chatConfig: chat || {}, step: step || {}, vars: vars || {}, ctx: 'testStep', corr });
+    const r = await axios.get(url);
+    res.json(r.data);
+  } catch (e) {
+    logError('WF <- GW templates error', { message: e.message });
+    res.status(502).json({ error: 'Failed to fetch templates', detail: e.message });
+  }
+});
+if (BASE_PATH) app.get(`${BASE_PATH}/api/llm-templates`, (req, res) => {
+  req.url = '/api/llm-templates';
+  app._router.handle(req, res);
+});
 
-    // Enforce ALLOW_STEP_EXEC
+// **NEW**: Gateway telemetry proxy
+app.get('/api/gateway/telemetry', async (req, res) => {
+  const url = `${LLM_GATEWAY_API_BASE}/telemetry/recent?limit=${req.query.limit || 50}`;
+  try {
+    const r = await axios.get(url);
+    res.json(r.data);
+  } catch (e) {
+    logError('WF <- GW telemetry error', { message: e.message });
+    res.status(502).json({ error: 'Failed to fetch telemetry', detail: e.message });
+  }
+});
+if (BASE_PATH) app.get(`${BASE_PATH}/api/gateway/telemetry`, (req, res) => {
+  req.url = '/api/gateway/telemetry';
+  app._router.handle(req, res);
+});
+
+// **NEW**: Get workflow cost from gateway usage logs
+app.get('/api/workflows/:id/cost', async (req, res) => {
+  const { id } = req.params;
+  const limit = Math.min(Number(req.query.limit || 100), 1000);
+  
+  try {
+    const url = `${LLM_GATEWAY_API_BASE}/usage?limit=${limit}`;
+    const r = await axios.get(url);
+    const items = r.data?.items || [];
+    
+    // Filter by workflow_id in metadata
+    const relevant = items.filter(item => 
+      item.meta?.workflow_id === id || 
+      item.meta?.metadata?.workflow_id === id
+    );
+    
+    const totalCost = relevant.reduce((sum, item) => sum + (Number(item.cost) || 0), 0);
+    const totalInputTokens = relevant.reduce((sum, item) => sum + (Number(item.input_tokens) || 0), 0);
+    const totalOutputTokens = relevant.reduce((sum, item) => sum + (Number(item.output_tokens) || 0), 0);
+    
+    res.json({
+      workflow_id: id,
+      usage_records: relevant.length,
+      total_cost: totalCost,
+      total_input_tokens: totalInputTokens,
+      total_output_tokens: totalOutputTokens,
+      currency: relevant[0]?.meta?.currency || 'USD',
+      records: relevant
+    });
+  } catch (e) {
+    logError('WF cost query failed', { workflow_id: id, error: e.message });
+    res.status(502).json({ error: 'Failed to fetch cost data', detail: e.message });
+  }
+});
+if (BASE_PATH) app.get(`${BASE_PATH}/api/workflows/:id/cost`, (req, res) => {
+  req.url = `/api/workflows/${req.params.id}/cost`;
+  app._router.handle(req, res);
+});
+
+// **ENHANCED**: Test step with dry-run support
+app.post('/api/testStep', requireInternalAuth, async (req, res) => {
+  const { chat, step, vars, execute = false, dryRun = false } = req.body || {};
+  const corr = `test_${uuid()}`;
+  const conversationId = `test_conv_${uuid()}`;
+  
+  try {
+    logInfo('WF TEST_STEP start', { 
+      corr, 
+      conversationId,
+      ip: req.ip, 
+      model: step?.model || chat?.model, 
+      stepId: step?.id || null, 
+      hasVars: !!vars, 
+      execute, 
+      dryRun,
+      allowExec: ALLOW_STEP_EXEC 
+    });
+
+    // **NEW**: Support dry-run mode
+    if (dryRun) {
+      // Just validate the step without calling LLM
+      const schema = resolveSchema(step.schema || defaultActionSchema());
+      return res.json({
+        ok: true,
+        dryRun: true,
+        validated: true,
+        step: {
+          id: step.id,
+          name: step.name,
+          model: step.model || chat.model,
+          schema: schema
+        },
+        message: 'Dry-run: validation passed, no LLM call made'
+      });
+    }
+
+    const result = await runStep({ 
+      chatConfig: chat || {}, 
+      step: step || {}, 
+      vars: vars || {}, 
+      ctx: 'testStep', 
+      corr,
+      conversationId,
+      workflowId: 'test',
+      stepIndex: 0
+    });
+
     if (execute && !ALLOW_STEP_EXEC) {
-      result.actionResults = [{ skipped: true, reason: 'step execution disabled by server (ALLOW_STEP_EXEC=false)' }];
+      result.actionResults = [{ 
+        skipped: true, 
+        reason: 'step execution disabled by server (ALLOW_STEP_EXEC=false)' 
+      }];
       logWarn('WF TEST_STEP exec blocked', { corr });
-      // Keep 200 so the UI renders details
       return res.json({ ok: true, ...result, execBlocked: true });
     }
 
@@ -876,39 +953,75 @@ app.post('/api/testStep', requireInternalAuth, async (req, res) => {
         const timeoutMs = Math.min(Number(a.timeoutSec || 20000), 300000);
         const target = (a.meta && a.meta.target) ? String(a.meta.target) : defaultTarget;
 
-        if (!['bash','python'].includes(kind)) {
-          actionResults.push({ index:i, kind, skipped:true, reason:'unsupported kind' });
+        if (!['bash', 'python'].includes(kind)) {
+          actionResults.push({ index: i, kind, skipped: true, reason: 'unsupported kind' });
           continue;
         }
 
         try {
           if (target && getRunner(target)) {
-            // REMOTE
             const rmt = await execRemote({ target, kind, code, cwd, env: a.env, timeoutMs });
-            actionResults.push({ index:i, kind, target, exitCode:rmt.exitCode, killed:rmt.killed, stdout:rmt.stdout, stderr:rmt.stderr });
+            actionResults.push({ 
+              index: i, 
+              kind, 
+              target, 
+              exitCode: rmt.exitCode, 
+              killed: rmt.killed, 
+              stdout: rmt.stdout, 
+              stderr: rmt.stderr 
+            });
           } else {
-            // LOCAL
             if (kind === 'bash') {
-              let out='', err='';
-              const r = await execBash({ cmd: code, cwd, env: a.env, timeoutMs }, s=> out+=s, s=> err+=s);
-              actionResults.push({ index:i, kind, target:'local', exitCode:r.code, killed:r.killed, stdout:out, stderr:err });
+              let out = '', err = '';
+              const r = await execBash({ cmd: code, cwd, env: a.env, timeoutMs }, s => out += s, s => err += s);
+              actionResults.push({ 
+                index: i, 
+                kind, 
+                target: 'local', 
+                exitCode: r.code, 
+                killed: r.killed, 
+                stdout: out, 
+                stderr: err 
+              });
             } else {
-              let out='', err='';
-              const r = await execPython({ script: code, cwd, env: a.env, timeoutMs }, s=> out+=s, s=> err+=s);
-              actionResults.push({ index:i, kind, target:'local', exitCode:r.code, killed:r.killed, stdout:out, stderr:err });
+              let out = '', err = '';
+              const r = await execPython({ script: code, cwd, env: a.env, timeoutMs }, s => out += s, s => err += s);
+              actionResults.push({ 
+                index: i, 
+                kind, 
+                target: 'local', 
+                exitCode: r.code, 
+                killed: r.killed, 
+                stdout: out, 
+                stderr: err 
+              });
             }
           }
         } catch (e) {
-          actionResults.push({ index:i, kind, target: target || 'local', error: String(e.message || e) });
+          actionResults.push({ 
+            index: i, 
+            kind, 
+            target: target || 'local', 
+            error: String(e.message || e) 
+          });
         }
       }
       result.actionResults = actionResults;
     }
 
-    logInfo('WF TEST_STEP result', { corr, ok: !!result.ok, rawLen: (result.raw || '').length, hasJson: !!result.json, validationErrors: (result.validation?.errors || []).length, artifacts: (result.artifacts || []).length });
+    logInfo('WF TEST_STEP result', { 
+      corr, 
+      conversationId,
+      ok: !!result.ok, 
+      rawLen: (result.raw || '').length, 
+      hasJson: !!result.json, 
+      validationErrors: (result.validation?.errors || []).length, 
+      artifacts: (result.artifacts || []).length 
+    });
+    
     res.json(result);
   } catch (e) {
-    logError('WF TEST_STEP error', { corr, message: e.message });
+    logError('WF TEST_STEP error', { corr, conversationId, message: e.message });
     res.status(500).json({ ok: false, error: e.message });
   }
 });
@@ -917,7 +1030,7 @@ if (BASE_PATH) app.post(`${BASE_PATH}/api/testStep`, (req, res) => {
   app._router.handle(req, res);
 });
 
-// --- API: run a workflow ---
+// **ENHANCED**: Run workflow with full gateway integration
 app.post('/api/workflows/:id/run', requireInternalAuth, async (req, res) => {
   const { id } = req.params;
   const inputs = req.body?.vars || {};
@@ -925,9 +1038,11 @@ app.post('/api/workflows/:id/run', requireInternalAuth, async (req, res) => {
   const wf = store.workflows.find(w => w.id === id);
   if (!wf) return res.status(404).json({ error: 'Not found' });
 
+  const conversationId = `wf_${uuid()}`;
   const run = {
     id: uuid(),
     workflowId: wf.id,
+    conversationId: conversationId,
     name: wf.name || 'Workflow',
     startedAt: new Date().toISOString(),
     finishedAt: null,
@@ -938,21 +1053,42 @@ app.post('/api/workflows/:id/run', requireInternalAuth, async (req, res) => {
   };
   addRun(run);
 
-  function runLog(level, msg, meta) { run.logs.push({ ts: new Date().toISOString(), level, msg, meta }); }
+  function runLog(level, msg, meta) { 
+    run.logs.push({ ts: new Date().toISOString(), level, msg, meta }); 
+  }
 
-  logInfo('WF RUN start', { corr: run.id, workflowId: run.workflowId, steps: (wf.steps || []).length, allowExec: ALLOW_STEP_EXEC });
+  logInfo('WF RUN start', { 
+    corr: run.id, 
+    conversationId: run.conversationId,
+    workflowId: run.workflowId, 
+    steps: (wf.steps || []).length, 
+    allowExec: ALLOW_STEP_EXEC 
+  });
 
   try {
     const vars = { ...(wf.defaults || {}), ...(inputs || {}) };
 
-    for (const step of (wf.steps || [])) {
+    for (const [stepIndex, step] of (wf.steps || []).entries()) {
       const stepKey = step.id || step.name || 'step';
       runLog('info', `Step start: ${step.name || step.id}`);
 
-      const r = await runStep({ chatConfig: wf.chat || {}, step, vars, ctx: 'workflowRun', corr: run.id });
+      const r = await runStep({ 
+        chatConfig: wf.chat || {}, 
+        step, 
+        vars, 
+        ctx: 'workflowRun', 
+        corr: run.id,
+        conversationId: run.conversationId,
+        workflowId: run.workflowId,
+        stepIndex
+      });
 
       run.outputByStep[stepKey] = {
-        ok: r.ok, json: r.json, validation: r.validation, raw: r.raw, logs: r.logs
+        ok: r.ok, 
+        json: r.json, 
+        validation: r.validation, 
+        raw: r.raw, 
+        logs: r.logs
       };
       run.logs.push(...r.logs.map(l => ({ ...l, step: step.name || step.id })));
 
@@ -962,11 +1098,9 @@ app.post('/api/workflows/:id/run', requireInternalAuth, async (req, res) => {
         }
       }
 
-      // Prepare exec aggregations *outside* the exec block so fail rules can read them
       let execResults = [];
       let allStdout = '', allStderr = '';
 
-      // Optional execution of actions during workflow runs (gated)
       if (step.execute === true) {
         if (!ALLOW_STEP_EXEC) {
           runLog('warn', 'Execution blocked by server setting', { step: stepKey });
@@ -981,35 +1115,67 @@ app.post('/api/workflows/:id/run', requireInternalAuth, async (req, res) => {
             const timeoutMs = Math.min(Number(a.timeoutSec || 20000), 300000);
             const target = (a.meta && a.meta.target) ? String(a.meta.target) : defaultTarget;
 
-            if (!['bash','python'].includes(kind)) {
-              execResults.push({ index:i, kind, target: target || 'local', skipped:true, reason:'unsupported kind' });
+            if (!['bash', 'python'].includes(kind)) {
+              execResults.push({ index: i, kind, target: target || 'local', skipped: true, reason: 'unsupported kind' });
               continue;
             }
 
             try {
               if (target && getRunner(target)) {
-                // REMOTE
                 const r2 = await execRemote({ target, kind, code, cwd, env: a.env, timeoutMs });
-                allStdout += r2.stdout || ''; allStderr += r2.stderr || '';
-                execResults.push({ index:i, kind, target, exitCode:r2.exitCode, killed:r2.killed, stdout:r2.stdout, stderr:r2.stderr });
+                allStdout += r2.stdout || '';
+                allStderr += r2.stderr || '';
+                execResults.push({ 
+                  index: i, 
+                  kind, 
+                  target, 
+                  exitCode: r2.exitCode, 
+                  killed: r2.killed, 
+                  stdout: r2.stdout, 
+                  stderr: r2.stderr 
+                });
               } else {
-                // LOCAL
                 if (kind === 'bash') {
-                  let out='', err='';
-                  const rr = await execBash({ cmd: code, cwd, env: a.env, timeoutMs }, s=> { out+=s; allStdout+=s; }, s=> { err+=s; allStderr+=s; });
-                  execResults.push({ index:i, kind, target:'local', exitCode:rr.code, killed:rr.killed, stdout:out, stderr:err });
+                  let out = '', err = '';
+                  const rr = await execBash({ cmd: code, cwd, env: a.env, timeoutMs }, s => { out += s; allStdout += s; }, s => { err += s; allStderr += s; });
+                  execResults.push({ 
+                    index: i, 
+                    kind, 
+                    target: 'local', 
+                    exitCode: rr.code, 
+                    killed: rr.killed, 
+                    stdout: out, 
+                    stderr: err 
+                  });
                 } else {
-                  let out='', err='';
-                  const rr = await execPython({ script: code, cwd, env: a.env, timeoutMs }, s=> { out+=s; allStdout+=s; }, s=> { err+=s; allStderr+=s; });
-                  execResults.push({ index:i, kind, target:'local', exitCode:rr.code, killed:rr.killed, stdout:out, stderr:err });
+                  let out = '', err = '';
+                  const rr = await execPython({ script: code, cwd, env: a.env, timeoutMs }, s => { out += s; allStdout += s; }, s => { err += s; allStderr += s; });
+                  execResults.push({ 
+                    index: i, 
+                    kind, 
+                    target: 'local', 
+                    exitCode: rr.code, 
+                    killed: rr.killed, 
+                    stdout: out, 
+                    stderr: err 
+                  });
                 }
               }
             } catch (e) {
-              execResults.push({ index:i, kind, target: target || 'local', error: String(e.message || e) });
+              execResults.push({ 
+                index: i, 
+                kind, 
+                target: target || 'local', 
+                error: String(e.message || e) 
+              });
             }
           }
 
-          run.outputByStep[stepKey] = { ...(run.outputByStep[stepKey] || {}), executed: true, execResults };
+          run.outputByStep[stepKey] = { 
+            ...(run.outputByStep[stepKey] || {}), 
+            executed: true, 
+            execResults 
+          };
 
           if (step.exportExecStdoutAs) {
             const varName = String(step.exportExecStdoutAs).trim();
@@ -1022,14 +1188,13 @@ app.post('/api/workflows/:id/run', requireInternalAuth, async (req, res) => {
         }
       }
 
-      // Optional fail conditions (safe even if no exec happened)
       const patterns = Array.isArray(step.failOnRegex) ? step.failOnRegex : (step.failOnRegex ? [step.failOnRegex] : []);
       const matched = [];
       for (const p of patterns) {
         try {
           const re = new RegExp(p, 'm');
           if (re.test(allStdout) || re.test(allStderr)) matched.push(p);
-        } catch { /* ignore bad regex */ }
+        } catch { }
       }
       const anyNonZero = Array.isArray(execResults) && execResults.some(r0 =>
         !r0.skipped && typeof r0.exitCode === 'number' && r0.exitCode !== 0
@@ -1047,12 +1212,11 @@ app.post('/api/workflows/:id/run', requireInternalAuth, async (req, res) => {
         }
       }
 
-      // Export path from JSON response
       if (step.exportPath && r.json) {
         try {
           const value = lookup(r.json, step.exportPath);
           if (value !== undefined) vars[step.exportAs || step.exportPath] = value;
-        } catch {}
+        } catch { }
       }
 
       if (!r.ok) {
@@ -1060,7 +1224,11 @@ app.post('/api/workflows/:id/run', requireInternalAuth, async (req, res) => {
         if (step.stopOnFailure !== false) {
           run.status = 'failed';
           run.finishedAt = new Date().toISOString();
-          logWarn('WF RUN failed', { corr: run.id, atStep: step.name || step.id });
+          logWarn('WF RUN failed', { 
+            corr: run.id, 
+            conversationId: run.conversationId,
+            atStep: step.name || step.id 
+          });
           return res.json(run);
         }
       } else {
@@ -1070,13 +1238,20 @@ app.post('/api/workflows/:id/run', requireInternalAuth, async (req, res) => {
 
     run.status = 'ok';
     run.finishedAt = new Date().toISOString();
-    logInfo('WF RUN ok', { corr: run.id });
+    logInfo('WF RUN ok', { 
+      corr: run.id, 
+      conversationId: run.conversationId 
+    });
     res.json(run);
   } catch (e) {
     run.status = 'error';
     run.finishedAt = new Date().toISOString();
     runLog('error', 'Run error', { message: e.message });
-    logError('WF RUN error', { corr: run.id, message: e.message });
+    logError('WF RUN error', { 
+      corr: run.id, 
+      conversationId: run.conversationId,
+      message: e.message 
+    });
     res.status(500).json(run);
   }
 });
@@ -1085,7 +1260,82 @@ if (BASE_PATH) app.post(`${BASE_PATH}/api/workflows/:id/run`, (req, res) => {
   app._router.handle(req, res);
 });
 
-// --- API: runs history ---
+// **NEW**: Replay workflow from gateway conversation
+app.post('/api/workflows/:id/replay', requireInternalAuth, async (req, res) => {
+  const { id } = req.params;
+  const { conversation_id } = req.body || {};
+  
+  if (!conversation_id) {
+    return res.status(400).json({ error: 'conversation_id required' });
+  }
+  
+  try {
+    // Fetch conversation from gateway
+    const url = `${LLM_GATEWAY_API_BASE}/conversations/${encodeURIComponent(conversation_id)}/export`;
+    const r = await axios.get(url);
+    const convData = r.data;
+    
+    if (!convData?.conversation || !convData?.messages) {
+      return res.status(404).json({ error: 'Conversation not found or empty' });
+    }
+    
+    // Extract workflow metadata
+    const conv = convData.conversation;
+    const messages = convData.messages;
+    
+    res.json({
+      ok: true,
+      replay: true,
+      workflow_id: id,
+      conversation: {
+        id: conv.id,
+        created_at: conv.created_at,
+        title: conv.title,
+        model_id: conv.model_id
+      },
+      message_count: messages.length,
+      messages: messages,
+      note: 'Replay data fetched. Use this to debug or re-execute workflow steps.'
+    });
+  } catch (e) {
+    logError('WF replay failed', { workflow_id: id, conversation_id, error: e.message });
+    res.status(502).json({ 
+      error: 'Failed to fetch conversation for replay', 
+      detail: e.message 
+    });
+  }
+});
+if (BASE_PATH) app.post(`${BASE_PATH}/api/workflows/:id/replay`, (req, res) => {
+  req.url = `/api/workflows/${req.params.id}/replay`;
+  app._router.handle(req, res);
+});
+
+// **NEW**: Conversation export for workflow run
+app.get('/api/runs/:id/conversation', async (req, res) => {
+  const { id } = req.params;
+  const run = runs.find(r => r.id === id);
+  
+  if (!run || !run.conversationId) {
+    return res.status(404).json({ error: 'Run not found or no conversation ID' });
+  }
+  
+  try {
+    const url = `${LLM_GATEWAY_API_BASE}/conversations/${encodeURIComponent(run.conversationId)}/export`;
+    const r = await axios.get(url);
+    res.json(r.data);
+  } catch (e) {
+    logError('WF conversation export failed', { run_id: id, conversation_id: run.conversationId, error: e.message });
+    res.status(502).json({ 
+      error: 'Failed to fetch conversation', 
+      detail: e.message 
+    });
+  }
+});
+if (BASE_PATH) app.get(`${BASE_PATH}/api/runs/:id/conversation`, (req, res) => {
+  req.url = `/api/runs/${req.params.id}/conversation`;
+  app._router.handle(req, res);
+});
+
 app.get('/api/runs', (_req, res) => {
   res.json({ runs });
 });
@@ -1093,9 +1343,14 @@ if (BASE_PATH) app.get(`${BASE_PATH}/api/runs`, (_req, res) => {
   res.json({ runs });
 });
 
-// ---- Central error handler (MUST be last) ----
+// Error handler
 app.use((err, _req, res, _next) => {
-  try { logError('unhandled_error', { message: err?.message || String(err), stack: err?.stack }); } catch {}
+  try { 
+    logError('unhandled_error', { 
+      message: err?.message || String(err), 
+      stack: err?.stack 
+    }); 
+  } catch {}
   res.status(500).json({ error: 'Internal Server Error' });
 });
 

@@ -3,51 +3,17 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>LLM Workflows</title>
-  <style>
-    :root { --bg:#1e1e1e; --panel:#252526; --line:#3e3e42; --txt:#d4d4d4; --muted:#969696; --accent:#0e639c; }
-    *{box-sizing:border-box}
-    body{margin:0;background:var(--bg);color:var(--txt);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
-    .header{display:flex;gap:8px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
-    .grow{flex:1}
-    .tabs{display:flex;gap:8px;border-bottom:1px solid var(--line);background:var(--panel);padding:8px 16px}
-    .tab-btn{background:#252526;border:1px solid #3e3e42;padding:8px 12px;border-radius:8px;cursor:pointer;color:var(--txt)}
-    .tab-btn.active{background:#0e639c;border-color:#0e639c}
-    .pane{padding:16px;max-width:1400px;margin:0 auto}
-    .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-    .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
-    label{font-size:12px;color:var(--muted);margin-bottom:4px;display:block}
-    input,textarea,select{width:100%;padding:8px;border:1px solid var(--line);background:#1e1e1e;color:var(--txt);border-radius:6px;margin-bottom:10px}
-    textarea{resize:vertical}
-    button{background:#0e639c;color:#fff;border:none;border-radius:6px;padding:8px 12px;cursor:pointer}
-    button + button{margin-left:8px}
-    button.ghost{background:#3e3e42}
-    button.danger{background:#a1260d}
-    .card{background:#252526;border:1px solid #3e3e42;border-radius:8px;padding:16px;margin-bottom:12px}
-    .list{margin-top:10px}
-    .item{
-      display:grid;
-      grid-template-columns:1fr auto auto auto auto;
-      gap:8px;align-items:center;border:1px solid var(--line);background:#1e1e1e;border-radius:6px;padding:8px;margin-bottom:8px
-    }
-    .pill{font-size:11px;color:#ccc;background:#111;border:1px solid #383838;border-radius:999px;padding:2px 8px;margin-left:6px}
-    .muted{color:var(--muted);font-size:12px}
-    .grid{display:grid;grid-template-columns: 320px 1fr;gap:12px}
-    .log{background:#111;border:1px solid #333;border-radius:6px;padding:10px;white-space:pre-wrap;overflow:auto;max-height:300px}
-    .code{background:#111;border:1px solid #333;border-radius:6px;padding:10px;white-space:pre;overflow:auto}
-    .artifact{border:1px dashed #3e3e42;border-radius:6px;padding:10px;margin:8px 0}
-    .flex{display:flex;gap:8px;align-items:center}
-    .right{margin-left:auto}
-    @media (max-width:1100px){ .grid{grid-template-columns: 1fr} .row{grid-template-columns:1fr} .row3{grid-template-columns: 1fr 1fr} }
-  </style>
+  <title>LLM Workflows + Gateway</title>
+  <link rel="stylesheet" href="./css/theme.css">
+  <link rel="stylesheet" href="./css/workflows.css">
 </head>
 <body>
   <div class="header">
     <strong>🛠️ LLM Workflows</strong>
-    <span class="muted">Build, chain, validate, and test LLM-driven workflows that output strict JSON artifacts.</span>
+    <span class="muted">Gateway-integrated workflow builder with telemetry, templates, and cost tracking</span>
     <div class="grow"></div>
     <span id="tokenStatus" class="pill">auth: missing</span>
-    <button class="ghost" id="setTokenBtn" title="Set Internal API token (used for protected actions)">Set API Token</button>
+    <button class="ghost" id="setTokenBtn" title="Set Internal API token">🔑 Token</button>
     <button class="ghost" id="newWfBtn" title="New workflow">New</button>
     <button id="saveWfBtn" title="Save workflow">Save</button>
     <button class="danger" id="deleteWfBtn" title="Delete workflow">Delete</button>
@@ -56,135 +22,113 @@
   <div class="tabs">
     <button class="tab-btn active" id="tabBtnBuilder">Builder</button>
     <button class="tab-btn" id="tabBtnRuns">Runs</button>
+    <button class="tab-btn" id="tabBtnTelemetry">Gateway Telemetry</button>
+    <button class="tab-btn" id="tabBtnTemplates">Templates</button>
     <div class="grow"></div>
-    <button class="ghost" id="runWfBtn" title="Run current workflow">Run</button>
+    <button class="ghost" id="runWfBtn" title="Run current workflow">▶ Run</button>
   </div>
 
   <!-- Builder Tab -->
   <section id="tab-builder" class="pane">
-    <div class="grid">
-      <div>
-        <div class="card">
-          <h3 style="margin:0 0 10px">Workflows</h3>
-          <div id="wfList" class="list"></div>
-        </div>
-        <div class="card">
-          <h3 style="margin:0 0 10px">Run Vars</h3>
-          <label>Variables JSON (used for Test Step and Run)</label>
-          <textarea id="varsInput" rows="10" placeholder='{"task":"setup project","repo":"..." }'></textarea>
-        </div>
+    <div class="wf-wrap">
+      <div class="wf-panel">
+        <h3>Workflows</h3>
+        <div id="wfList" class="list"></div>
+        <hr style="margin:16px 0">
+        <h4>Run Variables</h4>
+        <label>JSON vars for testing</label>
+        <textarea id="varsInput" rows="8" placeholder='{"task":"..."}'></textarea>
       </div>
 
-      <div id="builderPane">
-        <div class="card">
-          <div class="row3">
-            <div>
-              <label>Name</label>
-              <input id="wfName" placeholder="Workflow name" />
-            </div>
-            <div>
-              <label>Model (from llm-gateway)</label>
-              <div class="flex">
-                <select id="modelSelect"></select>
-                <button class="ghost" id="refreshModelsBtn" title="Refresh models">↻</button>
-              </div>
-              <input id="model" type="hidden" />
-              <div id="modelInfo" class="muted" style="font-size:11px;margin-top:-6px"></div>
-            </div>
-            <div>
-              <label>Provider</label>
-              <select id="provider">
-                <option value="openai">OpenAI</option>
-                <option value="openai-compatible">OpenAI-compatible</option>
-                <option value="ollama">Ollama</option>
-              </select>
-            </div>
-          </div>
-          <label>Description</label>
-          <textarea id="wfDesc" rows="3" placeholder="What this workflow does..."></textarea>
+      <div class="wf-panel">
+        <div class="wf-head">
+          <input id="wfName" placeholder="Workflow name" style="flex:1" />
+          <select id="modelSelect" style="width:200px"></select>
+          <button class="ghost" id="refreshModelsBtn" title="Refresh">↻</button>
+        </div>
+        <input id="model" type="hidden" />
+        <div id="modelInfo" class="muted small"></div>
 
-          <div class="row3">
-            <div>
-              <label>Base URL</label>
-              <input id="baseUrl" placeholder="(auto from model selection if available)" />
-            </div>
-            <div>
-              <label>API Key</label>
-              <input id="apiKey" placeholder="(optional; gateway DB can provide)" />
-            </div>
-            <div>
-              <label>Temperature · Max tokens</label>
-              <div class="flex">
-                <input id="temperature" type="number" step="0.1" min="0" max="2" placeholder="0.2" />
-                <input id="max_tokens" type="number" placeholder="(optional)" />
-              </div>
-            </div>
-          </div>
+        <label>Description</label>
+        <textarea id="wfDesc" rows="2"></textarea>
 
-          <label>Defaults (JSON)</label>
-          <textarea id="defaults" rows="6" placeholder='{"task":"...", "project":"..."}'></textarea>
+        <div class="wf-row">
+          <div>
+            <label>Provider</label>
+            <select id="provider">
+              <option value="openai">OpenAI</option>
+              <option value="openai-compatible">Compatible</option>
+              <option value="ollama">Ollama</option>
+            </select>
+          </div>
+          <div>
+            <label>Base URL</label>
+            <input id="baseUrl" placeholder="(from model)" />
+          </div>
         </div>
 
-        <div class="card">
-          <div class="flex">
-            <h3 style="margin:0 0 10px">Steps</h3>
-            <div class="right"></div>
-            <button class="ghost" id="addStepBtn">Add Step</button>
+        <div class="wf-row">
+          <div>
+            <label>API Key</label>
+            <input id="apiKey" type="password" placeholder="(optional)" />
           </div>
-          <div id="stepsList" class="list"></div>
-        </div>
-
-        <div class="card" id="noStepHint">
-          <div class="muted">Select a step to edit.</div>
-        </div>
-
-        <div class="card" id="stepEditor" style="display:none">
-          <h3 style="margin:0 0 10px">Edit Step</h3>
-          <div class="row3">
-            <div>
-              <label>Step Name</label>
-              <input id="stepName" />
-            </div>
-            <div>
-              <label>Stop on Failure</label>
-              <div class="flex"><input type="checkbox" id="stepDontStop" /><span class="muted">Don’t stop (continue on failure)</span></div>
-            </div>
-            <div>
-              <label>Guard</label>
-              <div class="flex"><input type="checkbox" id="stepNoGuard" /><span class="muted">Disable system JSON guard</span></div>
+          <div>
+            <label>Temp · Max tokens</label>
+            <div class="horz">
+              <input id="temperature" type="number" step="0.1" placeholder="0.2" style="width:80px" />
+              <input id="max_tokens" type="number" placeholder="(auto)" style="width:80px" />
             </div>
           </div>
+        </div>
+
+        <label>Defaults (JSON)</label>
+        <textarea id="defaults" rows="4" placeholder='{}'></textarea>
+
+        <hr style="margin:16px 0">
+        
+        <div class="wf-head">
+          <h3 style="margin:0">Steps</h3>
+          <div class="grow"></div>
+          <button class="ghost" id="addStepBtn">+ Add Step</button>
+        </div>
+        <div id="stepsList" class="wf-steps"></div>
+      </div>
+
+      <div class="wf-panel">
+        <div id="noStepHint">
+          <p class="muted">Select a step to edit</p>
+        </div>
+
+        <div id="stepEditor" style="display:none">
+          <h3>Edit Step</h3>
+          <label>Step Name</label>
+          <input id="stepName" />
 
           <label>Prompt Template</label>
-          <textarea id="stepPrompt" rows="6" placeholder="You can use {{var}} placeholders"></textarea>
+          <textarea id="stepPrompt" rows="6" placeholder="Use {{var}}"></textarea>
 
           <label>JSON Schema</label>
-          <textarea id="stepSchema" rows="10" placeholder="JSON schema for expected response"></textarea>
+          <textarea id="stepSchema" rows="8"></textarea>
 
-          <div class="row3">
+          <div class="wf-row">
+            <label><input type="checkbox" id="stepNoGuard" /> Disable system guard</label>
+            <label><input type="checkbox" id="stepDontStop" /> Don't stop on failure</label>
+          </div>
+
+          <div class="wf-row">
             <div>
-              <label>Export Path (e.g. actions.0.content)</label>
-              <input id="stepExportPath" />
+              <label>Export path</label>
+              <input id="stepExportPath" placeholder="e.g. actions.0.content" />
             </div>
             <div>
-              <label>Export As</label>
+              <label>Export as</label>
               <input id="stepExportAs" placeholder="variable name" />
-            </div>
-            <div>
-              <label>&nbsp;</label>
-              <div class="flex">
-                <button class="ghost" id="testStepBtn">Test Step</button>
-                <label class="muted" style="display:flex;gap:6px;align-items:center;margin:0 0 0 8px">
-                  <input type="checkbox" id="execInTest" />
-                  Execute actions
-                </label>
-              </div>
             </div>
           </div>
 
-          <details style="margin:10px 0">
-            <summary>Overrides (optional)</summary>
-            <div class="row3">
+          <details style="margin:12px 0">
+            <summary>Step Overrides</summary>
+            <div class="wf-row" style="margin-top:8px">
               <div>
                 <label>Provider</label>
                 <input id="sProvider" placeholder="(inherit)" />
@@ -193,51 +137,59 @@
                 <label>Base URL</label>
                 <input id="sBaseUrl" placeholder="(inherit)" />
               </div>
+            </div>
+            <div class="wf-row">
               <div>
                 <label>API Key</label>
-                <input id="sApiKey" placeholder="(inherit)" />
-              </div>
-              <div>
-                <label>Target Runner</label>
-                <div class="flex">
-                  <select id="sTarget"></select>
-                  <button class="ghost" id="refreshRunnersBtn" title="Refresh runners">↻</button>
-                </div>
-                <div id="sTargetInfo" class="muted" style="font-size:11px;margin-top:-6px"></div>
-              </div>
-            </div>
-            <div class="row3">
-              <div>
-                <label>Model</label>
-                <div class="flex">
-                  <select id="sModelSelect"></select>
-                  <button class="ghost" id="refreshModelsBtn2" title="Refresh models">↻</button>
-                </div>
-                <input id="sModel" type="hidden" />
-                <div id="sModelInfo" class="muted" style="font-size:11px;margin-top:-6px"></div>
+                <input id="sApiKey" type="password" placeholder="(inherit)" />
               </div>
               <div>
                 <label>Temperature</label>
-                <input id="sTemp" type="number" step="0.1" min="0" max="2" placeholder="(inherit)" />
+                <input id="sTemp" type="number" step="0.1" placeholder="(inherit)" />
+              </div>
+            </div>
+            <div class="wf-row">
+              <div>
+                <label>Model</label>
+                <div class="horz">
+                  <select id="sModelSelect" style="flex:1"></select>
+                  <button class="ghost" id="refreshModelsBtn2">↻</button>
+                </div>
+                <input id="sModel" type="hidden" />
+                <div id="sModelInfo" class="muted small"></div>
+              </div>
+              <div>
+                <label>Runner Target</label>
+                <div class="horz">
+                  <select id="sTarget" style="flex:1"></select>
+                  <button class="ghost" id="refreshRunnersBtn">↻</button>
+                </div>
+                <div id="sTargetInfo" class="muted small"></div>
               </div>
             </div>
           </details>
 
-          <div id="testOutput" style="margin-top:10px"></div>
-        </div>
+          <div class="wf-actions">
+            <button class="ghost" id="testStepBtn" title="Test this step">🧪 Test Step</button>
+            <label style="display:inline-flex;gap:4px;align-items:center;margin-left:8px">
+              <input type="checkbox" id="execInTest" />
+              Execute actions
+            </label>
+            <button class="ghost" id="dryRunBtn" title="Dry-run validation only">🔍 Dry Run</button>
+          </div>
 
+          <div id="testOutput" style="margin-top:12px"></div>
+        </div>
       </div>
     </div>
   </section>
 
   <!-- Runs Tab -->
   <section id="tab-runs" class="pane" style="display:none">
-    <div class="grid">
-      <div>
-        <div class="card">
-          <h3 style="margin:0 0 10px">Run History</h3>
-          <div id="runsList" class="list"></div>
-        </div>
+    <div class="grid" style="grid-template-columns: 380px 1fr">
+      <div class="card">
+        <h3>Run History</h3>
+        <div id="runsList" class="list"></div>
       </div>
       <div>
         <div id="runDetail"></div>
@@ -245,8 +197,958 @@
     </div>
   </section>
 
-  <script type="module" src="./js/index.page.js"></script>
+  <!-- Gateway Telemetry Tab -->
+  <section id="tab-telemetry" class="pane" style="display:none">
+    <div class="card">
+      <div class="horz" style="margin-bottom:12px">
+        <h3 style="margin:0">Gateway Telemetry</h3>
+        <div class="grow"></div>
+        <button class="ghost" id="refreshTelemetryBtn">↻ Refresh</button>
+      </div>
+      <div id="telemetryList"></div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h3>Workflow Cost Analysis</h3>
+      <div class="horz" style="margin-bottom:12px">
+        <select id="costWorkflowSelect" style="flex:1"></select>
+        <button class="ghost" id="loadCostBtn">Load Cost Data</button>
+      </div>
+      <div id="costReport"></div>
+    </div>
+  </section>
+
+  <!-- Templates Tab -->
+  <section id="tab-templates" class="pane" style="display:none">
+    <div class="card">
+      <div class="horz" style="margin-bottom:12px">
+        <h3 style="margin:0">Gateway Templates</h3>
+        <div class="grow"></div>
+        <button class="ghost" id="refreshTemplatesBtn">↻ Refresh</button>
+      </div>
+      <div id="templatesList"></div>
+    </div>
+  </section>
+
+  <script>
+// Enhanced LLM Workflows with Gateway Integration
+const state = {
+  workflows: [],
+  current: null,
+  currentStepIdx: -1,
+  runs: [],
+  models: [],
+  templates: [],
+  runners: []
+};
+
+const INTERNAL_TOKEN_KEY = 'internal_api_token';
+function authHeaders(h = {}) {
+  const t = localStorage.getItem(INTERNAL_TOKEN_KEY);
+  return t ? { ...h, Authorization: `Bearer ${t}` } : h;
+}
+
+const $ = (id) => document.getElementById(id);
+function toast(m) { alert(m); }
+function fmtJson(v) { try { return JSON.stringify(v, null, 2); } catch { return String(v); } }
+function parseJson(text, fallback = null) { try { return JSON.parse(text); } catch { return fallback; } }
+function escapeHtml(s) {
+  return String(s || '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function updateTokenUi() {
+  const el = $('tokenStatus');
+  if (!el) return;
+  const has = !!localStorage.getItem(INTERNAL_TOKEN_KEY);
+  el.textContent = has ? 'auth: ok' : 'auth: missing';
+  el.style.background = has ? '#0e639c' : '#3e3e42';
+}
+
+function promptSetToken() {
+  const cur = localStorage.getItem(INTERNAL_TOKEN_KEY) || '';
+  const next = prompt('Enter INTERNAL_API_TOKEN:', cur);
+  if (next != null) {
+    if (next.trim()) localStorage.setItem(INTERNAL_TOKEN_KEY, next.trim());
+    else localStorage.removeItem(INTERNAL_TOKEN_KEY);
+  }
+  updateTokenUi();
+}
+
+// Template helpers
+function renderTemplate(tpl, vars) {
+  return (tpl || '').replace(/\{\{\s*([\w.\-]+)\s*\}\}/g, (_m, k) => {
+    const parts = String(k).split('.');
+    let cur = vars || {};
+    for (const p of parts) {
+      if (cur && typeof cur === 'object' && p in cur) cur = cur[p];
+      else return '';
+    }
+    return (cur === undefined || cur === null) ? '' : String(cur);
+  });
+}
+
+function buildSystemGuard(schema) {
+  const schemaStr = typeof schema === 'string' ? schema : JSON.stringify(schema || {}, null, 2);
+  return [
+    'You are a controller that MUST return a single JSON object and nothing else.',
+    'Rules:',
+    '- Do NOT include explanations, markdown, or code fences.',
+    '- Output MUST be valid JSON that matches the schema exactly.',
+    'JSON Schema:',
+    schemaStr
+  ].join('\n');
+}
+
+function computeFullPromptForStep(step, vars) {
+  if (!step) return '';
+  const sys = (step.systemGuard === false) ? (step.system || '') : buildSystemGuard(step.schema);
+  const user = renderTemplate(step.prompt || '', vars || {});
+  return [sys, user].filter(Boolean).join('\n\n');
+}
+
+// Gateway models
+async function fetchGatewayModels() {
+  try {
+    const r = await fetch('./api/llm-models', { credentials: 'include' });
+    const data = await r.json();
+    state.models = data.items || [];
+  } catch (e) {
+    console.warn('Failed to load models:', e);
+    state.models = [];
+  }
+  populateModelSelects();
+  populateCostWorkflowSelect();
+}
+
+function modelOptionLabel(m) {
+  const name = m.display_name || m.model_name;
+  const prov = m.provider_name || m.provider_kind || '';
+  const cost = (m.input_cost_per_million || m.output_cost_per_million) 
+    ? ` · ${m.input_cost_per_million || 0}/${m.output_cost_per_million || 0}` 
+    : '';
+  return `${name} · ${prov}${cost}`;
+}
+
+function populateModelSelect(selectEl, infoEl, currentValue) {
+  if (!selectEl) return;
+  selectEl.innerHTML = '';
+
+  const def = document.createElement('option');
+  def.value = '';
+  def.textContent = state.models.length ? '-- Select model --' : '-- No models (click ↻) --';
+  selectEl.appendChild(def);
+
+  for (const m of state.models) {
+    const opt = document.createElement('option');
+    opt.value = m.model_name;
+    opt.textContent = modelOptionLabel(m);
+    opt.dataset.provider = m.provider_kind || '';
+    opt.dataset.baseUrl = m.provider_base_url || '';
+    selectEl.appendChild(opt);
+  }
+  
+  const val = String(currentValue || '');
+  const found = Array.from(selectEl.options).find(o => o.value === val);
+  selectEl.value = found ? val : '';
+  
+  if (infoEl && found) {
+    const m = state.models.find(x => x.model_name === val);
+    infoEl.textContent = m ? `Provider: ${m.provider_kind} · Base: ${m.provider_base_url}` : '';
+  }
+}
+
+function populateModelSelects() {
+  populateModelSelect($('modelSelect'), $('modelInfo'), $('model')?.value);
+  populateModelSelect($('sModelSelect'), $('sModelInfo'), $('sModel')?.value);
+}
+
+function onModelSelectChanged(isStep = false) {
+  const select = isStep ? $('sModelSelect') : $('modelSelect');
+  const input = isStep ? $('sModel') : $('model');
+  const provEl = isStep ? $('sProvider') : $('provider');
+  const baseEl = isStep ? $('sBaseUrl') : $('baseUrl');
+  const infoEl = isStep ? $('sModelInfo') : $('modelInfo');
+
+  const val = select.value;
+  input.value = val || '';
+  const opt = select.selectedOptions?.[0];
+  const prov = opt?.dataset?.provider || '';
+  const base = opt?.dataset?.baseUrl || '';
+
+  if (!isStep) {
+    if (prov) provEl.value = prov;
+    if (base && (!baseEl.value || baseEl.value === '')) baseEl.value = base;
+  } else {
+    if (prov && (!provEl.value || provEl.value === '')) provEl.value = prov;
+    if (base && (!baseEl.value || baseEl.value === '')) baseEl.value = base;
+  }
+  if (infoEl) infoEl.textContent = val ? `${prov} · ${base}` : '';
+}
+
+// Runners
+async function fetchRunners() {
+  try {
+    const r = await fetch('./api/runners');
+    const data = await r.json();
+    state.runners = data.runners || [];
+  } catch {
+    state.runners = [];
+  }
+  populateRunnersSelect();
+}
+
+function populateRunnersSelect() {
+  const sel = $('sTarget');
+  if (!sel) return;
+  const val = state.current?.steps?.[state.currentStepIdx]?.target || '';
+  sel.innerHTML = '';
+  
+  const none = document.createElement('option');
+  none.value = '';
+  none.textContent = '— local —';
+  sel.appendChild(none);
+  
+  for (const r of state.runners) {
+    const opt = document.createElement('option');
+    opt.value = r.name;
+    opt.textContent = `${r.name} (${r.url || 'controller'})`;
+    sel.appendChild(opt);
+  }
+  sel.value = val || '';
+}
+
+// Templates
+async function fetchGatewayTemplates() {
+  try {
+    const r = await fetch('./api/llm-templates');
+    const data = await r.json();
+    state.templates = data.items || [];
+  } catch (e) {
+    console.warn('Failed to load templates:', e);
+    state.templates = [];
+  }
+  renderTemplates();
+}
+
+function renderTemplates() {
+  const list = $('templatesList');
+  if (!list) return;
+  list.innerHTML = '';
+  
+  if (!state.templates.length) {
+    list.innerHTML = '<p class="muted">No templates available</p>';
+    return;
+  }
+  
+  for (const t of state.templates) {
+    const div = document.createElement('div');
+    div.className = 'card';
+    div.innerHTML = `
+      <div class="horz">
+        <div>
+          <strong>${escapeHtml(t.name)}</strong>
+          <span class="badge">v${t.version}</span>
+        </div>
+        <div class="grow"></div>
+        <button class="ghost use-template-btn" data-template-id="${t.id}">Use in Step</button>
+      </div>
+      ${t.description ? `<p class="muted">${escapeHtml(t.description)}</p>` : ''}
+      <details>
+        <summary>Template</summary>
+        <pre class="code">${escapeHtml(t.template)}</pre>
+      </details>
+    `;
+    list.appendChild(div);
+  }
+  
+  list.querySelectorAll('.use-template-btn').forEach(btn => {
+    btn.onclick = () => {
+      const tid = btn.dataset.templateId;
+      const tmpl = state.templates.find(t => t.id == tid);
+      if (tmpl && state.current && state.currentStepIdx >= 0) {
+        const step = state.current.steps[state.currentStepIdx];
+        step.prompt = tmpl.template;
+        renderStepEditor();
+        toast('Template loaded into current step');
+        activateTab('builder');
+      }
+    };
+  });
+}
+
+// Telemetry
+async function fetchGatewayTelemetry() {
+  try {
+    const r = await fetch('./api/gateway/telemetry?limit=50');
+    const data = await r.json();
+    renderTelemetry(data.items || []);
+  } catch (e) {
+    console.warn('Failed to load telemetry:', e);
+    $('telemetryList').innerHTML = '<p class="muted">Failed to load telemetry</p>';
+  }
+}
+
+function renderTelemetry(items) {
+  const list = $('telemetryList');
+  if (!list) return;
+  list.innerHTML = '';
+  
+  if (!items.length) {
+    list.innerHTML = '<p class="muted">No telemetry data</p>';
+    return;
+  }
+  
+  for (const item of items) {
+    const div = document.createElement('div');
+    div.className = 'card';
+    const status = item.state === 'done' ? '✓' : item.state === 'error' ? '✗' : '⋯';
+    const wfId = item.meta?.workflow_id || item.meta?.metadata?.workflow_id || '—';
+    const convId = item.meta?.conversation_id || '—';
+    
+    div.innerHTML = `
+      <div class="horz">
+        <span class="badge">${status}</span>
+        <strong>${escapeHtml(item.model || 'unknown')}</strong>
+        <span class="muted">${item.provider || ''}</span>
+        <div class="grow"></div>
+        <span class="muted small">${item.started_at || ''}</span>
+      </div>
+      <div class="muted small">Workflow: ${escapeHtml(wfId)} · Conversation: ${convId.slice(0, 12)}</div>
+      ${item.inTok || item.outTok ? `
+        <div class="kv">
+          <span class="kvp">in: ${item.inTok || 0} tokens</span>
+          <span class="kvp">out: ${item.outTok || 0} tokens</span>
+          ${item.cost ? `<span class="kvp">${Number(item.cost).toFixed(4)}</span>` : ''}
+        </div>
+      ` : ''}
+    `;
+    list.appendChild(div);
+  }
+}
+
+// Cost Analysis
+function populateCostWorkflowSelect() {
+  const sel = $('costWorkflowSelect');
+  if (!sel) return;
+  sel.innerHTML = '';
+  
+  for (const wf of state.workflows) {
+    const opt = document.createElement('option');
+    opt.value = wf.id;
+    opt.textContent = wf.name;
+    sel.appendChild(opt);
+  }
+}
+
+async function loadWorkflowCost() {
+  const sel = $('costWorkflowSelect');
+  if (!sel || !sel.value) return;
+  
+  const workflowId = sel.value;
+  const report = $('costReport');
+  report.innerHTML = '<p class="muted">Loading...</p>';
+  
+  try {
+    const r = await fetch(`./api/workflows/${encodeURIComponent(workflowId)}/cost?limit=100`);
+    const data = await r.json();
+    
+    if (!data.usage_records) {
+      report.innerHTML = '<p class="muted">No cost data found for this workflow</p>';
+      return;
+    }
+    
+    report.innerHTML = `
+      <div class="kv">
+        <span class="kvp"><strong>Records:</strong> ${data.usage_records}</span>
+        <span class="kvp"><strong>Total Cost:</strong> ${Number(data.total_cost).toFixed(4)} ${data.currency}</span>
+        <span class="kvp"><strong>Input Tokens:</strong> ${data.total_input_tokens.toLocaleString()}</span>
+        <span class="kvp"><strong>Output Tokens:</strong> ${data.total_output_tokens.toLocaleString()}</span>
+      </div>
+      <details style="margin-top:12px">
+        <summary>Usage Records (${data.records.length})</summary>
+        <div class="list">
+          ${data.records.map(r => `
+            <div class="item">
+              <div>
+                <span class="muted small">${r.ts || ''}</span>
+                <span class="badge">${r.input_tokens || 0}→${r.output_tokens || 0} tokens</span>
+                ${r.cost ? `<span class="badge">${Number(r.cost).toFixed(4)}</span>` : ''}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </details>
+    `;
+  } catch (e) {
+    report.innerHTML = `<p class="error">Failed to load cost: ${escapeHtml(e.message)}</p>`;
+  }
+}
+
+// Workflows
+function newWorkflow() {
+  return {
+    id: null,
+    name: 'New Workflow',
+    description: '',
+    defaults: {},
+    chat: { provider: 'openai', baseUrl: '', apiKey: '', model: '', temperature: 0.2 },
+    steps: [],
+    createdAt: null,
+    updatedAt: null
+  };
+}
+
+function newStep() {
+  const currentModel = state.current?.chat?.model || '';
+  return {
+    id: `step_${Date.now().toString(36)}`,
+    name: 'Step',
+    prompt: 'Given the task: {{task}}\nReturn actions to perform.\n',
+    schema: defaultActionSchema(),
+    systemGuard: true,
+    stopOnFailure: true,
+    exportPath: '',
+    exportAs: '',
+    provider: '',
+    baseUrl: '',
+    apiKey: '',
+    model: currentModel,
+    temperature: '',
+    target: ''
+  };
+}
+
+function defaultActionSchema() {
+  return {
+    $schema: 'http://json-schema.org/draft-07/schema#',
+    type: 'object',
+    required: ['actions'],
+    properties: {
+      actions: {
+        type: 'array',
+        items: {
+          type: 'object',
+          required: ['type', 'content'],
+          properties: {
+            type: { type: 'string', enum: ['bash', 'python', 'sql', 'http', 'plan', 'text'] },
+            content: { type: 'string' },
+            filename: { type: 'string' },
+            cwd: { type: 'string' },
+            env: { type: 'object' },
+            meta: { type: 'object' }
+          }
+        }
+      },
+      notes: { type: 'string' }
+    }
+  };
+}
+
+async function loadWorkflows() {
+  try {
+    const resp = await fetch('./api/workflows');
+    const data = await resp.json();
+    state.workflows = data.workflows || [];
+  } catch (e) {
+    console.warn('Failed to load workflows:', e);
+    state.workflows = [];
+  }
+  renderWorkflowList();
+  populateCostWorkflowSelect();
+}
+
+async function saveCurrent() {
+  const wf = collectWorkflowFromForm();
+  try {
+    const resp = await fetch('./api/workflows', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(wf)
+    });
+    const data = await resp.json();
+    if (!data.ok) {
+      toast('Save failed: ' + (data.error || 'Unknown'));
+      return;
+    }
+    state.current = data.workflow;
+    const idx = state.workflows.findIndex(w => w.id === state.current.id);
+    if (idx >= 0) state.workflows[idx] = state.current;
+    else state.workflows.push(state.current);
+    renderWorkflowList();
+    renderWorkflowEditor();
+    populateCostWorkflowSelect();
+    toast('Saved');
+  } catch (e) {
+    toast('Save failed: ' + e.message);
+  }
+}
+
+async function deleteCurrent() {
+  if (!state.current?.id) {
+    toast('Nothing selected');
+    return;
+  }
+  if (!confirm('Delete this workflow?')) return;
+  try {
+    const resp = await fetch(`./api/workflows/${state.current.id}`, { method: 'DELETE' });
+    if (resp.ok) {
+      state.workflows = state.workflows.filter(w => w.id !== state.current.id);
+      state.current = null;
+      state.currentStepIdx = -1;
+      renderWorkflowList();
+      renderWorkflowEditor();
+      populateCostWorkflowSelect();
+    } else {
+      toast('Delete failed');
+    }
+  } catch (e) {
+    toast('Delete failed: ' + e.message);
+  }
+}
+
+async function runCurrent() {
+  const wf = collectWorkflowFromForm();
+  if (!wf.id) {
+    toast('Please save the workflow before running.');
+    return;
+  }
+  const vars = parseJson($('varsInput').value || '{}', {});
+  try {
+    const resp = await fetch(`./api/workflows/${wf.id}/run`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ vars })
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      toast('Run failed: ' + (data.error || resp.statusText));
+      return;
+    }
+    renderRunResult(data);
+    await loadRuns();
+  } catch (e) {
+    toast('Run failed: ' + e.message);
+  }
+}
+
+async function testStep() {
+  const wf = collectWorkflowFromForm();
+  const step = wf.steps[state.currentStepIdx];
+  if (!step) {
+    toast('Select a step');
+    return;
+  }
+  const vars = parseJson($('varsInput').value || '{}', {});
+  
+  try {
+    const resp = await fetch('./api/testStep', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({
+        chat: wf.chat,
+        step,
+        vars,
+        execute: $('execInTest')?.checked === true
+      })
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      toast('Step test failed: ' + (data.error || resp.statusText));
+      renderStepTestResult({ ok: false, error: data.error || 'HTTP error', raw: data.errorText || '' });
+      return;
+    }
+    renderStepTestResult(data);
+  } catch (e) {
+    toast('Step test failed: ' + e.message);
+  }
+}
+
+async function dryRunStep() {
+  const wf = collectWorkflowFromForm();
+  const step = wf.steps[state.currentStepIdx];
+  if (!step) {
+    toast('Select a step');
+    return;
+  }
+  
+  try {
+    const resp = await fetch('./api/testStep', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({
+        chat: wf.chat,
+        step,
+        vars: {},
+        dryRun: true
+      })
+    });
+    const data = await resp.json();
+    $('testOutput').innerHTML = `
+      <div class="card">
+        <div class="horz">
+          <span class="badge success">Dry Run</span>
+          <strong>Validation: ${data.validated ? '✓ Passed' : '✗ Failed'}</strong>
+        </div>
+        <pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre>
+      </div>
+    `;
+  } catch (e) {
+    toast('Dry run failed: ' + e.message);
+  }
+}
+
+function collectWorkflowFromForm() {
+  if (!state.current) state.current = newWorkflow();
+
+  state.current.name = $('wfName').value.trim();
+  state.current.description = $('wfDesc').value;
+  state.current.chat = {
+    provider: $('provider').value,
+    baseUrl: $('baseUrl').value.trim(),
+    apiKey: $('apiKey').value.trim(),
+    model: $('model').value.trim(),
+    temperature: $('temperature').value !== '' ? Number($('temperature').value) : undefined,
+    max_tokens: $('max_tokens').value !== '' ? Number($('max_tokens').value) : undefined
+  };
+  state.current.defaults = parseJson($('defaults').value || '{}', {});
+
+  if (state.currentStepIdx >= 0 && state.current.steps[state.currentStepIdx]) {
+    const s = state.current.steps[state.currentStepIdx];
+    s.name = $('stepName').value.trim();
+    s.prompt = $('stepPrompt').value;
+    s.systemGuard = !$('stepNoGuard').checked;
+    s.schema = parseJson($('stepSchema').value || '', s.schema);
+    s.stopOnFailure = !$('stepDontStop').checked;
+    s.exportPath = $('stepExportPath').value.trim();
+    s.exportAs = $('stepExportAs').value.trim();
+    s.provider = $('sProvider').value.trim();
+    s.baseUrl = $('sBaseUrl').value.trim();
+    s.apiKey = $('sApiKey').value.trim();
+    s.model = $('sModel').value.trim();
+    s.target = $('sTarget')?.value || '';
+    s.temperature = $('sTemp').value !== '' ? Number($('sTemp').value) : '';
+  }
+  return state.current;
+}
+
+function renderWorkflowList() {
+  const list = $('wfList');
+  list.innerHTML = '';
+  state.workflows.forEach(w => {
+    const div = document.createElement('div');
+    div.className = 'item';
+    div.innerHTML = `
+      <div>
+        <strong>${escapeHtml(w.name)}</strong>
+        <span class="pill">${w.chat?.model || '(model)'}</span>
+      </div>
+      <button class="ghost">Open</button>
+    `;
+    const btn = div.querySelector('button');
+    btn.onclick = async () => {
+      try {
+        const resp = await fetch(`./api/workflows/${w.id}`);
+        const data = await resp.json();
+        state.current = data.workflow;
+        state.currentStepIdx = -1;
+        renderWorkflowEditor();
+        activateTab('builder');
+      } catch (e) {
+        toast('Load failed: ' + e.message);
+      }
+    };
+    list.appendChild(div);
+  });
+}
+
+function renderWorkflowEditor() {
+  if (!state.current) {
+    $('wfName').value = '';
+    $('wfDesc').value = '';
+    $('provider').value = 'openai';
+    $('baseUrl').value = '';
+    $('apiKey').value = '';
+    $('model').value = '';
+    $('temperature').value = '';
+    $('max_tokens').value = '';
+    $('defaults').value = '{}';
+    populateModelSelects();
+    renderSteps();
+    renderStepEditor();
+    return;
+  }
+  $('wfName').value = state.current.name || '';
+  $('wfDesc').value = state.current.description || '';
+  $('provider').value = state.current.chat?.provider || 'openai';
+  $('baseUrl').value = state.current.chat?.baseUrl || '';
+  $('apiKey').value = state.current.chat?.apiKey || '';
+  $('model').value = state.current.chat?.model || '';
+  $('temperature').value = state.current.chat?.temperature ?? '';
+  $('max_tokens').value = state.current.chat?.max_tokens ?? '';
+  $('defaults').value = fmtJson(state.current.defaults || {});
+  populateModelSelects();
+  renderSteps();
+  renderStepEditor();
+}
+
+function renderSteps() {
+  const list = $('stepsList');
+  list.innerHTML = '';
+  const steps = state.current?.steps || [];
+  steps.forEach((s, idx) => {
+    const row = document.createElement('div');
+    row.className = 'wf-step';
+    row.innerHTML = `
+      <div class="horz">
+        <strong>${escapeHtml(s.name || s.id)}</strong>
+        <span class="pill">${s.model || '(inherit)'}</span>
+        <div class="grow"></div>
+        <button class="ghost">↑</button>
+        <button class="ghost">↓</button>
+        <button class="ghost">Edit</button>
+        <button class="danger">✕</button>
+      </div>
+    `;
+    const [_, bUp, bDown, bEdit, bRm] = row.querySelectorAll('button');
+    bUp.onclick = () => moveStep(idx, -1);
+    bDown.onclick = () => moveStep(idx, +1);
+    bEdit.onclick = () => { state.currentStepIdx = idx; renderStepEditor(); };
+    bRm.onclick = () => removeStep(idx);
+    list.appendChild(row);
+  });
+}
+
+function renderStepEditor() {
+  const steps = state.current?.steps || [];
+  const s = steps[state.currentStepIdx];
+  const noStep = !s;
+  $('stepEditor').style.display = noStep ? 'none' : '';
+  $('noStepHint').style.display = noStep ? '' : 'none';
+  if (noStep) return;
+
+  $('stepName').value = s.name || '';
+  $('stepPrompt').value = s.prompt || '';
+  $('stepSchema').value = typeof s.schema === 'string' ? s.schema : fmtJson(s.schema || {});
+  $('stepNoGuard').checked = !s.systemGuard;
+  $('stepDontStop').checked = !s.stopOnFailure;
+  $('stepExportPath').value = s.exportPath || '';
+  $('stepExportAs').value = s.exportAs || '';
+  $('sProvider').value = s.provider || '';
+  $('sBaseUrl').value = s.baseUrl || '';
+  $('sApiKey').value = s.apiKey || '';
+  $('sModel').value = s.model || '';
+  $('sTemp').value = s.temperature ?? '';
+
+  populateRunnersSelect();
+  populateModelSelect($('sModelSelect'), $('sModelInfo'), s.model || '');
+}
+
+function removeStep(idx) {
+  state.current.steps.splice(idx, 1);
+  if (state.currentStepIdx === idx) state.currentStepIdx = -1;
+  renderSteps();
+  renderStepEditor();
+}
+
+function moveStep(idx, delta) {
+  const steps = state.current.steps;
+  const j = idx + delta;
+  if (j < 0 || j >= steps.length) return;
+  const [m] = steps.splice(idx, 1);
+  steps.splice(j, 0, m);
+  if (state.currentStepIdx === idx) state.currentStepIdx = j;
+  renderSteps();
+}
+
+function addStep() {
+  if (!state.current) state.current = newWorkflow();
+  collectWorkflowFromForm();
+  state.current.steps.push(newStep());
+  state.currentStepIdx = state.current.steps.length - 1;
+  renderSteps();
+  renderStepEditor();
+}
+
+async function loadRuns() {
+  try {
+    const resp = await fetch('./api/runs');
+    const data = await resp.json();
+    state.runs = data.runs || [];
+  } catch (e) {
+    console.warn('Runs load failed:', e);
+    state.runs = [];
+  }
+  renderRuns();
+}
+
+function renderRuns() {
+  const list = $('runsList');
+  list.innerHTML = '';
+  state.runs.slice().reverse().forEach(r => {
+    const item = document.createElement('div');
+    item.className = 'item';
+    const badge = r.status === 'ok' ? 'success' : r.status === 'failed' ? 'error' : 'warn';
+    item.innerHTML = `
+      <div>
+        <strong>${escapeHtml(r.name)}</strong>
+        <span class="badge ${badge}">${r.status}</span>
+        <div class="muted small">${r.id.slice(0, 8)} · ${r.startedAt}</div>
+      </div>
+      <button class="ghost">Details</button>
+    `;
+    item.querySelector('button').onclick = () => renderRunResult(r);
+    list.appendChild(item);
+  });
+}
+
+function renderRunResult(run) {
+  activateTab('runs');
+  $('runDetail').innerHTML = `
+    <div class="card">
+      <div class="horz">
+        <div>
+          <strong>${escapeHtml(run.name)}</strong>
+          <span class="badge">${run.status}</span>
+        </div>
+        <div class="grow"></div>
+        ${run.conversationId ? `<button class="ghost" onclick="exportConversation('${run.id}')">📤 Export Conversation</button>` : ''}
+      </div>
+      <div class="muted">Started: ${run.startedAt} · Finished: ${run.finishedAt || ''}</div>
+      ${run.conversationId ? `<div class="muted small">Conversation ID: ${run.conversationId}</div>` : ''}
+      <h4>Artifacts (${run.artifacts?.length || 0})</h4>
+      ${renderArtifacts(run.artifacts || [])}
+      <h4>Logs</h4>
+      <pre class="wf-log">${(run.logs || []).map(l => `[${l.ts}] [${l.step || '-'}] ${l.level.toUpperCase()} ${l.msg}${l.meta ? ' ' + JSON.stringify(l.meta) : ''}`).join('\n')}</pre>
+    </div>
+  `;
+}
+
+function renderArtifacts(artifacts) {
+  if (!artifacts.length) return '<div class="muted">No artifacts</div>';
+  return artifacts.map(a => `
+    <div class="artifact">
+      <div>
+        <span class="badge">${a.type}</span>
+        <span class="muted">from: ${escapeHtml(a.step || '')}</span>
+      </div>
+      ${a.filename ? `<div class="muted">file: ${escapeHtml(a.filename)}</div>` : ''}
+      <pre class="code">${escapeHtml(a.content || '')}</pre>
+    </div>
+  `).join('');
+}
+
+function renderStepTestResult(data) {
+  $('testOutput').innerHTML = `
+    <div class="card">
+      <div><strong>OK:</strong> ${String(!!data.ok)}</div>
+      <h4>Validation</h4>
+      <pre>${escapeHtml(JSON.stringify(data.validation || {}, null, 2))}</pre>
+      <h4>JSON</h4>
+      <pre>${escapeHtml(JSON.stringify(data.json || {}, null, 2))}</pre>
+      <h4>Raw</h4>
+      <pre class="wf-log">${escapeHtml(((data.raw || data.error || '') + '').slice(0, 4000))}</pre>
+      ${data.actionResults?.length ? `
+        <h4>Action Results</h4>
+        ${data.actionResults.map(r => `
+          <div class="artifact">
+            <div><span class="badge">${escapeHtml(r.kind || '')}</span> index: ${r.index}</div>
+            ${r.error ? `<div class="error">error: ${escapeHtml(r.error)}</div>` : `
+              <div class="muted">exit: ${r.exitCode} ${r.killed ? '(killed)' : ''}</div>
+              <pre class="wf-log">${escapeHtml((r.stdout || '').slice(0, 2000))}</pre>
+            `}
+          </div>
+        `).join('')}
+      ` : ''}
+    </div>
+  `;
+}
+
+async function exportConversation(runId) {
+  try {
+    const r = await fetch(`./api/runs/${runId}/conversation`);
+    const data = await r.json();
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `conversation_${runId}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    toast('Export failed: ' + e.message);
+  }
+}
+
+function activateTab(name) {
+  const tabs = ['builder', 'runs', 'telemetry', 'templates'];
+  tabs.forEach(t => {
+    $(`tab-${t}`).style.display = (t === name) ? '' : 'none';
+    $(`tabBtn${capitalize(t)}`).classList.toggle('active', t === name);
+  });
+  
+  // Load data when switching to certain tabs
+  if (name === 'telemetry') fetchGatewayTelemetry();
+  if (name === 'templates') fetchGatewayTemplates();
+}
+
+function capitalize(s) {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+// Event handlers
+document.addEventListener('DOMContentLoaded', async () => {
+  $('tabBtnBuilder').addEventListener('click', () => activateTab('builder'));
+  $('tabBtnRuns').addEventListener('click', () => activateTab('runs'));
+  $('tabBtnTelemetry').addEventListener('click', () => activateTab('telemetry'));
+  $('tabBtnTemplates').addEventListener('click', () => activateTab('templates'));
+  
+  $('setTokenBtn').addEventListener('click', promptSetToken);
+  $('newWfBtn').addEventListener('click', () => {
+    state.current = newWorkflow();
+    state.currentStepIdx = -1;
+    renderWorkflowEditor();
+  });
+  $('saveWfBtn').addEventListener('click', saveCurrent);
+  $('deleteWfBtn').addEventListener('click', deleteCurrent);
+  $('addStepBtn').addEventListener('click', addStep);
+  $('testStepBtn').addEventListener('click', testStep);
+  $('dryRunBtn').addEventListener('click', dryRunStep);
+  $('runWfBtn').addEventListener('click', runCurrent);
+  
+  $('modelSelect')?.addEventListener('change', () => onModelSelectChanged(false));
+  $('sModelSelect')?.addEventListener('change', () => onModelSelectChanged(true));
+  $('refreshModelsBtn')?.addEventListener('click', fetchGatewayModels);
+  $('refreshModelsBtn2')?.addEventListener('click', fetchGatewayModels);
+  $('refreshRunnersBtn')?.addEventListener('click', fetchRunners);
+  
+  $('refreshTelemetryBtn')?.addEventListener('click', fetchGatewayTelemetry);
+  $('refreshTemplatesBtn')?.addEventListener('click', fetchGatewayTemplates);
+  $('loadCostBtn')?.addEventListener('click', loadWorkflowCost);
+  
+  // Auto-update on form changes
+  ['wfName', 'wfDesc', 'provider', 'baseUrl', 'apiKey', 'model', 'temperature', 'max_tokens', 'defaults',
+   'stepName', 'stepPrompt', 'stepSchema', 'stepNoGuard', 'stepDontStop', 'stepExportPath', 'stepExportAs',
+   'sProvider', 'sBaseUrl', 'sApiKey', 'sModel', 'sTemp', 'sTarget'
+  ].forEach(id => {
+    const el = $(id);
+    if (el) {
+      el.addEventListener('change', collectWorkflowFromForm);
+      if (el.tagName === 'TEXTAREA') el.addEventListener('input', collectWorkflowFromForm);
+    }
+  });
+  
+  updateTokenUi();
+  activateTab('builder');
+  
+  await fetchGatewayModels();
+  await fetchRunners();
+  await loadWorkflows();
+  await loadRuns();
+});
+  </script>
 </body>
 </html>
-
-
