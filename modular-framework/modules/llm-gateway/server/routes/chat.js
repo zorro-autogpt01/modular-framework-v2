@@ -9,7 +9,7 @@ const { callOllama } = require('../providers/ollama');
 const {
   pickEncodingForModel, countTextTokens, countChatTokens
 } = require('../utils/tokens');
-const telemetry = require('../telemetry/interactions'); // <-- NEW
+const telemetry = require('../telemetry/interactions');
 
 // SSE helper
 function prepareSSE(res, rid) {
@@ -57,6 +57,26 @@ async function resolveModel(body) {
   return null;
 }
 
+/** pull only human-readable text from message content; cap length */
+function flattenTextContent(content) {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content.map(p => (typeof p?.text === 'string' ? p.text : '')).join('');
+  }
+  if (content && typeof content === 'object' && typeof content.text === 'string') return content.text;
+  return '';
+}
+function sanitizeMessagesForTelemetry(messages = [], cap = 2000) {
+  return (messages || []).map(m => {
+    const txt = flattenTextContent(m.content);
+    return {
+      role: m.role || null,
+      name: m.name || null,
+      content: (txt ? String(txt) : '').slice(0, cap)
+    };
+  });
+}
+
 /**
  * Extracts plain text from an OpenAI Responses API payload for accounting.
  * Looks in: output[].message.content[].output_text.text (preferred),
@@ -80,7 +100,7 @@ function pickContentFromResponses(data) {
   return '';
 }
 
-async function dispatch(modelRow, reqBody, res, sse, rid) {
+async function dispatch(modelRow, reqBody, res, sse, rid, ctx = {}) {
   const {
     messages = [], temperature, max_tokens, stream = true, useResponses, reasoning, metadata
   } = reqBody || {};
@@ -119,19 +139,24 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
     currency: modelRow.currency || 'USD'
   };
 
-  // Telemetry: input/prompt snapshot
-  try { telemetry.update(rid, { in_tokens: inTok, prompt_chars: promptChars }); } catch {}
-
+  // ---- Telemetry: start ----
+  const conversationId = metaBase.conversation_id || metaBase.conversationId || null;
+  telemetry.update(rid, { }); // no-op if not started yet
   let completionText = '';
 
   const onDelta = (d) => {
     logDebug('GW upstream delta', { rid, len: typeof d === 'string' ? d.length : 0, data: d });
     if (typeof d === 'string' && d) completionText += d;
-    try { telemetry.update(rid, { out_chars: completionText.length }); } catch {}
+    // live fanout to admin
+    telemetry.update(rid, {
+      last_delta: typeof d === 'string' ? d : '',
+      output_so_far: completionText,
+      output_chars: completionText.length
+    });
     sse?.({ type: 'delta', content: d });
   };
   const onDone = () => { logDebug('GW upstream done', { rid }); sse?.({ type: 'done' }); };
-  const onError = (m) => { logWarn('GW upstream error', { rid, message: m }); sse?.({ type: 'error', message: m }); };
+  const onError = (m) => { logWarn('GW upstream error', { rid, message: m }); telemetry.fail(rid, m); sse?.({ type: 'error', message: m }); };
 
   // OLLAMA
   if (modelRow.provider_kind === 'ollama') {
@@ -147,7 +172,7 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
       await logUsage({
         provider_id: modelRow.provider_id,
         model_id: modelRow.id,
-        conversation_id: metaBase.conversation_id || metaBase.conversationId || null,
+        conversation_id: conversationId,
         input_tokens: inTok,
         output_tokens: outTok,
         prompt_chars: promptChars,
@@ -155,7 +180,15 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
         cost,
         meta: metaBase
       });
-      try { telemetry.finish(rid, { out_tokens: outTok, completion_chars: completionChars, cost }); } catch {}
+      telemetry.finish(rid, {
+        provider: modelRow.provider_kind,
+        model: modelRow.model_name,
+        input_tokens: inTok,
+        output_tokens: outTok,
+        cost,
+        output_chars: completionChars,
+        conversation_id: conversationId
+      });
       return;
     } else {
       const { content } = await callOllama({ ...upstream, stream:false, rid });
@@ -171,7 +204,7 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
       await logUsage({
         provider_id: modelRow.provider_id,
         model_id: modelRow.id,
-        conversation_id: metaBase.conversation_id || metaBase.conversationId || null,
+        conversation_id: conversationId,
         input_tokens: inTok,
         output_tokens: outTok,
         prompt_chars: promptChars,
@@ -179,14 +212,22 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
         cost,
         meta: metaBase
       });
-      try { telemetry.finish(rid, { out_tokens: outTok, completion_chars: completionChars, cost }); } catch {}
+      telemetry.update(rid, { output_so_far: completionText, output_chars: completionChars });
+      telemetry.finish(rid, {
+        provider: modelRow.provider_kind,
+        model: modelRow.model_name,
+        input_tokens: inTok,
+        output_tokens: outTok,
+        cost,
+        output_chars: completionChars,
+        conversation_id: conversationId
+      });
       return res.json({ content: completionText });
     }
   }
 
   // OpenAI / OpenAI-compatible
   if (stream) {
-    // Streaming path unchanged
     await callOpenAICompat({
       ...upstream, rid,
       onDelta, onDone, onError
@@ -201,7 +242,7 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
     await logUsage({
       provider_id: modelRow.provider_id,
       model_id: modelRow.id,
-      conversation_id: metaBase.conversation_id || metaBase.conversationId || null,
+      conversation_id: conversationId,
       input_tokens: inTok,
       output_tokens: outTok,
       prompt_chars: promptChars,
@@ -209,15 +250,22 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
       cost,
       meta: metaBase
     });
-    try { telemetry.finish(rid, { out_tokens: outTok, completion_chars: completionChars, cost }); } catch {}
+    telemetry.finish(rid, {
+      provider: modelRow.provider_kind,
+      model: modelRow.model_name,
+      input_tokens: inTok,
+      output_tokens: outTok,
+      cost,
+      output_chars: completionChars,
+      conversation_id: conversationId
+    });
   } else {
-    // NON-STREAM: Option A — pass through Responses API when in use
+    // NON-STREAM
     const respPayload = await callOpenAICompat({
       ...upstream, rid, stream: false
     });
 
     if (upstream.useResponses) {
-      // Extract text only for accounting; return full payload to client.
       const textForAccounting = pickContentFromResponses(respPayload) || '';
       const completionChars = textForAccounting.length;
       const outTok = countTextTokens(textForAccounting, encName);
@@ -234,7 +282,7 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
       await logUsage({
         provider_id: modelRow.provider_id,
         model_id: modelRow.id,
-        conversation_id: metaBase.conversation_id || metaBase.conversationId || null,
+        conversation_id: conversationId,
         input_tokens: inTok,
         output_tokens: outTok,
         prompt_chars: promptChars,
@@ -243,11 +291,21 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
         meta: metaBase
       });
 
-      try { telemetry.finish(rid, { out_tokens: outTok, completion_chars: completionChars, cost }); } catch {}
+      telemetry.update(rid, { output_so_far: textForAccounting, output_chars: completionChars });
+      telemetry.finish(rid, {
+        provider: modelRow.provider_kind,
+        model: modelRow.model_name,
+        input_tokens: inTok,
+        output_tokens: outTok,
+        cost,
+        output_chars: completionChars,
+        conversation_id: conversationId
+      });
+
       return res.json(respPayload);
     }
 
-    // Legacy chat-completions or compat providers: keep returning { content }
+    // Legacy chat-completions or compat providers
     const completionTextLocal = (respPayload && respPayload.content) || '';
     logDebug('GW -> client JSON (openai-compat)', { contentHead: completionTextLocal.slice(0, 800) });
     const completionChars = completionTextLocal.length;
@@ -260,7 +318,7 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
     await logUsage({
       provider_id: modelRow.provider_id,
       model_id: modelRow.id,
-      conversation_id: metaBase.conversation_id || metaBase.conversationId || null,
+      conversation_id: conversationId,
       input_tokens: inTok,
       output_tokens: outTok,
       prompt_chars: promptChars,
@@ -268,7 +326,16 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
       cost,
       meta: metaBase
     });
-    try { telemetry.finish(rid, { out_tokens: outTok, completion_chars: completionChars, cost }); } catch {}
+    telemetry.update(rid, { output_so_far: completionTextLocal, output_chars: completionChars });
+    telemetry.finish(rid, {
+      provider: modelRow.provider_kind,
+      model: modelRow.model_name,
+      input_tokens: inTok,
+      output_tokens: outTok,
+      cost,
+      output_chars: completionChars,
+      conversation_id: conversationId
+    });
     return res.json({ content: completionTextLocal });
   }
 }
@@ -297,24 +364,26 @@ router.post('/v1/chat', async (req, res) => {  const rid = req.id;
       return stream ? res.end() : res.status(400).json({ error: 'Model not configured' });
     }
 
-    // Telemetry: start
-    try {
-      telemetry.start({
-        id: rid,
-        model: modelRow.model_name,
-        provider: modelRow.provider_kind,
-        stream,
-        ip: req.ip,
-        started_at: new Date().toISOString(),
-        meta: { provider_id: modelRow.provider_id, model_id: modelRow.id, model_key: modelRow.key || null }
-      });
-    } catch {}
+    // Telemetry start (include sanitized input messages)
+    telemetry.start({
+      id: rid,
+      model: modelRow.model_name,
+      provider: modelRow.provider_kind,
+      stream,
+      ip: req.ip || null,
+      meta: {
+        conversation_id: req.body?.metadata?.conversation_id || req.body?.metadata?.conversationId || null,
+        model_id: modelRow.id,
+        provider_id: modelRow.provider_id,
+        messages: sanitizeMessagesForTelemetry(req.body?.messages || [])
+      }
+    });
 
-    if (stream) await dispatch(modelRow, req.body, res, sse, rid);
-    else await dispatch(modelRow, req.body, res, null, rid);
+    if (stream) await dispatch(modelRow, req.body, res, sse, rid, { ip: req.ip });
+    else await dispatch(modelRow, req.body, res, null, rid, { ip: req.ip });
   } catch (err) {
     logError('GW /v1/chat error', { rid, err: err?.message || String(err) });
-    try { telemetry.fail(rid, err?.message || 'error'); } catch {}
+    telemetry.fail(rid, err?.message || 'error');
     if (stream) { sse({ type:'error', message: err?.message || 'error' }); res.end(); }
     else res.status(500).json({ error: err?.message || 'error' });
   }
@@ -347,24 +416,25 @@ router.post('/compat/llm-chat', async (req, res) => {  const rid = req.id;
       return stream ? res.end() : res.status(400).json({ error: 'Model not found' });
     }
 
-    // Telemetry: start
-    try {
-      telemetry.start({
-        id: rid,
-        model: modelRow.model_name,
-        provider: modelRow.provider_kind,
-        stream,
-        ip: req.ip,
-        started_at: new Date().toISOString(),
-        meta: { provider_id: modelRow.provider_id, model_id: modelRow.id, model_key: modelRow.key || null }
-      });
-    } catch {}
+    telemetry.start({
+      id: rid,
+      model: modelRow.model_name,
+      provider: modelRow.provider_kind,
+      stream,
+      ip: req.ip || null,
+      meta: {
+        conversation_id: req.body?.metadata?.conversation_id || req.body?.metadata?.conversationId || null,
+        model_id: modelRow.id,
+        provider_id: modelRow.provider_id,
+        messages: sanitizeMessagesForTelemetry(req.body?.messages || [])
+      }
+    });
 
-    if (stream) await dispatch(modelRow, req.body, res, sse, rid);
-    else await dispatch(modelRow, req.body, res, null, rid);
+    if (stream) await dispatch(modelRow, req.body, res, sse, rid, { ip: req.ip });
+    else await dispatch(modelRow, req.body, res, null, rid, { ip: req.ip });
   } catch (err) {
     logError('GW /compat/llm-chat error', { rid, err: err?.message || String(err) });
-    try { telemetry.fail(rid, err?.message || 'error'); } catch {}
+    telemetry.fail(rid, err?.message || 'error');
     if (stream) { sse({ type:'error', message: err?.message || 'error' }); res.end(); }
     else res.status(500).json({ error: err?.message || 'error' });
   }
@@ -409,28 +479,29 @@ router.post('/compat/llm-workflows', async (req, res) => {  const rid = req.id;
       null;
 
     if (!modelRow) {
-      if (stream) { sse({ type:'error', message:'Model not found' }); return res.end(); }
+      if (stream) { sse({ type:'error', message:'Model not found' }); telemetry.fail(rid, 'Model not found'); return res.end(); }
       return res.status(400).json({ error: 'Model not found' });
     }
 
-    // Telemetry: start
-    try {
-      telemetry.start({
-        id: rid,
-        model: modelRow.model_name,
-        provider: modelRow.provider_kind,
-        stream,
-        ip: req.ip,
-        started_at: new Date().toISOString(),
-        meta: { provider_id: modelRow.provider_id, model_id: modelRow.id, model_key: modelRow.key || null }
-      });
-    } catch {}
+    telemetry.start({
+      id: rid,
+      model: modelRow.model_name,
+      provider: modelRow.provider_kind,
+      stream,
+      ip: req.ip || null,
+      meta: {
+        conversation_id: req.body?.metadata?.conversation_id || req.body?.metadata?.conversationId || null,
+        model_id: modelRow.id,
+        provider_id: modelRow.provider_id,
+        messages: sanitizeMessagesForTelemetry(req.body?.messages || [])
+      }
+    });
 
-    if (stream) await dispatch(modelRow, req.body, res, sse, rid);
-    else await dispatch(modelRow, req.body, res, null, rid);
+    if (stream) await dispatch(modelRow, req.body, res, sse, rid, { ip: req.ip });
+    else await dispatch(modelRow, req.body, res, null, rid, { ip: req.ip });
   } catch (err) {
     logError('GW /compat/llm-workflows error', { rid, err: err?.message || String(err) });
-    try { telemetry.fail(rid, err?.message || 'error'); } catch {}
+    telemetry.fail(rid, err?.message || 'error');
     if (stream) { sse({ type:'error', message: err?.message || 'error' }); res.end(); }
     else res.status(500).json({ error: err?.message || 'error' });
   }

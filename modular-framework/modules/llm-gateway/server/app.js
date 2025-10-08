@@ -13,7 +13,7 @@ const { router: chatRouter } = require('./routes/chat');
 const { router: usageRouter } = require('./routes/usage');
 const { router: tokensRouter } = require('./routes/tokens');
 const { router: loggingRouter } = require('./routes/logging');
-const { router: telemetryRouter } = require('./routes/telemetry'); // <-- NEW
+const { router: telemetryRouter } = require('./routes/telemetry');
 
 const app = express();
 const BASE_PATH = (process.env.BASE_PATH || '/llm-gateway').replace(/\/$/, '');
@@ -41,6 +41,7 @@ app.use((req, res, next) => {
   next();
 });
 
+
 // Static admin UI
 const pub = path.join(__dirname, '..', 'public');
 app.use(express.static(pub));
@@ -49,26 +50,30 @@ app.use(express.static(pub));
 app.use('/', healthRouter);          // /health
 app.use('/api', infoRouter);         // /api/info
 
-// Admin/ops APIs
+// Admin API// Log buffer API
 app.use('/api', logsRouter);
 app.use('/api', loggingRouter);
+
+// Admin API
 app.use('/api', adminRouter);        // /api/providers, /api/models
 
 // Chat/gateway API
-app.use('/api', chatRouter);         // /api/v1/chat, /api/compat/...
+app.use('/api', chatRouter);         // /api/v1/chat, /api/compat/llm-chat
 
-// Usage & tokens
+// Usage log API
 app.use('/api', usageRouter);        // /api/usage
+// Tokenization API
 app.use('/api', tokensRouter);       // /api/tokens
 
-// Telemetry (live/recent)
+// Telemetry API (live SSE + snapshots)
 app.use('/api', telemetryRouter);    // /api/telemetry/*
 
-// Central error handler
+// Central error handler (ensures JSON + logs)
 app.use((err, _req, res, _next) => {
   try { logError('unhandled_error', { message: err?.message || String(err), stack: err?.stack }); } catch {}
   res.status(500).json({ error: 'Internal Server Error' });
 });
+
 
 // Also serve under BASE_PATH (reverse proxy friendly)
 if (BASE_PATH) {
@@ -80,8 +85,7 @@ if (BASE_PATH) {
   app.use(`${BASE_PATH}/api`, usageRouter);
   app.use(`${BASE_PATH}/api`, tokensRouter);
   app.use(`${BASE_PATH}/api`, logsRouter);
-  app.use(`${BASE_PATH}/api`, loggingRouter);
-  app.use(`${BASE_PATH}/api`, telemetryRouter); // <-- NEW
+  app.use(`${BASE_PATH}/api`, telemetryRouter);
 
   // Error handler for BASE_PATH-mounted routes as well
   app.use((err, _req, res, _next) => {
