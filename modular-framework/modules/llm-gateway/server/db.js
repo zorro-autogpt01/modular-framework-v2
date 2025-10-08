@@ -8,6 +8,8 @@ const pool = new Pool({
   database: process.env.PGDATABASE || 'llm_gateway',
   max: 10
 });
+pool.on('connect', (client) => client.query(`SET application_name = 'llm-gateway'`).catch(()=>{}));
+
 
 async function q(text, params) {
   const client = await pool.connect();
@@ -162,7 +164,8 @@ async function logUsage(u) {
   return rows[0];
 }
 async function recentUsage(limit = 200) {
-  const { rows } = await q('SELECT * FROM usage_log ORDER BY id DESC LIMIT $1', [Math.min(limit, 2000)]);
+  const lim = Math.max(1, Math.min(Number(limit || 200), 2000));
+  const { rows } = await q('SELECT * FROM usage_log ORDER BY id DESC LIMIT $1', [lim]);
   return rows;
 }
 

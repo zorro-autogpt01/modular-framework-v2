@@ -1,3 +1,7 @@
+const { validate, str, num, bool, obj } = require('../utils/validate');
+const { ah } = require('../utils/asyncHandler');
+
+
 const express = require('express');
 const router = express.Router();
 const { logInfo, logWarn, logError, logDebug } = require('../logger');
@@ -20,10 +24,15 @@ function prepareSSE(res, rid) {
 
   // Track SSE connection lifecycle once
   let ended = false;
+    // Keepalive: a comment every 15s (nginx/proxy friendly)
+  const ka = setInterval(() => {
+    try { res.write(':ka\n\n'); } catch {}
+  }, 15000);
   const onEnd = (kind) => {
     if (ended) return;
     ended = true;
     logInfo('GW /v1/chat finished', { rid, kind });
+    clearInterval(ka);
   };
   res.on('close', () => onEnd('close'));
   res.on('finish', () => onEnd('finish'));
@@ -39,7 +48,7 @@ function prepareSSE(res, rid) {
   };
 }
 
-function isGpt5ModelName(model) { return /^gpt-5/i.test(model) || /^o5/i.test(model); }
+function isGpt5ModelName(model) { return /^gpt-5/i.test(model) || /^o5/i.test(model); }dispatchEvent
 
 function calcCost({ inTok, outTok, inPerM, outPerM }) {
   const inc = (Number(inTok) || 0) * (Number(inPerM) || 0) / 1_000_000;
@@ -264,36 +273,50 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
 }
 
 // Canonical gateway endpoint
-router.post('/v1/chat', async (req, res) => {  const rid = req.id;
+router.post('/v1/chat', ah(async (req, res) => {  const rid = req.id;
 
-  const stream = !!(req.body?.stream ?? true);
+    // validate user payload (non-breaking; defaults preserved)
+  const body = validate(req.body || {}, {
+    modelId: num().optional(),
+    modelKey: str().optional(),
+    model: str().optional(),
+    temperature: num().optional(),
+    max_tokens: num().optional(),
+    stream: bool().optional(),
+    useResponses: bool().optional(),
+    reasoning: bool().optional(),
+    messages: obj().optional(), // keep loose; actual format varies (array expected downstream)
+    metadata: obj().optional()
+  });
+
+  const stream = !!(body?.stream ?? true);
   const sse = stream ? prepareSSE(res, rid) : null;
 
   logInfo('GW /api/v1/chat <- client', { rid,
     ip: req.ip,
     stream,
-    modelId: req.body?.modelId,
-    modelKey: req.body?.modelKey,
-    model: req.body?.model,
-    temperature: req.body?.temperature,
-    max_tokens: req.body?.max_tokens,
-    messages: req.body?.messages
+    modelId: body?.modelId,
+    modelKey: body?.modelKey,
+    model: body?.model,
+    temperature: body?.temperature,
+    max_tokens: body?.max_tokens,
+    messages: body?.messages
   });
 
   try {
-    const modelRow = await resolveModel(req.body || {});
+    const modelRow = await resolveModel(body || {});
     if (!modelRow) {
       if (sse) sse({ type:'error', message: 'Model not configured in gateway.' });
       return stream ? res.end() : res.status(400).json({ error: 'Model not configured' });
     }
-    if (stream) await dispatch(modelRow, req.body, res, sse, rid);
-    else await dispatch(modelRow, req.body, res, null, rid);
+    if (stream) await dispatch(modelRow, body, res, sse, rid);
+    else await dispatch(modelRow, body, res, null, rid);
   } catch (err) {
     logError('GW /v1/chat error', { rid, err: err?.message || String(err) });
     if (stream) { sse({ type:'error', message: err?.message || 'error' }); res.end(); }
     else res.status(500).json({ error: err?.message || 'error' });
   }
-});
+}));
 
 // Compatibility endpoint (accepts llm-chat-like body and maps to DB)
 router.post('/compat/llm-chat', async (req, res) => {  const rid = req.id;

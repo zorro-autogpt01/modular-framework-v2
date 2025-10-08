@@ -171,9 +171,19 @@ async function api(path, method='GET', body) {
     headers:{'Content-Type':'application/json'},
     body: body ? JSON.stringify(body) : undefined
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) {
+    let msg = `${res.status} ${res.statusText}`;
+    try {
+      const j = await res.json();
+      msg = j?.error || msg;
+      if (j?.details) msg += ` | details: ${JSON.stringify(j.details)}`;
+    } catch { /* fall back to text */ }
+    throw new Error(msg);
+  }
   return await res.json();
 }
+
+function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 
 /* Health check */
@@ -196,9 +206,10 @@ let editProviderId = null;
 async function refreshProviders() {
   const data = await api('/providers');
   const tb = document.querySelector('#providersTbl tbody'); tb.innerHTML='';
+  if (!data.items?.length) { tb.innerHTML = `<tr><td colspan="5" style="opacity:.7">No providers</td></tr>`; return; }
   data.items.forEach(p=>{
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${p.id}</td><td>${p.name}</td><td>${p.kind}</td><td>${p.base_url}</td>
+    tr.innerHTML = `<td>${esc(p.id)}</td><td>${esc(p.name)}</td><td>${esc(p.kind)}</td><td>${esc(p.base_url)}</td>
       <td>
         <button class="ghost" data-edit="${p.id}">Edit</button>
         <button class="danger" data-del="${p.id}">Delete</button>
@@ -218,6 +229,7 @@ async function refreshProviders() {
 }
 saveProvider.onclick = async () => {
   try {
+    saveProvider.disabled = true;
     const body = {
       name:pName.value.trim(), kind:pKind.value,
       base_url:pBaseUrl.value.trim(),
@@ -232,6 +244,8 @@ saveProvider.onclick = async () => {
     await refreshProviders();
   } catch (e) {
     alert(`Save failed: ${e.message}`);
+    } finally {
+    saveProvider.disabled = false;
   }
 };
 resetProvider.onclick = ()=>{ editProviderId=null; pName.value=''; pBaseUrl.value=''; pApiKey.value=''; pHeaders.value='{}'; };
@@ -241,11 +255,12 @@ let editModelId=null;
 async function refreshModels() {
   const data = await api('/models');
   const tb = document.querySelector('#modelsTbl tbody'); tb.innerHTML='';
+  if (!data.items?.length) { tb.innerHTML = `<tr><td colspan="9" style="opacity:.7">No models</td></tr>`; return; }
   data.items.forEach(m=>{
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${m.id}</td><td>${m.provider_id}</td><td>${m.model_name}</td><td>${m.mode}</td>
-      <td>${m.supports_responses}</td><td>${m.supports_reasoning}</td>
-      <td>${m.input_cost_per_million}</td><td>${m.output_cost_per_million}</td>
+    tr.innerHTML = `<td>${esc(m.id)}</td><td>${esc(m.provider_id)}</td><td>${esc(m.model_name)}</td><td>${esc(m.mode)}</td>
+      <td>${esc(m.supports_responses)}</td><td>${esc(m.supports_reasoning)}</td>
+      <td>${esc(m.input_cost_per_million)}</td><td>${esc(m.output_cost_per_million)}</td>
       <td>
         <button class="ghost" data-edit="${m.id}">Edit</button>
         <button class="danger" data-del="${m.id}">Delete</button>

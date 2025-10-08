@@ -25,8 +25,10 @@ app.use(stamp);
 // Lightweight http access logging for Splunk
 app.use((req, res, next) => {
   const start = process.hrtime.bigint();
+  const bytesIn = Number(req.headers['content-length'] || 0);
   res.on('finish', () => {
     const durMs = Number(process.hrtime.bigint() - start) / 1e6;
+    const bytesOut = Number(res.getHeader('Content-Length') || 0);
     logInfo('http_access', {
       rid: req.id,
       method: req.method,
@@ -34,8 +36,10 @@ app.use((req, res, next) => {
       status: res.statusCode,
       duration_ms: Math.round(durMs),
       ip: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
-      ua: req.headers['user-agent'] || ''
-    });
+      ua: req.headers['user-agent'] || '',
+      bytes_in: bytesIn,
+      bytes_out: bytesOut,
+    }, 'http'); // category hint
   });
   next();
 });
@@ -67,7 +71,10 @@ app.use('/api', tokensRouter);       // /api/tokens
 // Central error handler (ensures JSON + logs)
 app.use((err, _req, res, _next) => {
   try { logError('unhandled_error', { message: err?.message || String(err), stack: err?.stack }); } catch {}
-  res.status(500).json({ error: 'Internal Server Error' });
+  if (err && err.status === 400 && err.message === 'validation_error') {
+    return res.status(400).json({ error: 'validation_error', details: err.details || {} });
+  }
+  res.status(err?.status || 500).json({ error: err?.message || 'Internal Server Error' });
 });
 
 
@@ -85,7 +92,10 @@ if (BASE_PATH) {
   // Error handler for BASE_PATH-mounted routes as well
   app.use((err, _req, res, _next) => {
     try { logError('unhandled_error', { message: err?.message || String(err), stack: err?.stack }); } catch {}
-    res.status(500).json({ error: 'Internal Server Error' });
+    if (err && err.status === 400 && err.message === 'validation_error') {
+    return res.status(400).json({ error: 'validation_error', details: err.details || {} });
+  }
+  res.status(err?.status || 500).json({ error: err?.message || 'Internal Server Error' });
   });
 
 

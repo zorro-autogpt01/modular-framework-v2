@@ -13,6 +13,7 @@ function pickEncodingForModel(modelName = '') {
 
 /** Count tokens for plain text with a given encoding name. */
 function countTextTokens(text = '', encodingName = 'cl100k_base') {
+  if (!text) return 0;
   const enc = get_encoding(encodingName);
   try {
     const tokens = enc.encode(text || '');
@@ -28,6 +29,7 @@ function countTextTokens(text = '', encodingName = 'cl100k_base') {
  * following OpenAI ChatML guidelines (still approximate).
  */
 function countChatTokens(messages = [], encodingName = 'cl100k_base') {
+  if (!Array.isArray(messages) || messages.length === 0) return 0;
   // heuristic overheads (best-effort)
   const OVERHEAD = {
     cl100k_base: { perMessage: 4, perName: -1, priming: 2 },

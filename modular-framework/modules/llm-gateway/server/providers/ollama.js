@@ -14,14 +14,18 @@ async function callOllama({ baseUrl, model, messages, temperature, stream, onDel
     logDebug('GW OLLAMA streaming started', { rid, status: response.status });
 
     return new Promise((resolve) => {
+      let buffer = '';
       response.data.on('data', (chunk) => {
         const str = chunk.toString();
         logDebug('GW OLLAMA stream chunk', { rid, size: Buffer.byteLength(str), raw: str.slice(0, 800) });
-        const lines = str.split('\n').filter(Boolean);
+        buffer += str;
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
         for (const line of lines) {
+          if (!line.trim()) continue;
           try {
             const evt = JSON.parse(line);
-            logDebug('GW OLLAMA stream line parsed', { rid, evt });
+            logDebug('GW OLLAMA stream line parsed', { rid, evtType: evt?.type || '', head: JSON.stringify(evt).slice(0, 200) });
             if (evt.message && evt.message.content) onDelta?.(evt.message.content);
             if (evt.done) onDone?.();
           } catch (e) {
@@ -29,7 +33,13 @@ async function callOllama({ baseUrl, model, messages, temperature, stream, onDel
           }
         }
       });
-      response.data.on('end', () => { logDebug('GW OLLAMA stream end', { rid }); onDone?.(); resolve(); });
+      response.data.on('end', () => { 
+              if (buffer.trim()) {
+                try { const evt = JSON.parse(buffer); if (evt?.message?.content) onDelta?.(evt.message.content); if (evt?.done) onDone?.(); }
+                catch(e){ logWarn('GW OLLAMA trailing parse error', { rid, msg: e.message }); }
+              }
+              logDebug('GW OLLAMA stream end', { rid }); onDone?.(); resolve(); 
+            });
       response.data.on('error', (e) => { logWarn('GW OLLAMA stream error', { rid, message: e.message }); onError?.(e.message); resolve(); });
     });
   } else {
