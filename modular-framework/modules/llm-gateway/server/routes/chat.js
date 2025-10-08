@@ -1,7 +1,3 @@
-const { validate, str, num, bool, obj } = require('../utils/validate');
-const { ah } = require('../utils/asyncHandler');
-
-
 const express = require('express');
 const router = express.Router();
 const { logInfo, logWarn, logError, logDebug } = require('../logger');
@@ -13,6 +9,7 @@ const { callOllama } = require('../providers/ollama');
 const {
   pickEncodingForModel, countTextTokens, countChatTokens
 } = require('../utils/tokens');
+const telemetry = require('../telemetry/interactions'); // <-- NEW
 
 // SSE helper
 function prepareSSE(res, rid) {
@@ -24,15 +21,10 @@ function prepareSSE(res, rid) {
 
   // Track SSE connection lifecycle once
   let ended = false;
-    // Keepalive: a comment every 15s (nginx/proxy friendly)
-  const ka = setInterval(() => {
-    try { res.write(':ka\n\n'); } catch {}
-  }, 15000);
   const onEnd = (kind) => {
     if (ended) return;
     ended = true;
     logInfo('GW /v1/chat finished', { rid, kind });
-    clearInterval(ka);
   };
   res.on('close', () => onEnd('close'));
   res.on('finish', () => onEnd('finish'));
@@ -48,7 +40,7 @@ function prepareSSE(res, rid) {
   };
 }
 
-function isGpt5ModelName(model) { return /^gpt-5/i.test(model) || /^o5/i.test(model); }dispatchEvent
+function isGpt5ModelName(model) { return /^gpt-5/i.test(model) || /^o5/i.test(model); }
 
 function calcCost({ inTok, outTok, inPerM, outPerM }) {
   const inc = (Number(inTok) || 0) * (Number(inPerM) || 0) / 1_000_000;
@@ -127,11 +119,15 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
     currency: modelRow.currency || 'USD'
   };
 
+  // Telemetry: input/prompt snapshot
+  try { telemetry.update(rid, { in_tokens: inTok, prompt_chars: promptChars }); } catch {}
+
   let completionText = '';
 
   const onDelta = (d) => {
     logDebug('GW upstream delta', { rid, len: typeof d === 'string' ? d.length : 0, data: d });
     if (typeof d === 'string' && d) completionText += d;
+    try { telemetry.update(rid, { out_chars: completionText.length }); } catch {}
     sse?.({ type: 'delta', content: d });
   };
   const onDone = () => { logDebug('GW upstream done', { rid }); sse?.({ type: 'done' }); };
@@ -159,6 +155,7 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
         cost,
         meta: metaBase
       });
+      try { telemetry.finish(rid, { out_tokens: outTok, completion_chars: completionChars, cost }); } catch {}
       return;
     } else {
       const { content } = await callOllama({ ...upstream, stream:false, rid });
@@ -182,6 +179,7 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
         cost,
         meta: metaBase
       });
+      try { telemetry.finish(rid, { out_tokens: outTok, completion_chars: completionChars, cost }); } catch {}
       return res.json({ content: completionText });
     }
   }
@@ -211,6 +209,7 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
       cost,
       meta: metaBase
     });
+    try { telemetry.finish(rid, { out_tokens: outTok, completion_chars: completionChars, cost }); } catch {}
   } else {
     // NON-STREAM: Option A — pass through Responses API when in use
     const respPayload = await callOpenAICompat({
@@ -244,6 +243,7 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
         meta: metaBase
       });
 
+      try { telemetry.finish(rid, { out_tokens: outTok, completion_chars: completionChars, cost }); } catch {}
       return res.json(respPayload);
     }
 
@@ -268,55 +268,57 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
       cost,
       meta: metaBase
     });
+    try { telemetry.finish(rid, { out_tokens: outTok, completion_chars: completionChars, cost }); } catch {}
     return res.json({ content: completionTextLocal });
   }
 }
 
 // Canonical gateway endpoint
-router.post('/v1/chat', ah(async (req, res) => {  const rid = req.id;
+router.post('/v1/chat', async (req, res) => {  const rid = req.id;
 
-    // validate user payload (non-breaking; defaults preserved)
-  const body = validate(req.body || {}, {
-    modelId: num().optional(),
-    modelKey: str().optional(),
-    model: str().optional(),
-    temperature: num().optional(),
-    max_tokens: num().optional(),
-    stream: bool().optional(),
-    useResponses: bool().optional(),
-    reasoning: bool().optional(),
-    messages: obj().optional(), // keep loose; actual format varies (array expected downstream)
-    metadata: obj().optional()
-  });
-
-  const stream = !!(body?.stream ?? true);
+  const stream = !!(req.body?.stream ?? true);
   const sse = stream ? prepareSSE(res, rid) : null;
 
   logInfo('GW /api/v1/chat <- client', { rid,
     ip: req.ip,
     stream,
-    modelId: body?.modelId,
-    modelKey: body?.modelKey,
-    model: body?.model,
-    temperature: body?.temperature,
-    max_tokens: body?.max_tokens,
-    messages: body?.messages
+    modelId: req.body?.modelId,
+    modelKey: req.body?.modelKey,
+    model: req.body?.model,
+    temperature: req.body?.temperature,
+    max_tokens: req.body?.max_tokens,
+    messages: req.body?.messages
   });
 
   try {
-    const modelRow = await resolveModel(body || {});
+    const modelRow = await resolveModel(req.body || {});
     if (!modelRow) {
       if (sse) sse({ type:'error', message: 'Model not configured in gateway.' });
       return stream ? res.end() : res.status(400).json({ error: 'Model not configured' });
     }
-    if (stream) await dispatch(modelRow, body, res, sse, rid);
-    else await dispatch(modelRow, body, res, null, rid);
+
+    // Telemetry: start
+    try {
+      telemetry.start({
+        id: rid,
+        model: modelRow.model_name,
+        provider: modelRow.provider_kind,
+        stream,
+        ip: req.ip,
+        started_at: new Date().toISOString(),
+        meta: { provider_id: modelRow.provider_id, model_id: modelRow.id, model_key: modelRow.key || null }
+      });
+    } catch {}
+
+    if (stream) await dispatch(modelRow, req.body, res, sse, rid);
+    else await dispatch(modelRow, req.body, res, null, rid);
   } catch (err) {
     logError('GW /v1/chat error', { rid, err: err?.message || String(err) });
+    try { telemetry.fail(rid, err?.message || 'error'); } catch {}
     if (stream) { sse({ type:'error', message: err?.message || 'error' }); res.end(); }
     else res.status(500).json({ error: err?.message || 'error' });
   }
-}));
+});
 
 // Compatibility endpoint (accepts llm-chat-like body and maps to DB)
 router.post('/compat/llm-chat', async (req, res) => {  const rid = req.id;
@@ -345,10 +347,24 @@ router.post('/compat/llm-chat', async (req, res) => {  const rid = req.id;
       return stream ? res.end() : res.status(400).json({ error: 'Model not found' });
     }
 
+    // Telemetry: start
+    try {
+      telemetry.start({
+        id: rid,
+        model: modelRow.model_name,
+        provider: modelRow.provider_kind,
+        stream,
+        ip: req.ip,
+        started_at: new Date().toISOString(),
+        meta: { provider_id: modelRow.provider_id, model_id: modelRow.id, model_key: modelRow.key || null }
+      });
+    } catch {}
+
     if (stream) await dispatch(modelRow, req.body, res, sse, rid);
     else await dispatch(modelRow, req.body, res, null, rid);
   } catch (err) {
     logError('GW /compat/llm-chat error', { rid, err: err?.message || String(err) });
+    try { telemetry.fail(rid, err?.message || 'error'); } catch {}
     if (stream) { sse({ type:'error', message: err?.message || 'error' }); res.end(); }
     else res.status(500).json({ error: err?.message || 'error' });
   }
@@ -397,10 +413,24 @@ router.post('/compat/llm-workflows', async (req, res) => {  const rid = req.id;
       return res.status(400).json({ error: 'Model not found' });
     }
 
+    // Telemetry: start
+    try {
+      telemetry.start({
+        id: rid,
+        model: modelRow.model_name,
+        provider: modelRow.provider_kind,
+        stream,
+        ip: req.ip,
+        started_at: new Date().toISOString(),
+        meta: { provider_id: modelRow.provider_id, model_id: modelRow.id, model_key: modelRow.key || null }
+      });
+    } catch {}
+
     if (stream) await dispatch(modelRow, req.body, res, sse, rid);
     else await dispatch(modelRow, req.body, res, null, rid);
   } catch (err) {
     logError('GW /compat/llm-workflows error', { rid, err: err?.message || String(err) });
+    try { telemetry.fail(rid, err?.message || 'error'); } catch {}
     if (stream) { sse({ type:'error', message: err?.message || 'error' }); res.end(); }
     else res.status(500).json({ error: err?.message || 'error' });
   }

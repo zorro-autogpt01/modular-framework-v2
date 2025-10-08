@@ -5,20 +5,41 @@
   <title>LLM Gateway Admin</title>
   <base href="/api/v1/gateway/">
   <link rel="stylesheet" href="./css/theme.css" />
+  <style>
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .muted { color: var(--muted); }
+    .kpis { display:flex; gap:10px; flex-wrap:wrap; margin:8px 0 12px; }
+    .kpi { background:#1e1e1e; border:1px solid var(--line); border-radius:8px; padding:8px 10px; }
+    .kpi .v { font-size:18px; }
+    .table-wrap { overflow:auto; }
+    table { width:100%; border-collapse: collapse; }
+    th, td { border: 1px solid var(--line); padding: 6px 8px; font-size: 12px; }
+    th { text-align:left; background:#1f1f1f; }
+    .badge { padding:2px 6px; border-radius:6px; font-size:11px; background:#333; }
+    .badge.live { background:#3b7; color:#fff; }
+    .badge.done { background:#274; color:#cfe; }
+    .badge.error { background:#a33; color:#fee; }
+  </style>
 </head>
 <body>
   <div class="header">
     <div class="inline">
       <span class="dot" id="dot"></span>
       <strong>LLM Gateway</strong>
-      <span class="tab active">Admin</span>
     </div>
     <div class="grow"></div>
     <button id="healthBtn" class="ghost">Health Check</button>
     <span id="healthText" class="muted">Idle</span>
   </div>
 
-  <div class="pane">
+  <!-- Top-level tabs -->
+  <div class="main-tabs">
+    <button class="tab active" data-tab="admin">Admin</button>
+    <button class="tab" data-tab="live">Live</button>
+  </div>
+
+  <!-- ADMIN PANE -->
+  <div id="adminPane" class="pane">
     <h2 style="margin:10px 0 12px">⚙️ LLM Gateway – Admin</h2>
 
     <!-- Providers -->
@@ -45,14 +66,16 @@
         <button id="saveProvider" class="btn">Save Provider</button>
         <button id="resetProvider" class="ghost">Reset</button>
       </div>
-      <table id="providersTbl" style="width:100%; margin-top:8px; border-collapse:collapse">
-        <thead>
-          <tr>
-            <th>ID</th><th>Name</th><th>Kind</th><th>Base URL</th><th>Actions</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
+      <div class="table-wrap">
+        <table id="providersTbl" style="margin-top:8px;">
+          <thead>
+            <tr>
+              <th>ID</th><th>Name</th><th>Kind</th><th>Base URL</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </div>
 
     <!-- Models -->
@@ -103,14 +126,16 @@
         <button id="saveModel" class="btn">Save Model</button>
         <button id="resetModel" class="ghost">Reset</button>
       </div>
-      <table id="modelsTbl" style="width:100%; margin-top:8px; border-collapse:collapse">
-        <thead>
-          <tr>
-            <th>ID</th><th>Prov</th><th>Name</th><th>Mode</th><th>Resp</th><th>Reason</th><th>$in/1M</th><th>$out/1M</th><th>Actions</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
+      <div class="table-wrap">
+        <table id="modelsTbl" style="margin-top:8px;">
+          <thead>
+            <tr>
+              <th>ID</th><th>Prov</th><th>Name</th><th>Mode</th><th>Resp</th><th>Reason</th><th>$in/1M</th><th>$out/1M</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </div>
 
     <!-- Usage -->
@@ -120,73 +145,99 @@
         <button id="refreshUsage" class="ghost">Refresh</button>
         <span class="muted">Last 200 rows</span>
       </div>
-      <table id="usageTbl" style="width:100%; margin-top:8px; border-collapse:collapse">
-        <thead>
-          <tr>
-            <th>ID</th><th>TS</th><th>Model</th><th>Conv</th><th>InTok</th><th>OutTok</th><th>Cost</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
+      <div class="table-wrap">
+        <table id="usageTbl" style="margin-top:8px;">
+          <thead>
+            <tr>
+              <th>ID</th><th>TS</th><th>Model</th><th>Conv</th><th>InTok</th><th>OutTok</th><th>Cost</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- LIVE PANE -->
+  <div id="livePane" class="pane" style="display:none">
+    <h2 style="margin:10px 0 12px">📡 Live Interactions</h2>
+
+    <div class="card">
+      <div class="inline" style="justify-content:space-between; margin-bottom:6px">
+        <div class="inline">
+          <span class="badge live">LIVE</span>
+          <span class="muted">Streaming updates from the gateway</span>
+        </div>
+        <div class="inline">
+          <button id="refreshRecent" class="ghost">Refresh Recent</button>
+        </div>
+      </div>
+
+      <div class="kpis">
+        <div class="kpi"><div class="t muted">Ongoing</div><div id="kOngoing" class="v">0</div></div>
+        <div class="kpi"><div class="t muted">Last Finished</div><div id="kLast" class="v mono">–</div></div>
+      </div>
+
+      <h3 style="margin:10px 0 6px">Ongoing</h3>
+      <div class="table-wrap">
+        <table id="ongoingTbl">
+          <thead>
+            <tr>
+              <th>ID</th><th>Model</th><th>Provider</th><th>InTok</th><th>OutChars</th><th>Started</th><th>Status</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <h3 style="margin:16px 0 6px">Recent (last 20)</h3>
+      <div class="table-wrap">
+        <table id="recentTbl">
+          <thead>
+            <tr>
+              <th>Finished</th><th>ID</th><th>Model</th><th>Provider</th><th>InTok</th><th>OutTok</th><th>Cost</th><th>State</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </div>
   </div>
 
 <script>
-/* Small status helpers */
+/* ---------- helpers ---------- */
 const dot = document.getElementById('dot');
 const healthText = document.getElementById('healthText');
 function setBusy(b){ if(!dot||!healthText) return; dot.classList.toggle('on', b); healthText.textContent = b ? 'Checking…' : 'Idle'; }
 const BASE = window.location.pathname.replace(/\/admin.*/, '');
 const API_BASE = `${BASE}/api`;
-//const API_BASE = `${BASE}/api`;   // "/api" when BASE == "", else "/api/v1/gateway/"
 const HEALTH_PATH = `${BASE}/health`;
 
-const pName = document.getElementById('pName');
-const pKind = document.getElementById('pKind');
-const pBaseUrl = document.getElementById('pBaseUrl');
-const pApiKey = document.getElementById('pApiKey');
-const pHeaders = document.getElementById('pHeaders');
-const saveProvider = document.getElementById('saveProvider');
-const resetProvider = document.getElementById('resetProvider');
-
-const mProviderId = document.getElementById('mProviderId');
-const mModelName = document.getElementById('mModelName');
-const mKey = document.getElementById('mKey');
-const mDisplayName = document.getElementById('mDisplayName');
-const mMode = document.getElementById('mMode');
-const mResp = document.getElementById('mResp');
-const mReason = document.getElementById('mReason');
-const mCurrency = document.getElementById('mCurrency');
-const mInCost = document.getElementById('mInCost');
-const mOutCost = document.getElementById('mOutCost');
-
-const saveModel = document.getElementById('saveModel');
-const resetModel = document.getElementById('resetModel');
-
-
-/* API helper */
-async function api(path, method='GET', body) {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method,
-    headers:{'Content-Type':'application/json'},
-    body: body ? JSON.stringify(body) : undefined
-  });
-  if (!res.ok) {
-    let msg = `${res.status} ${res.statusText}`;
-    try {
-      const j = await res.json();
-      msg = j?.error || msg;
-      if (j?.details) msg += ` | details: ${JSON.stringify(j.details)}`;
-    } catch { /* fall back to text */ }
-    throw new Error(msg);
-  }
-  return await res.json();
+const fmt = (n) => (n==null || Number.isNaN(n)) ? '' : String(n);
+const isoToShort = (s) => {
+  if (!s) return '';
+  try { const d = new Date(s); return d.toLocaleString(); } catch { return s; }
+};
+function setBadge(el, state){
+  el.className = 'badge';
+  if (state === 'running') el.classList.add('live');
+  else if (state === 'done') el.classList.add('done');
+  else if (state === 'error') el.classList.add('error');
 }
 
-function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+/* ---------- top tabs ---------- */
+const tabs = document.querySelectorAll('.main-tabs .tab');
+const adminPane = document.getElementById('adminPane');
+const livePane  = document.getElementById('livePane');
+tabs.forEach(t => t.addEventListener('click', () => {
+  tabs.forEach(x => x.classList.remove('active'));
+  t.classList.add('active');
+  const which = t.getAttribute('data-tab');
+  if (which === 'live') { adminPane.style.display = 'none'; livePane.style.display = 'block'; ensureSSE(); }
+  else { livePane.style.display = 'none'; adminPane.style.display = 'block'; closeSSE(); }
+}));
 
-
-/* Health check */
+/* ---------- Health ---------- */
 document.getElementById('healthBtn')?.addEventListener('click', async () => {
   try{
     setBusy(true);
@@ -201,15 +252,33 @@ document.getElementById('healthBtn')?.addEventListener('click', async () => {
   }
 });
 
-/* Providers */
+/* ---------- API helper ---------- */
+async function api(path, method='GET', body) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method,
+    headers:{'Content-Type':'application/json'},
+    body: body ? JSON.stringify(body) : undefined
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return await res.json();
+}
+
+/* ---------- Providers ---------- */
+const pName = document.getElementById('pName');
+const pKind = document.getElementById('pKind');
+const pBaseUrl = document.getElementById('pBaseUrl');
+const pApiKey = document.getElementById('pApiKey');
+const pHeaders = document.getElementById('pHeaders');
+const saveProvider = document.getElementById('saveProvider');
+const resetProvider = document.getElementById('resetProvider');
+
 let editProviderId = null;
 async function refreshProviders() {
   const data = await api('/providers');
   const tb = document.querySelector('#providersTbl tbody'); tb.innerHTML='';
-  if (!data.items?.length) { tb.innerHTML = `<tr><td colspan="5" style="opacity:.7">No providers</td></tr>`; return; }
   data.items.forEach(p=>{
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${esc(p.id)}</td><td>${esc(p.name)}</td><td>${esc(p.kind)}</td><td>${esc(p.base_url)}</td>
+    tr.innerHTML = `<td>${p.id}</td><td>${p.name}</td><td>${p.kind}</td><td class="mono">${p.base_url}</td>
       <td>
         <button class="ghost" data-edit="${p.id}">Edit</button>
         <button class="danger" data-del="${p.id}">Delete</button>
@@ -229,7 +298,6 @@ async function refreshProviders() {
 }
 saveProvider.onclick = async () => {
   try {
-    saveProvider.disabled = true;
     const body = {
       name:pName.value.trim(), kind:pKind.value,
       base_url:pBaseUrl.value.trim(),
@@ -244,23 +312,33 @@ saveProvider.onclick = async () => {
     await refreshProviders();
   } catch (e) {
     alert(`Save failed: ${e.message}`);
-    } finally {
-    saveProvider.disabled = false;
   }
 };
 resetProvider.onclick = ()=>{ editProviderId=null; pName.value=''; pBaseUrl.value=''; pApiKey.value=''; pHeaders.value='{}'; };
 
-/* Models */
+/* ---------- Models ---------- */
+const mProviderId = document.getElementById('mProviderId');
+const mModelName = document.getElementById('mModelName');
+const mKey = document.getElementById('mKey');
+const mDisplayName = document.getElementById('mDisplayName');
+const mMode = document.getElementById('mMode');
+const mResp = document.getElementById('mResp');
+const mReason = document.getElementById('mReason');
+const mCurrency = document.getElementById('mCurrency');
+const mInCost = document.getElementById('mInCost');
+const mOutCost = document.getElementById('mOutCost');
+const saveModel = document.getElementById('saveModel');
+const resetModel = document.getElementById('resetModel');
+
 let editModelId=null;
 async function refreshModels() {
   const data = await api('/models');
   const tb = document.querySelector('#modelsTbl tbody'); tb.innerHTML='';
-  if (!data.items?.length) { tb.innerHTML = `<tr><td colspan="9" style="opacity:.7">No models</td></tr>`; return; }
   data.items.forEach(m=>{
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${esc(m.id)}</td><td>${esc(m.provider_id)}</td><td>${esc(m.model_name)}</td><td>${esc(m.mode)}</td>
-      <td>${esc(m.supports_responses)}</td><td>${esc(m.supports_reasoning)}</td>
-      <td>${esc(m.input_cost_per_million)}</td><td>${esc(m.output_cost_per_million)}</td>
+    tr.innerHTML = `<td>${m.id}</td><td>${m.provider_id}</td><td class="mono">${m.model_name}</td><td>${m.mode}</td>
+      <td>${m.supports_responses}</td><td>${m.supports_reasoning}</td>
+      <td>${m.input_cost_per_million}</td><td>${m.output_cost_per_million}</td>
       <td>
         <button class="ghost" data-edit="${m.id}">Edit</button>
         <button class="danger" data-del="${m.id}">Delete</button>
@@ -301,13 +379,13 @@ saveModel.onclick = async ()=>{
 };
 resetModel.onclick = ()=> { editModelId=null; mProviderId.value=''; mModelName.value=''; mKey.value=''; mDisplayName.value=''; };
 
-/* Usage */
+/* ---------- Usage (Admin) ---------- */
 async function refreshUsage() {
   const data = await api('/usage?limit=200');
   const tb = document.querySelector('#usageTbl tbody'); tb.innerHTML='';
   data.items.forEach(u=>{
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${u.id}</td><td>${u.ts}</td><td>${u.model_id || ''}</td>
+    tr.innerHTML = `<td>${u.id}</td><td>${isoToShort(u.ts)}</td><td>${u.model_id || ''}</td>
                     <td>${u.conversation_id||''}</td><td>${u.input_tokens||''}</td>
                     <td>${u.output_tokens||''}</td><td>${u.cost||''}</td>`;
     tb.appendChild(tr);
@@ -315,8 +393,108 @@ async function refreshUsage() {
 }
 document.getElementById('refreshUsage').onclick = refreshUsage;
 
-/* Boot */
-refreshProviders(); refreshModels(); refreshUsage();
+/* ---------- LIVE telemetry UI ---------- */
+const kOngoing = document.getElementById('kOngoing');
+const kLast    = document.getElementById('kLast');
+const ongoingTBody = document.querySelector('#ongoingTbl tbody');
+const recentTBody  = document.querySelector('#recentTbl tbody');
+const refreshRecentBtn = document.getElementById('refreshRecent');
+
+let sse; // EventSource
+function closeSSE(){ if (sse) { try { sse.close(); } catch(_){} sse = null; } }
+function ensureSSE(){
+  if (sse) return;
+  sse = new EventSource(`${API_BASE}/telemetry/live`);
+  sse.onmessage = (ev) => {
+    if (!ev.data) return;
+    try {
+      const msg = JSON.parse(ev.data);
+      if (msg.type === 'snapshot') {
+        renderOngoing(msg.live || []);
+        renderRecent(msg.recent || []);
+      } else if (msg.type === 'started' || msg.type === 'updated') {
+        upsertOngoing(msg.data);
+      } else if (msg.type === 'finished') {
+        removeOngoing(msg.data?.id);
+        prependRecent(msg.data);
+      }
+    } catch (e) {}
+  };
+  sse.onerror = () => {
+    // silent retry
+    setTimeout(() => { closeSSE(); ensureSSE(); }, 2000);
+  };
+}
+
+refreshRecentBtn.onclick = async () => {
+  const r = await api('/telemetry/recent?limit=20');
+  renderRecent(r.items || []);
+};
+
+/* render helpers */
+function renderOngoing(items){
+  ongoingTBody.innerHTML = '';
+  (items||[]).forEach(i => {
+    const tr = document.createElement('tr'); tr.dataset.id = i.id;
+    tr.innerHTML = `
+      <td class="mono">${i.id}</td>
+      <td class="mono">${i.model || ''}</td>
+      <td>${i.provider || ''}</td>
+      <td>${fmt(i.in_tokens)}</td>
+      <td>${fmt(i.out_chars)}</td>
+      <td>${isoToShort(i.started_at)}</td>
+      <td><span class="badge ${i.state==='running'?'live':(i.state==='error'?'error':'done')}">${i.state}</span></td>`;
+    ongoingTBody.appendChild(tr);
+  });
+  kOngoing.textContent = String(items?.length || 0);
+}
+function upsertOngoing(i){
+  if (!i || !i.id) return;
+  let tr = ongoingTBody.querySelector(`tr[data-id="${i.id}"]`);
+  if (!tr) {
+    tr = document.createElement('tr'); tr.dataset.id = i.id;
+    ongoingTBody.prepend(tr);
+  }
+  tr.innerHTML = `
+    <td class="mono">${i.id}</td>
+    <td class="mono">${i.model || ''}</td>
+    <td>${i.provider || ''}</td>
+    <td>${fmt(i.in_tokens)}</td>
+    <td>${fmt(i.out_chars)}</td>
+    <td>${isoToShort(i.started_at)}</td>
+    <td><span class="badge ${i.state==='running'?'live':(i.state==='error'?'error':'done')}">${i.state}</span></td>`;
+  kOngoing.textContent = String(ongoingTBody.querySelectorAll('tr').length);
+}
+function removeOngoing(id){
+  if (!id) return;
+  const tr = ongoingTBody.querySelector(`tr[data-id="${id}"]`);
+  if (tr) tr.remove();
+  kOngoing.textContent = String(ongoingTBody.querySelectorAll('tr').length);
+}
+function renderRecent(items){
+  recentTBody.innerHTML = '';
+  (items||[]).forEach(prependRecent);
+}
+function prependRecent(i){
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td>${isoToShort(i.finished_at)}</td>
+    <td class="mono">${i.id}</td>
+    <td class="mono">${i.model || ''}</td>
+    <td>${i.provider || ''}</td>
+    <td>${fmt(i.in_tokens)}</td>
+    <td>${fmt(i.out_tokens)}</td>
+    <td>${i.cost != null ? '$'+Number(i.cost).toFixed(6) : ''}</td>
+    <td><span class="badge ${i.state==='error'?'error':'done'}">${i.state}</span></td>`;
+  recentTBody.prepend(tr);
+  try { kLast.textContent = isoToShort(i.finished_at) || '–'; } catch {}
+}
+
+/* ---------- Boot ---------- */
+(async function boot(){
+  // default tab = Admin; fetch data
+  refreshProviders(); refreshModels(); refreshUsage();
+})();
 </script>
 </body>
 </html>
