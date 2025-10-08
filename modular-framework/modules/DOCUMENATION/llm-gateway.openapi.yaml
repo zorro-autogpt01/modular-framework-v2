@@ -1,0 +1,1756 @@
+openapi: 3.0.3
+info:
+  title: LLM Gateway API
+  description: OpenAPI specification for the LLM Gateway module (admin, chat, telemetry, conversations, templates, debugging, tokens, logging).
+  version: 0.1.0
+servers:
+  - url: /
+    description: Local server (paths in code mounted at / and /api)
+tags:
+  - name: health
+    description: Health & info endpoints
+  - name: admin
+    description: Provider & model administration
+  - name: chat
+    description: Gateway chat endpoints (streaming & non-streaming)
+  - name: usage
+    description: Usage / billing related endpoints
+  - name: tokens
+    description: Token counting utilities
+  - name: telemetry
+    description: Live telemetry / SSE
+  - name: conversations
+    description: Conversation storage & messages
+  - name: templates
+    description: Prompt templates
+  - name: debug
+    description: Debugging tools (replay, dry-run, validation, provider test)
+  - name: logging
+    description: Logging configuration and buffer
+  - name: logs
+    description: In-memory log buffer
+paths:
+  /health:
+    get:
+      tags: [health]
+      summary: Health check
+      description: Basic health endpoint returning status.
+      responses:
+        '200':
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+
+  /api/info:
+    get:
+      tags: [health]
+      summary: Module info
+      description: Returns module name, version and status.
+      responses:
+        '200':
+          description: Info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  module:
+                    type: string
+                    example: llm-gateway
+                  version:
+                    type: string
+                    example: 0.1.0
+                  status:
+                    type: string
+                    example: ready
+
+  /api/providers:
+    get:
+      tags: [admin]
+      summary: List providers
+      responses:
+        '200':
+          description: Providers list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Provider'
+    post:
+      tags: [admin]
+      summary: Create provider
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProviderCreate'
+      responses:
+        '200':
+          description: Created provider
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  provider:
+                    $ref: '#/components/schemas/Provider'
+
+  /api/providers/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ProviderId'
+    get:
+      tags: [admin]
+      summary: Get provider
+      responses:
+        '200':
+          description: Provider object
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  provider:
+                    $ref: '#/components/schemas/Provider'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [admin]
+      summary: Update provider
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProviderCreate'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  provider:
+                    $ref: '#/components/schemas/Provider'
+    delete:
+      tags: [admin]
+      summary: Delete provider
+      responses:
+        '200':
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+
+  /api/models:
+    get:
+      tags: [admin]
+      summary: List models
+      responses:
+        '200':
+          description: Models list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ModelRow'
+    post:
+      tags: [admin]
+      summary: Create model
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelCreate'
+      responses:
+        '200':
+          description: Created model
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  model:
+                    $ref: '#/components/schemas/ModelRow'
+
+  /api/models/by-key/{key}:
+    parameters:
+      - name: key
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      tags: [admin]
+      summary: Get model by key
+      responses:
+        '200':
+          description: Model found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  model:
+                    $ref: '#/components/schemas/ModelRow'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/models/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      tags: [admin]
+      summary: Get model
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  model:
+                    $ref: '#/components/schemas/ModelRow'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [admin]
+      summary: Update model
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelCreate'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  model:
+                    $ref: '#/components/schemas/ModelRow'
+    delete:
+      tags: [admin]
+      summary: Delete model
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+
+  /api/usage:
+    get:
+      tags: [usage]
+      summary: Recent usage
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 200
+      responses:
+        '200':
+          description: Usage items
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UsageLog'
+
+  /api/tokens:
+    post:
+      tags: [tokens]
+      summary: Count tokens for text or chat messages
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                model:
+                  type: string
+                encoding:
+                  type: string
+                text:
+                  type: string
+                messages:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      role:
+                        type: string
+                      content:
+                        oneOf:
+                          - type: string
+                          - type: array
+      responses:
+        '200':
+          description: Token counts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokensResponse'
+        '400':
+          description: Tokenization error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /api/telemetry/recent:
+    get:
+      tags: [telemetry]
+      summary: List recent finished interactions (snapshot)
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TelemetryItem'
+
+  /api/telemetry/ongoing:
+    get:
+      tags: [telemetry]
+      summary: List ongoing (live) interactions
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TelemetryItem'
+
+  /api/telemetry/live:
+    get:
+      tags: [telemetry]
+      summary: Live telemetry stream (SSE)
+      description: |
+        Server-Sent Events stream. The server emits an initial snapshot event then
+        incremental events of type 'started', 'updated', 'finished'. Content-Type: text/event-stream.
+      responses:
+        '200':
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
+  /api/conversations:
+    get:
+      tags: [conversations]
+      summary: List conversations
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: archived
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ConversationListRow'
+    post:
+      tags: [conversations]
+      summary: Create conversation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConversationCreate'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  conversation:
+                    $ref: '#/components/schemas/Conversation'
+
+  /api/conversations/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      tags: [conversations]
+      summary: Get conversation metadata
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  conversation:
+                    $ref: '#/components/schemas/Conversation'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [conversations]
+      summary: Update conversation metadata
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConversationUpdate'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  conversation:
+                    $ref: '#/components/schemas/Conversation'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [conversations]
+      summary: Delete conversation (and messages)
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+
+  /api/conversations/{id}/messages:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      tags: [conversations]
+      summary: Get messages for a conversation (paginated)
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+        - name: before
+          in: query
+          schema:
+            type: integer
+            description: message id cutoff (returns messages with id < before)
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ConversationMessage'
+    post:
+      tags: [conversations]
+      summary: Add message to conversation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConversationMessageCreate'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  message:
+                    $ref: '#/components/schemas/ConversationMessage'
+
+  /api/conversations/{id}/truncate:
+    post:
+      tags: [conversations]
+      summary: Truncate old messages to fit token budget
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                max_tokens:
+                  type: integer
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  deleted_messages:
+                    type: integer
+                  message:
+                    type: string
+
+  /api/conversations/{id}/export:
+    get:
+      tags: [conversations]
+      summary: Export full conversation (metadata + all messages)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  conversation:
+                    $ref: '#/components/schemas/Conversation'
+                  messages:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ConversationMessage'
+                  exported_at:
+                    type: string
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/templates:
+    get:
+      tags: [templates]
+      summary: List templates
+      parameters:
+        - name: archived
+          in: query
+          schema:
+            type: boolean
+        - name: tags
+          in: query
+          schema:
+            type: string
+            description: comma-separated tags
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Template'
+    post:
+      tags: [templates]
+      summary: Create a new prompt template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TemplateCreate'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  template:
+                    $ref: '#/components/schemas/Template'
+
+  /api/templates/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      tags: [templates]
+      summary: Get template by ID
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  template:
+                    $ref: '#/components/schemas/Template'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [templates]
+      summary: Update template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TemplateUpdate'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  template:
+                    $ref: '#/components/schemas/Template'
+    delete:
+      tags: [templates]
+      summary: Delete template
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+
+  /api/templates/{id}/render:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    post:
+      tags: [templates]
+      summary: Render a template by ID with variables
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                variables:
+                  type: object
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  template:
+                    $ref: '#/components/schemas/Template'
+                  rendered:
+                    type: string
+                  variables_used:
+                    type: object
+
+  /api/templates/by-name/{name}:
+    parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: version
+        in: query
+        schema:
+          type: integer
+    get:
+      tags: [templates]
+      summary: Get template by name (latest or specific version)
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  template:
+                    $ref: '#/components/schemas/Template'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/templates/by-name/{name}/render:
+    post:
+      tags: [templates]
+      summary: Render template by name
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: version
+          in: query
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                variables:
+                  type: object
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  template:
+                    $ref: '#/components/schemas/Template'
+                  rendered:
+                    type: string
+                  variables_used:
+                    type: object
+
+  /api/debug/replay/{usage_id}:
+    parameters:
+      - name: usage_id
+        in: path
+        required: true
+        schema:
+          type: integer
+    post:
+      tags: [debug]
+      summary: Replay a previous request from usage log
+      description: Replays using original request metadata. Does not log new usage.
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  replayed:
+                    type: boolean
+                  original_usage_id:
+                    type: integer
+                  original_cost:
+                    type: number
+                  response:
+                    type: string
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/debug/dry-run:
+    post:
+      tags: [debug]
+      summary: Dry-run mode: validate request & estimate cost without calling the LLM
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                model_id:
+                  type: integer
+                model:
+                  type: integer
+                messages:
+                  type: array
+                temperature:
+                  type: number
+                max_tokens:
+                  type: integer
+      responses:
+        '200':
+          description: Dry-run estimate
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DryRunResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/debug/validate:
+    post:
+      tags: [debug]
+      summary: Validate request format without processing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid:
+                    type: boolean
+                  errors:
+                    type: array
+                    items:
+                      type: string
+                  warnings:
+                    type: array
+                    items:
+                      type: string
+                  structure:
+                    type: object
+
+  /api/debug/test-provider/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      tags: [debug]
+      summary: Test endpoint connectivity for a provider
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  provider:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                      kind:
+                        type: string
+                  test_url:
+                    type: string
+                  reachable:
+                    type: boolean
+                  status:
+                    type: integer
+                  message:
+                    type: string
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/logs:
+    get:
+      tags: [logs]
+      summary: Get in-memory logs buffer
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 200
+      responses:
+        '200':
+          description: Logs slice
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+    post:
+      tags: [logs]
+      summary: Clear logs buffer
+      description: Clears the in-memory logs buffer.
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+
+  /api/logging:
+    get:
+      tags: [logging]
+      summary: Get effective logging configuration (redacted)
+      parameters:
+        - name: Authorization
+          in: header
+          schema:
+            type: string
+          description: Optional internal auth token (Bearer ...)
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  effective:
+                    type: object
+                  redacted:
+                    type: boolean
+    put:
+      tags: [logging]
+      summary: Set logging configuration
+      parameters:
+        - name: Authorization
+          in: header
+          schema:
+            type: string
+          description: Optional internal auth token (Bearer ...)
+        - name: dry_run
+          in: query
+          schema:
+            type: string
+            description: "Set dry_run=1 to validate without applying"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  dry_run:
+                    type: boolean
+                  result:
+                    type: object
+
+  /api/logging/test:
+    post:
+      tags: [logging]
+      summary: Test logging sink
+      parameters:
+        - name: Authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  result:
+                    type: object
+
+  /api/logging/reload:
+    post:
+      tags: [logging]
+      summary: Reload logging configuration from environment
+      parameters:
+        - name: Authorization
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  result:
+                    type: object
+
+  /api/v1/chat:
+    post:
+      tags: [chat]
+      summary: Gateway chat endpoint (canonical)
+      description: |
+        Main gateway endpoint. Supports streaming responses via Server-Sent Events (text/event-stream)
+        when 'stream' is true (default). Set query param dry_run=1 or body.dry_run=true to perform a dry-run (no upstream calls).
+      parameters:
+        - name: dry_run
+          in: query
+          schema:
+            type: string
+            description: "Set dry_run=1 to return an estimate without making LLM calls"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+      responses:
+        '200':
+          description: Streaming SSE or JSON response depending on request.stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/DryRunResponse'
+                  - type: object
+                    properties:
+                      content:
+                        type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/compat/llm-chat:
+    post:
+      tags: [chat]
+      summary: Compatibility endpoint for llm-chat-style clients
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+      responses:
+        '200':
+          description: Streaming SSE or JSON (same semantics as /v1/chat)
+          content:
+            text/event-stream:
+              schema:
+                type: string
+            application/json:
+              schema:
+                type: object
+
+  /api/compat/llm-workflows:
+    post:
+      tags: [chat]
+      summary: Workflows-friendly compat endpoint
+      description: Emits SSE events with 'llm.delta' payload wrapping the gateway delta events when streaming.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+      responses:
+        '200':
+          description: Streaming SSE or JSON
+          content:
+            text/event-stream:
+              schema:
+                type: string
+            application/json:
+              schema:
+                type: object
+
+components:
+  parameters:
+    ProviderId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+
+  schemas:
+    Provider:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        kind:
+          type: string
+          enum: [openai, openai-compatible, ollama]
+        base_url:
+          type: string
+          format: uri
+        api_key:
+          type: string
+          nullable: true
+        headers:
+          type: object
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+      example:
+        id: 1
+        name: openai
+        kind: openai
+        base_url: https://api.openai.com
+        api_key: "***REDACTED***"
+        headers:
+          X-Client: gw
+
+    ProviderCreate:
+      type: object
+      required: [name, kind, base_url]
+      properties:
+        name:
+          type: string
+        kind:
+          type: string
+          enum: [openai, openai-compatible, ollama]
+        base_url:
+          type: string
+        api_key:
+          type: string
+        headers:
+          type: object
+      example:
+        name: openai
+        kind: openai
+        base_url: https://api.openai.com
+        api_key: sk-...
+        headers:
+          X-Client: gw
+
+    ModelCreate:
+      type: object
+      required: [provider_id, model_name]
+      properties:
+        provider_id:
+          type: integer
+        model_name:
+          type: string
+        key:
+          type: string
+          nullable: true
+        display_name:
+          type: string
+          nullable: true
+        mode:
+          type: string
+          enum: [auto, chat, responses]
+        supports_responses:
+          type: boolean
+        supports_reasoning:
+          type: boolean
+        input_cost_per_million:
+          type: number
+          format: double
+        output_cost_per_million:
+          type: number
+          format: double
+        currency:
+          type: string
+      example:
+        provider_id: 1
+        model_name: gpt-4o-mini
+        key: openai:gpt-4o-mini
+        display_name: GPT-4o Mini
+        mode: auto
+        supports_responses: false
+        supports_reasoning: false
+        input_cost_per_million: 0.0
+        output_cost_per_million: 0.0
+        currency: USD
+
+    ModelRow:
+      type: object
+      properties:
+        id:
+          type: integer
+        provider_id:
+          type: integer
+        key:
+          type: string
+          nullable: true
+        model_name:
+          type: string
+        display_name:
+          type: string
+          nullable: true
+        mode:
+          type: string
+        supports_responses:
+          type: boolean
+        supports_reasoning:
+          type: boolean
+        input_cost_per_million:
+          type: number
+        output_cost_per_million:
+          type: number
+        currency:
+          type: string
+        provider_name:
+          type: string
+        provider_kind:
+          type: string
+        provider_base_url:
+          type: string
+        provider_api_key:
+          type: string
+          nullable: true
+        provider_headers:
+          type: object
+          nullable: true
+      example:
+        id: 1
+        provider_id: 1
+        model_name: gpt-4o-mini
+        display_name: GPT-4o Mini
+        mode: auto
+        supports_responses: false
+        supports_reasoning: false
+        input_cost_per_million: 0
+        output_cost_per_million: 0
+        currency: USD
+        provider_name: openai
+        provider_kind: openai
+        provider_base_url: https://api.openai.com
+
+    UsageLog:
+      type: object
+      properties:
+        id:
+          type: integer
+        ts:
+          type: string
+          format: date-time
+        provider_id:
+          type: integer
+          nullable: true
+        model_id:
+          type: integer
+          nullable: true
+        conversation_id:
+          type: string
+          nullable: true
+        input_tokens:
+          type: integer
+          nullable: true
+        output_tokens:
+          type: integer
+          nullable: true
+        prompt_chars:
+          type: integer
+          nullable: true
+        completion_chars:
+          type: integer
+          nullable: true
+        cost:
+          type: number
+          nullable: true
+        meta:
+          type: object
+          nullable: true
+
+    TokensResponse:
+      type: object
+      properties:
+        model:
+          type: string
+          nullable: true
+        encoding:
+          type: string
+        text_tokens:
+          type: integer
+          nullable: true
+        message_tokens:
+          type: integer
+          nullable: true
+        total_tokens:
+          type: integer
+        note:
+          type: string
+
+    TelemetryItem:
+      type: object
+      properties:
+        id:
+          type: string
+        model:
+          type: string
+          nullable: true
+        provider:
+          type: string
+          nullable: true
+        stream:
+          type: boolean
+        ip:
+          type: string
+          nullable: true
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        state:
+          type: string
+          enum: [running, done, error]
+        meta:
+          type: object
+        output:
+          type: string
+          nullable: true
+      example:
+        id: "k1a2b3"
+        model: "gpt-4o-mini"
+        provider: "openai"
+        stream: true
+        started_at: "2025-01-01T12:00:00Z"
+        state: "running"
+        meta:
+          conversation_id: "conv-123"
+
+    Conversation:
+      type: object
+      properties:
+        id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        title:
+          type: string
+          nullable: true
+        system_prompt:
+          type: string
+          nullable: true
+        model_id:
+          type: integer
+          nullable: true
+        meta:
+          type: object
+          nullable: true
+        archived:
+          type: boolean
+      example:
+        id: conv-123
+        title: Support chat
+        model_id: 1
+        archived: false
+
+    ConversationListRow:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+          nullable: true
+        message_count:
+          type: integer
+        last_message_at:
+          type: string
+          format: date-time
+        model_name:
+          type: string
+          nullable: true
+
+    ConversationMessage:
+      type: object
+      properties:
+        id:
+          type: integer
+        conversation_id:
+          type: string
+        role:
+          type: string
+          enum: [system, user, assistant, tool]
+        content:
+          type: string
+          nullable: true
+        tokens:
+          type: integer
+          nullable: true
+        cost:
+          type: number
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        meta:
+          type: object
+          nullable: true
+
+    ConversationMessageCreate:
+      type: object
+      required: [role]
+      properties:
+        role:
+          type: string
+          description: system | user | assistant | tool
+        content:
+          type: string
+        tokens:
+          type: integer
+        cost:
+          type: number
+        meta:
+          type: object
+
+    ConversationCreate:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        system_prompt:
+          type: string
+        model_id:
+          type: integer
+        meta:
+          type: object
+
+    ConversationUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+        system_prompt:
+          type: string
+        model_id:
+          type: integer
+        meta:
+          type: object
+        archived:
+          type: boolean
+
+    Template:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        version:
+          type: integer
+        template:
+          type: string
+        variables:
+          type: object
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        tags:
+          type: array
+          items:
+            type: string
+        usage_count:
+          type: integer
+        avg_tokens:
+          type: number
+          nullable: true
+        avg_cost:
+          type: number
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        archived:
+          type: boolean
+      example:
+        id: 1
+        name: customer-support-greeting
+        version: 1
+        template: "Hello {{customer_name}}, how can I help you today?"
+        variables:
+          customer_name:
+            type: string
+            required: true
+
+    TemplateCreate:
+      type: object
+      required: [name, template]
+      properties:
+        name:
+          type: string
+        template:
+          type: string
+        description:
+          type: string
+        variables:
+          type: object
+        tags:
+          type: array
+          items:
+            type: string
+
+    TemplateUpdate:
+      type: object
+      properties:
+        template:
+          type: string
+        description:
+          type: string
+        variables:
+          type: object
+        tags:
+          type: array
+          items:
+            type: string
+        archived:
+          type: boolean
+
+    DryRunResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        dry_run:
+          type: boolean
+        model:
+          type: object
+          properties:
+            id:
+              type: integer
+            name:
+              type: string
+            display_name:
+              type: string
+        token_estimate:
+          type: object
+          properties:
+            input_tokens:
+              type: integer
+            estimated_output_tokens:
+              type: integer
+        cost_estimate:
+          type: object
+          properties:
+            total_cost:
+              type: number
+            currency:
+              type: string
+        template_used:
+          type: string
+          nullable: true
+        message_count:
+          type: integer
+        note:
+          type: string
+
+    ChatRequest:
+      type: object
+      properties:
+        modelId:
+          type: integer
+          nullable: true
+        modelKey:
+          type: string
+          nullable: true
+        model:
+          type: string
+          nullable: true
+        messages:
+          type: array
+          items:
+            type: object
+            properties:
+              role:
+                type: string
+              content:
+                oneOf:
+                  - type: string
+                  - type: array
+        temperature:
+          type: number
+          format: float
+        max_tokens:
+          type: integer
+        stream:
+          type: boolean
+        useResponses:
+          type: boolean
+        reasoning:
+          type: boolean
+        metadata:
+          type: object
+        conversation_id:
+          type: string
+        template_id:
+          type: integer
+        template_name:
+          type: string
+        template_variables:
+          type: object
+        replace_last_message:
+          type: boolean
+        dry_run:
+          type: boolean
+      example:
+        model: gpt-4o-mini
+        messages:
+          - role: user
+            content: "Hello"
+        temperature: 0.7
+        stream: true
+
+securitySchemes: {}
+
+externalDocs:
+  description: Notes
+  url: "#"
+
+components:
+  securitySchemes: {}
+
+notes:
+  - "Streaming endpoints (/api/v1/chat, /api/compat/llm-chat, /api/compat/llm-workflows) may emit Server-Sent Events (Content-Type: text/event-stream). Clients should support SSE when requesting stream=true (default)."
+  - "Logging endpoints accept an Authorization header for internal access if INTERNAL_API_TOKEN is set on server. Otherwise the endpoints allow access (development mode)."
+  - "Templates rendering will substitute variables using simple {{var}} replacement (see /api/templates endpoints)."
+
+summary:
+  description: This OpenAPI document describes the LLM Gateway API surface implemented by the provided code. It is intended for use with Swagger / Swagger UI. It covers administration of providers & models, conversation storage, templates, chat gateway (streaming/non-streaming), telemetry (SSE), token utilities, debug tools and logging.
