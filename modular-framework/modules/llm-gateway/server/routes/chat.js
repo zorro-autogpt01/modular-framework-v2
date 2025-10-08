@@ -2,13 +2,16 @@ const express = require('express');
 const router = express.Router();
 const { logInfo, logWarn, logError, logDebug } = require('../logger');
 const {
-  getModel, getModelByKey, getModelByName, logUsage
+  getModel, getModelByKey, getModelByName, logUsage,
+  getTemplate, getTemplateByName, incrementTemplateUsage,
+  getConversation, addConversationMessage
 } = require('../db');
 const { callOpenAICompat } = require('../providers/openaiCompat');
 const { callOllama } = require('../providers/ollama');
 const {
   pickEncodingForModel, countTextTokens, countChatTokens
 } = require('../utils/tokens');
+const { substituteTemplate } = require('./templates');
 const telemetry = require('../telemetry/interactions');
 
 // SSE helper
@@ -16,10 +19,9 @@ function prepareSSE(res, rid) {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
   res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no'); // helpful behind some proxies
+  res.setHeader('X-Accel-Buffering', 'no');
   if (typeof res.flushHeaders === 'function') res.flushHeaders();
 
-  // Track SSE connection lifecycle once
   let ended = false;
   const onEnd = (kind) => {
     if (ended) return;
@@ -29,7 +31,6 @@ function prepareSSE(res, rid) {
   res.on('close', () => onEnd('close'));
   res.on('finish', () => onEnd('finish'));
 
-  // Return a sender
   return (payload) => {
     try {
       logDebug('GW -> client SSE', { rid, payload });
@@ -40,7 +41,9 @@ function prepareSSE(res, rid) {
   };
 }
 
-function isGpt5ModelName(model) { return /^gpt-5/i.test(model) || /^o5/i.test(model); }
+function isGpt5ModelName(model) { 
+  return /^gpt-5/i.test(model) || /^o5/i.test(model); 
+}
 
 function calcCost({ inTok, outTok, inPerM, outPerM }) {
   const inc = (Number(inTok) || 0) * (Number(inPerM) || 0) / 1_000_000;
@@ -50,18 +53,12 @@ function calcCost({ inTok, outTok, inPerM, outPerM }) {
 }
 
 async function resolveModel(body) {
-  // Resolve precedence: modelId > modelKey > modelName
   if (body.modelId) return await getModel(Number(body.modelId));
   if (body.modelKey) return await getModelByKey(String(body.modelKey));
   if (body.model) return await getModelByName(String(body.model));
   return null;
 }
 
-/**
- * Extracts plain text from an OpenAI Responses API payload for accounting.
- * Looks in: output[].message.content[].output_text.text (preferred),
- * then content[].text or content[].content as fallbacks.
- */
 function pickContentFromResponses(data) {
   if (!data || typeof data !== 'object') return '';
   if (Array.isArray(data.output)) {
@@ -74,13 +71,11 @@ function pickContentFromResponses(data) {
       if (typeof parts[0]?.content === 'string') return parts[0].content;
     }
   }
-  // Some providers may flatten to data.text or data.content
   if (typeof data.text === 'string') return data.text;
   if (typeof data.content === 'string') return data.content;
   return '';
 }
 
-/** Sanitize messages for telemetry: text-only, max total chars */
 function sanitizeMessages(messages, maxChars = 8000) {
   const out = [];
   let remaining = maxChars;
@@ -101,9 +96,47 @@ function sanitizeMessages(messages, maxChars = 8000) {
   return out;
 }
 
+// NEW: Apply template if specified
+async function applyTemplate(body) {
+  const { template_id, template_name, template_variables } = body;
+  
+  if (!template_id && !template_name) return body; // no template
+  
+  let tmpl;
+  if (template_id) {
+    tmpl = await getTemplate(Number(template_id));
+  } else if (template_name) {
+    tmpl = await getTemplateByName(template_name);
+  }
+  
+  if (!tmpl) {
+    throw new Error(`Template not found: ${template_id || template_name}`);
+  }
+  
+  const vars = template_variables || {};
+  const rendered = substituteTemplate(tmpl.template, vars);
+  
+  // Inject as user message (or replace last user message if specified)
+  const messages = body.messages || [];
+  if (body.replace_last_message && messages.length > 0) {
+    messages[messages.length - 1].content = rendered;
+  } else {
+    messages.push({ role: 'user', content: rendered });
+  }
+  
+  return {
+    ...body,
+    messages,
+    _template_id: tmpl.id, // track for usage stats
+    _template_name: tmpl.name
+  };
+}
+
 async function dispatch(modelRow, reqBody, res, sse, rid) {
-  const {
-    messages = [], temperature, max_tokens, stream = true, useResponses, reasoning, metadata
+  let {
+    messages = [], temperature, max_tokens, stream = true, 
+    useResponses, reasoning, metadata, conversation_id,
+    _template_id
   } = reqBody || {};
 
   const upstream = {
@@ -123,12 +156,11 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
     provider_kind: modelRow.provider_kind,
     model: upstream.model,
     stream, useResponses: upstream.useResponses, reasoning: upstream.reasoning,
-    messagesCount: Array.isArray(messages) ? messages.length : 0
+    messagesCount: Array.isArray(messages) ? messages.length : 0,
+    conversation_id: conversation_id || null,
+    template_used: _template_id || null
   });
-  // Be careful not to log secrets here:
-  logDebug('GW upstream payload', { rid, upstream: { ...upstream, apiKey: upstream.apiKey ? '***REDACTED***' : undefined } });
 
-  // Tokenization + cost prep
   const encName = pickEncodingForModel(modelRow.model_name);
   let promptChars = 0;
   try { promptChars = JSON.stringify(messages || []).length; } catch {}
@@ -137,26 +169,34 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
   const metaBase = {
     ...(metadata || {}),
     gateway: 'llm-gateway',
-    currency: modelRow.currency || 'USD'
+    currency: modelRow.currency || 'USD',
+    conversation_id: conversation_id || null,
+    template_id: _template_id || null
   };
 
   let completionText = '';
   let lastPush = 0;
   const pushLive = () => {
     const now = Date.now();
-    if (now - lastPush < 150) return; // small throttle
+    if (now - lastPush < 150) return;
     lastPush = now;
     telemetry.update(rid, { output: completionText });
   };
 
   const onDelta = (d) => {
-    logDebug('GW upstream delta', { rid, len: typeof d === 'string' ? d.length : 0, data: d });
+    logDebug('GW upstream delta', { rid, len: typeof d === 'string' ? d.length : 0 });
     if (typeof d === 'string' && d) completionText += d;
     sse?.({ type: 'delta', content: d });
     pushLive();
   };
-  const onDone = () => { logDebug('GW upstream done', { rid }); sse?.({ type: 'done' }); };
-  const onError = (m) => { logWarn('GW upstream error', { rid, message: m }); sse?.({ type: 'error', message: m }); };
+  const onDone = () => { 
+    logDebug('GW upstream done', { rid }); 
+    sse?.({ type: 'done' }); 
+  };
+  const onError = (m) => { 
+    logWarn('GW upstream error', { rid, message: m }); 
+    sse?.({ type: 'error', message: m }); 
+  };
 
   // OLLAMA
   if (modelRow.provider_kind === 'ollama') {
@@ -172,7 +212,7 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
       await logUsage({
         provider_id: modelRow.provider_id,
         model_id: modelRow.id,
-        conversation_id: metaBase.conversation_id || metaBase.conversationId || null,
+        conversation_id: conversation_id || metaBase.conversation_id || null,
         input_tokens: inTok,
         output_tokens: outTok,
         prompt_chars: promptChars,
@@ -180,17 +220,33 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
         cost,
         meta: metaBase
       });
+      
+      // Update template stats if used
+      if (_template_id) {
+        await incrementTemplateUsage(_template_id, inTok + outTok, cost);
+      }
+      
+      // Add to conversation if specified
+      if (conversation_id) {
+        await addConversationMessage({
+          conversation_id,
+          role: 'assistant',
+          content: completionText,
+          tokens: outTok,
+          cost
+        });
+      }
+      
       telemetry.finish(rid, {
         inTok, outTok, cost,
         model: modelRow.model_name,
         provider: modelRow.provider_kind,
-        conversation_id: metaBase.conversation_id || metaBase.conversationId || null
+        conversation_id: conversation_id || null
       });
       return;
     } else {
       const { content } = await callOllama({ ...upstream, stream:false, rid });
       completionText = content || '';
-      logDebug('GW -> client JSON (ollama)', { contentHead: completionText.slice(0, 800) });
       const completionChars = completionText.length;
       const outTok = countTextTokens(completionText, encName);
       const cost = calcCost({
@@ -201,7 +257,7 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
       await logUsage({
         provider_id: modelRow.provider_id,
         model_id: modelRow.id,
-        conversation_id: metaBase.conversation_id || metaBase.conversationId || null,
+        conversation_id: conversation_id || metaBase.conversation_id || null,
         input_tokens: inTok,
         output_tokens: outTok,
         prompt_chars: promptChars,
@@ -209,11 +265,26 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
         cost,
         meta: metaBase
       });
+      
+      if (_template_id) {
+        await incrementTemplateUsage(_template_id, inTok + outTok, cost);
+      }
+      
+      if (conversation_id) {
+        await addConversationMessage({
+          conversation_id,
+          role: 'assistant',
+          content: completionText,
+          tokens: outTok,
+          cost
+        });
+      }
+      
       telemetry.finish(rid, {
         inTok, outTok, cost,
         model: modelRow.model_name,
         provider: modelRow.provider_kind,
-        conversation_id: metaBase.conversation_id || metaBase.conversationId || null
+        conversation_id: conversation_id || null
       });
       return res.json({ content: completionText });
     }
@@ -221,11 +292,7 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
 
   // OpenAI / OpenAI-compatible
   if (stream) {
-    // Streaming path unchanged
-    await callOpenAICompat({
-      ...upstream, rid,
-      onDelta, onDone, onError
-    });
+    await callOpenAICompat({ ...upstream, rid, onDelta, onDone, onError });
     const completionChars = completionText.length;
     const outTok = countTextTokens(completionText, encName);
     const cost = calcCost({
@@ -236,7 +303,7 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
     await logUsage({
       provider_id: modelRow.provider_id,
       model_id: modelRow.id,
-      conversation_id: metaBase.conversation_id || metaBase.conversationId || null,
+      conversation_id: conversation_id || metaBase.conversation_id || null,
       input_tokens: inTok,
       output_tokens: outTok,
       prompt_chars: promptChars,
@@ -244,20 +311,31 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
       cost,
       meta: metaBase
     });
+    
+    if (_template_id) {
+      await incrementTemplateUsage(_template_id, inTok + outTok, cost);
+    }
+    
+    if (conversation_id) {
+      await addConversationMessage({
+        conversation_id,
+        role: 'assistant',
+        content: completionText,
+        tokens: outTok,
+        cost
+      });
+    }
+    
     telemetry.finish(rid, {
       inTok, outTok, cost,
       model: modelRow.model_name,
       provider: modelRow.provider_kind,
-      conversation_id: metaBase.conversation_id || metaBase.conversationId || null
+      conversation_id: conversation_id || null
     });
   } else {
-    // NON-STREAM: Option A — pass through Responses API when in use
-    const respPayload = await callOpenAICompat({
-      ...upstream, rid, stream: false
-    });
+    const respPayload = await callOpenAICompat({ ...upstream, rid, stream: false });
 
     if (upstream.useResponses) {
-      // Extract text only for accounting; return full payload to client.
       const textForAccounting = pickContentFromResponses(respPayload) || '';
       const completionChars = textForAccounting.length;
       const outTok = countTextTokens(textForAccounting, encName);
@@ -267,14 +345,10 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
         outPerM: modelRow.output_cost_per_million
       });
 
-      logDebug('GW -> client JSON (responses-pass-thru)', {
-        head: JSON.stringify(respPayload).slice(0, 800)
-      });
-
       await logUsage({
         provider_id: modelRow.provider_id,
         model_id: modelRow.id,
-        conversation_id: metaBase.conversation_id || metaBase.conversationId || null,
+        conversation_id: conversation_id || metaBase.conversation_id || null,
         input_tokens: inTok,
         output_tokens: outTok,
         prompt_chars: promptChars,
@@ -283,19 +357,31 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
         meta: metaBase
       });
 
+      if (_template_id) {
+        await incrementTemplateUsage(_template_id, inTok + outTok, cost);
+      }
+      
+      if (conversation_id) {
+        await addConversationMessage({
+          conversation_id,
+          role: 'assistant',
+          content: textForAccounting,
+          tokens: outTok,
+          cost
+        });
+      }
+
       telemetry.finish(rid, {
         inTok, outTok, cost,
         model: modelRow.model_name,
         provider: modelRow.provider_kind,
-        conversation_id: metaBase.conversation_id || metaBase.conversationId || null
+        conversation_id: conversation_id || null
       });
 
       return res.json(respPayload);
     }
 
-    // Legacy chat-completions or compat providers: keep returning { content }
     const completionTextLocal = (respPayload && respPayload.content) || '';
-    logDebug('GW -> client JSON (openai-compat)', { contentHead: completionTextLocal.slice(0, 800) });
     const completionChars = completionTextLocal.length;
     const outTok = countTextTokens(completionTextLocal, encName);
     const cost = calcCost({
@@ -306,7 +392,7 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
     await logUsage({
       provider_id: modelRow.provider_id,
       model_id: modelRow.id,
-      conversation_id: metaBase.conversation_id || metaBase.conversationId || null,
+      conversation_id: conversation_id || metaBase.conversation_id || null,
       input_tokens: inTok,
       output_tokens: outTok,
       prompt_chars: promptChars,
@@ -314,18 +400,89 @@ async function dispatch(modelRow, reqBody, res, sse, rid) {
       cost,
       meta: metaBase
     });
+    
+    if (_template_id) {
+      await incrementTemplateUsage(_template_id, inTok + outTok, cost);
+    }
+    
+    if (conversation_id) {
+      await addConversationMessage({
+        conversation_id,
+        role: 'assistant',
+        content: completionTextLocal,
+        tokens: outTok,
+        cost
+      });
+    }
+    
     telemetry.finish(rid, {
       inTok, outTok, cost,
       model: modelRow.model_name,
       provider: modelRow.provider_kind,
-      conversation_id: metaBase.conversation_id || metaBase.conversationId || null
+      conversation_id: conversation_id || null
     });
     return res.json({ content: completionTextLocal });
   }
 }
 
 // Canonical gateway endpoint
-router.post('/v1/chat', async (req, res) => {  const rid = req.id;
+router.post('/v1/chat', async (req, res) => {
+  const rid = req.id;
+  
+  // NEW: Check for dry-run mode
+  if (req.query.dry_run === '1' || req.body?.dry_run === true) {
+    logInfo('GW /api/v1/chat DRY-RUN', { rid, ip: req.ip });
+    
+    try {
+      const body = await applyTemplate(req.body);
+      const modelRow = await resolveModel(body);
+      
+      if (!modelRow) {
+        return res.status(400).json({ 
+          error: 'Model not configured',
+          dry_run: true 
+        });
+      }
+      
+      const messages = body.messages || [];
+      const encName = pickEncodingForModel(modelRow.model_name);
+      const inTok = countChatTokens(messages, encName);
+      const estOutTok = body.max_tokens || Math.min(inTok * 2, 1000);
+      
+      const cost = calcCost({
+        inTok,
+        outTok: estOutTok,
+        inPerM: modelRow.input_cost_per_million,
+        outPerM: modelRow.output_cost_per_million
+      });
+      
+      return res.json({
+        ok: true,
+        dry_run: true,
+        model: {
+          id: modelRow.id,
+          name: modelRow.model_name,
+          display_name: modelRow.display_name
+        },
+        token_estimate: {
+          input_tokens: inTok,
+          estimated_output_tokens: estOutTok
+        },
+        cost_estimate: {
+          total_cost: cost,
+          currency: modelRow.currency || 'USD'
+        },
+        template_used: body._template_name || null,
+        message_count: messages.length,
+        note: 'Dry-run mode: no LLM call was made'
+      });
+    } catch (err) {
+      return res.status(400).json({ 
+        error: err.message,
+        dry_run: true 
+      });
+    }
+  }
 
   const stream = !!(req.body?.stream ?? true);
   const sse = stream ? prepareSSE(res, rid) : null;
@@ -336,40 +493,45 @@ router.post('/v1/chat', async (req, res) => {  const rid = req.id;
     modelId: req.body?.modelId,
     modelKey: req.body?.modelKey,
     model: req.body?.model,
-    temperature: req.body?.temperature,
-    max_tokens: req.body?.max_tokens,
-    messages: req.body?.messages
+    conversation_id: req.body?.conversation_id,
+    template_id: req.body?.template_id,
+    template_name: req.body?.template_name
   });
 
   try {
-    // Start telemetry record early
+    // Apply template if specified
+    const body = await applyTemplate(req.body);
+    
     telemetry.start({
       id: rid,
-      model: req.body?.model || req.body?.modelKey || req.body?.modelId || null,
+      model: body?.model || body?.modelKey || body?.modelId || null,
       provider: null,
       stream,
       ip: req.ip,
       started_at: new Date().toISOString(),
       meta: {
-        conversation_id: req.body?.metadata?.conversation_id || req.body?.metadata?.conversationId || null
+        conversation_id: body?.conversation_id || null,
+        template_id: body?._template_id || null
       }
     });
     telemetry.update(rid, {
-      messages: sanitizeMessages(req.body?.messages)
+      messages: sanitizeMessages(body?.messages)
     });
 
-    const modelRow = await resolveModel(req.body || {});
+    const modelRow = await resolveModel(body);
     if (!modelRow) {
       if (sse) sse({ type:'error', message: 'Model not configured in gateway.' });
       telemetry.fail(rid, 'Model not configured');
       return stream ? res.end() : res.status(400).json({ error: 'Model not configured' });
     }
+    
     telemetry.update(rid, {
       model: modelRow.model_name,
       provider: modelRow.provider_kind
     });
-    if (stream) await dispatch(modelRow, req.body, res, sse, rid);
-    else await dispatch(modelRow, req.body, res, null, rid);
+    
+    if (stream) await dispatch(modelRow, body, res, sse, rid);
+    else await dispatch(modelRow, body, res, null, rid);
   } catch (err) {
     logError('GW /v1/chat error', { rid, err: err?.message || String(err) });
     if (stream) { sse({ type:'error', message: err?.message || 'error' }); res.end(); }
@@ -378,45 +540,35 @@ router.post('/v1/chat', async (req, res) => {  const rid = req.id;
   }
 });
 
-// Compatibility endpoint (accepts llm-chat-like body and maps to DB)
-router.post('/compat/llm-chat', async (req, res) => {  const rid = req.id;
-
+// Compatibility endpoint (accepts llm-chat-like body)
+router.post('/compat/llm-chat', async (req, res) => {
+  const rid = req.id;
   const stream = !!(req.body?.stream ?? true);
   const sse = stream ? prepareSSE(res, rid) : null;
 
-  logInfo('GW /api/compat/llm-chat <- client', { rid,
-    ip: req.ip,
-    stream,
-    model: req.body?.model,
-    temperature: req.body?.temperature,
-    max_tokens: req.body?.max_tokens,
-    messages: req.body?.messages
-  });
+  logInfo('GW /api/compat/llm-chat <- client', { rid, ip: req.ip, stream });
 
   try {
+    const body = await applyTemplate(req.body);
+    
     telemetry.start({
-      id: rid, model: req.body?.model || null, provider: null, stream, ip: req.ip,
+      id: rid, model: body?.model || null, provider: null, stream, ip: req.ip,
       started_at: new Date().toISOString(),
-      meta: { conversation_id: req.body?.metadata?.conversation_id || req.body?.metadata?.conversationId || null }
+      meta: { conversation_id: body?.conversation_id || null }
     });
-    telemetry.update(rid, { messages: sanitizeMessages(req.body?.messages) });
+    telemetry.update(rid, { messages: sanitizeMessages(body?.messages) });
 
-    let modelRow = null;
-
-    // Try to resolve by explicit llm-chat fields
-    const modelName = req.body?.model;
-    if (modelName) modelRow = await getModelByName(modelName);
-
+    const modelRow = await resolveModel(body);
     if (!modelRow) {
-      if (sse) sse({ type:'error', message: 'Model not found in gateway. Please configure it.' });
+      if (sse) sse({ type:'error', message: 'Model not found in gateway.' });
       telemetry.fail(rid, 'Model not found');
       return stream ? res.end() : res.status(400).json({ error: 'Model not found' });
     }
 
     telemetry.update(rid, { model: modelRow.model_name, provider: modelRow.provider_kind });
 
-    if (stream) await dispatch(modelRow, req.body, res, sse, rid);
-    else await dispatch(modelRow, req.body, res, null, rid);
+    if (stream) await dispatch(modelRow, body, res, sse, rid);
+    else await dispatch(modelRow, body, res, null, rid);
   } catch (err) {
     logError('GW /compat/llm-chat error', { rid, err: err?.message || String(err) });
     if (stream) { sse({ type:'error', message: err?.message || 'error' }); res.end(); }
@@ -425,24 +577,14 @@ router.post('/compat/llm-chat', async (req, res) => {  const rid = req.id;
   }
 });
 
-// NEW: workflows-friendly compat endpoint (SSE deltas as "llm.delta")
-router.post('/compat/llm-workflows', async (req, res) => {  const rid = req.id;
-
+// Workflows-friendly compat endpoint
+router.post('/compat/llm-workflows', async (req, res) => {
+  const rid = req.id;
   const stream = !!(req.body?.stream ?? true);
   const write = stream ? prepareSSE(res, rid) : null;
 
-  logInfo('GW /api/compat/llm-workflows <- workflows', { rid,
-    ip: req.ip,
-    stream,
-    modelId: req.body?.modelId,
-    modelKey: req.body?.modelKey,
-    model: req.body?.model,
-    temperature: req.body?.temperature,
-    max_tokens: req.body?.max_tokens,
-    messages: req.body?.messages
-  });
+  logInfo('GW /api/compat/llm-workflows <- workflows', { rid, ip: req.ip, stream });
 
-  // map standard payloads to workflows SSE schema
   const sse = stream ? (payload) => {
     if (!payload) return;
     if (payload.type === 'delta') {
@@ -457,20 +599,18 @@ router.post('/compat/llm-workflows', async (req, res) => {  const rid = req.id;
   } : null;
 
   try {
+    const body = await applyTemplate(req.body);
+    
     telemetry.start({
       id: rid,
-      model: req.body?.model || req.body?.modelKey || req.body?.modelId || null,
+      model: body?.model || body?.modelKey || body?.modelId || null,
       stream, ip: req.ip,
       started_at: new Date().toISOString(),
-      meta: { conversation_id: req.body?.metadata?.conversation_id || req.body?.metadata?.conversationId || null }
+      meta: { conversation_id: body?.conversation_id || null }
     });
-    telemetry.update(rid, { messages: sanitizeMessages(req.body?.messages) });
+    telemetry.update(rid, { messages: sanitizeMessages(body?.messages) });
 
-    const modelRow =
-      (req.body?.modelId && await getModel(Number(req.body.modelId))) ||
-      (req.body?.modelKey && await getModelByKey(String(req.body.modelKey))) ||
-      (req.body?.model && await getModelByName(String(req.body.model))) ||
-      null;
+    const modelRow = await resolveModel(body);
 
     if (!modelRow) {
       if (stream) { sse({ type:'error', message:'Model not found' }); res.end(); }
@@ -480,8 +620,8 @@ router.post('/compat/llm-workflows', async (req, res) => {  const rid = req.id;
 
     telemetry.update(rid, { model: modelRow.model_name, provider: modelRow.provider_kind });
 
-    if (stream) await dispatch(modelRow, req.body, res, sse, rid);
-    else await dispatch(modelRow, req.body, res, null, rid);
+    if (stream) await dispatch(modelRow, body, res, sse, rid);
+    else await dispatch(modelRow, body, res, null, rid);
   } catch (err) {
     logError('GW /compat/llm-workflows error', { rid, err: err?.message || String(err) });
     if (stream) { sse({ type:'error', message: err?.message || 'error' }); res.end(); }

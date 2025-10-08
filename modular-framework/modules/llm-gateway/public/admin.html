@@ -12,7 +12,10 @@
       <span class="dot" id="dot"></span>
       <strong>LLM Gateway</strong>
       <span class="tab active" id="tabAdmin">Admin</span>
+      <span class="tab" id="tabConversations">Conversations</span>
+      <span class="tab" id="tabTemplates">Templates</span>
       <span class="tab" id="tabLive">Live</span>
+      <span class="tab" id="tabDebug">Debug</span>
     </div>
     <div class="grow"></div>
     <button id="healthBtn" class="ghost">Health Check</button>
@@ -133,7 +136,54 @@
     </div>
   </div>
 
-  <!-- Live Interactions pane -->
+  <!-- Conversations pane -->
+  <div class="pane" id="conversationsPane" style="display:none">
+    <h2 style="margin:10px 0 12px">💬 Conversations</h2>
+    <div class="card">
+      <div class="row-live" style="margin-bottom:10px">
+        <div class="inline">
+          <input id="convSearch" placeholder="Search by title or ID" style="width:300px">
+          <button id="searchConv" class="ghost">Search</button>
+          <button id="newConv" class="btn">New Conversation</button>
+        </div>
+        <button id="refreshConv" class="ghost">Refresh</button>
+      </div>
+      <div id="convList" class="list"></div>
+    </div>
+  </div>
+
+  <!-- Templates pane -->
+  <div class="pane" id="templatesPane" style="display:none">
+    <h2 style="margin:10px 0 12px">📝 Prompt Templates</h2>
+    <div class="card">
+      <div class="row">
+        <div>
+          <label>Name</label><input id="tName" placeholder="customer-support-greeting">
+          <label>Description</label><input id="tDesc" placeholder="Template for greeting customers">
+        </div>
+        <div>
+          <label>Tags (comma-separated)</label><input id="tTags" placeholder="support, greeting">
+        </div>
+      </div>
+      <label>Template (use {{variable}} syntax)</label>
+      <textarea id="tTemplate" rows="6" placeholder="Hello {{customer_name}}, how can I help you today?"></textarea>
+      <div class="inline">
+        <button id="saveTemplate" class="btn">Save Template</button>
+        <button id="resetTemplate" class="ghost">Reset</button>
+        <button id="testTemplate" class="ghost">Test</button>
+      </div>
+      <table id="templatesTbl" style="width:100%; margin-top:8px; border-collapse:collapse">
+        <thead>
+          <tr>
+            <th>ID</th><th>Name</th><th>Version</th><th>Description</th><th>Usage</th><th>Avg Cost</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Live pane (unchanged) -->
   <div class="pane" id="livePane" style="display:none">
     <h2 style="margin:10px 0 12px">📡 Live LLM Interactions</h2>
     <div class="card">
@@ -144,7 +194,7 @@
             <option value="live">Live</option>
             <option value="conversation">Conversation</option>
           </select>
-          <input id="convId" placeholder="conversation_id (when Scope=Conversation)" style="width:320px; margin-left:8px">
+          <input id="convId" placeholder="conversation_id" style="width:320px; margin-left:8px">
           <button id="followBtn" class="ghost">Follow latest</button>
         </div>
         <div class="tiny">Subscribed to <code class="mono" id="sseUrlTxt"></code></div>
@@ -167,8 +217,48 @@
     </div>
   </div>
 
+  <!-- Debug pane -->
+  <div class="pane" id="debugPane" style="display:none">
+    <h2 style="margin:10px 0 12px">🔧 Debug Tools</h2>
+    
+    <div class="card">
+      <h3>Dry-Run Test</h3>
+      <p class="muted">Test a request without calling the LLM (validates and estimates cost)</p>
+      <div class="row">
+        <div>
+          <label>Model ID</label><input id="dryModelId" placeholder="1" type="number">
+        </div>
+        <div>
+          <label>Temperature</label><input id="dryTemp" placeholder="0.7" type="number" step="0.1">
+        </div>
+      </div>
+      <label>Messages (JSON)</label>
+      <textarea id="dryMessages" rows="6" placeholder='[{"role":"user","content":"Hello"}]'></textarea>
+      <button id="runDryRun" class="btn">Run Dry-Run</button>
+      <div id="dryResult" style="margin-top:10px"></div>
+    </div>
+
+    <div class="card">
+      <h3>Replay Request</h3>
+      <p class="muted">Replay a previous request from usage log</p>
+      <label>Usage Log ID</label>
+      <input id="replayId" placeholder="123" type="number">
+      <button id="runReplay" class="btn">Replay</button>
+      <div id="replayResult" style="margin-top:10px"></div>
+    </div>
+
+    <div class="card">
+      <h3>Validate Request</h3>
+      <p class="muted">Check request structure without processing</p>
+      <label>Request Body (JSON)</label>
+      <textarea id="validateBody" rows="6" placeholder='{"model_id":1,"messages":[...]}'></textarea>
+      <button id="runValidate" class="btn">Validate</button>
+      <div id="validateResult" style="margin-top:10px"></div>
+    </div>
+  </div>
+
 <script>
-/* ---------------- Small status helpers ---------------- */
+/* Status helpers */
 const dot = document.getElementById('dot');
 const healthText = document.getElementById('healthText');
 function setBusy(b){ if(!dot||!healthText) return; dot.classList.toggle('on', b); healthText.textContent = b ? 'Checking…' : 'Idle'; }
@@ -176,19 +266,35 @@ const BASE = window.location.pathname.replace(/\/admin.*/, '');
 const API_BASE = `${BASE}/api`;
 const HEALTH_PATH = `${BASE}/health`;
 
-/* ---------------- Tabs ---------------- */
-const tabAdmin = document.getElementById('tabAdmin');
-const tabLive = document.getElementById('tabLive');
-const adminPane = document.getElementById('adminPane');
-const livePane = document.getElementById('livePane');
+/* Tabs */
+const tabs = {
+  admin: { btn: document.getElementById('tabAdmin'), pane: document.getElementById('adminPane') },
+  conversations: { btn: document.getElementById('tabConversations'), pane: document.getElementById('conversationsPane') },
+  templates: { btn: document.getElementById('tabTemplates'), pane: document.getElementById('templatesPane') },
+  live: { btn: document.getElementById('tabLive'), pane: document.getElementById('livePane') },
+  debug: { btn: document.getElementById('tabDebug'), pane: document.getElementById('debugPane') }
+};
 
-function showAdmin(){ tabAdmin.classList.add('active'); tabLive.classList.remove('active'); adminPane.style.display='block'; livePane.style.display='none'; }
-function showLive(){ tabLive.classList.add('active'); tabAdmin.classList.remove('active'); adminPane.style.display='none'; livePane.style.display='block'; ensureSSE(); }
+function showTab(name) {
+  Object.entries(tabs).forEach(([k, t]) => {
+    if (k === name) {
+      t.btn.classList.add('active');
+      t.pane.style.display = 'block';
+      if (k === 'live') ensureSSE();
+    } else {
+      t.btn.classList.remove('active');
+      t.pane.style.display = 'none';
+    }
+  });
+}
 
-tabAdmin?.addEventListener('click', showAdmin);
-tabLive?.addEventListener('click', showLive);
+tabs.admin.btn?.addEventListener('click', () => showTab('admin'));
+tabs.conversations.btn?.addEventListener('click', () => { showTab('conversations'); refreshConversations(); });
+tabs.templates.btn?.addEventListener('click', () => { showTab('templates'); refreshTemplates(); });
+tabs.live.btn?.addEventListener('click', () => showTab('live'));
+tabs.debug.btn?.addEventListener('click', () => showTab('debug'));
 
-/* ---------------- API helper ---------------- */
+/* API helper */
 async function api(path, method='GET', body) {
   const res = await fetch(`${API_BASE}${path}`, {
     method,
@@ -199,7 +305,7 @@ async function api(path, method='GET', body) {
   return await res.json();
 }
 
-/* ---------------- Health check ---------------- */
+/* Health check */
 document.getElementById('healthBtn')?.addEventListener('click', async () => {
   try{
     setBusy(true);
@@ -214,7 +320,7 @@ document.getElementById('healthBtn')?.addEventListener('click', async () => {
   }
 });
 
-/* ---------------- Providers ---------------- */
+/* Providers (existing code unchanged) */
 const pName = document.getElementById('pName');
 const pKind = document.getElementById('pKind');
 const pBaseUrl = document.getElementById('pBaseUrl');
@@ -267,7 +373,7 @@ saveProvider.onclick = async () => {
 };
 resetProvider.onclick = ()=>{ editProviderId=null; pName.value=''; pBaseUrl.value=''; pApiKey.value=''; pHeaders.value='{}'; };
 
-/* ---------------- Models ---------------- */
+/* Models (existing code unchanged) */
 const mProviderId = document.getElementById('mProviderId');
 const mModelName = document.getElementById('mModelName');
 const mKey = document.getElementById('mKey');
@@ -278,7 +384,6 @@ const mReason = document.getElementById('mReason');
 const mCurrency = document.getElementById('mCurrency');
 const mInCost = document.getElementById('mInCost');
 const mOutCost = document.getElementById('mOutCost');
-
 const saveModel = document.getElementById('saveModel');
 const resetModel = document.getElementById('resetModel');
 
@@ -331,7 +436,7 @@ saveModel.onclick = async ()=>{
 };
 resetModel.onclick = ()=> { editModelId=null; mProviderId.value=''; mModelName.value=''; mKey.value=''; mDisplayName.value=''; };
 
-/* ---------------- Usage ---------------- */
+/* Usage */
 async function refreshUsage() {
   const data = await api('/usage?limit=200');
   const tb = document.querySelector('#usageTbl tbody'); tb.innerHTML='';
@@ -345,7 +450,149 @@ async function refreshUsage() {
 }
 document.getElementById('refreshUsage').onclick = refreshUsage;
 
-/* ---------------- Live telemetry (SSE) ---------------- */
+/* Conversations */
+async function refreshConversations() {
+  const search = document.getElementById('convSearch').value.trim();
+  const url = `/conversations?limit=50${search ? `&search=${encodeURIComponent(search)}` : ''}`;
+  const data = await api(url);
+  const list = document.getElementById('convList');
+  list.innerHTML = '';
+  data.items.forEach(c => {
+    const el = document.createElement('div');
+    el.className = 'item';
+    el.innerHTML = `
+      <div>
+        <strong>${c.title || c.id}</strong>
+        <div class="tiny">${c.message_count || 0} messages · Model: ${c.model_name || 'none'}</div>
+      </div>
+      <div class="inline">
+        <button class="ghost" data-view="${c.id}">View</button>
+        <button class="danger" data-archive="${c.id}">Archive</button>
+      </div>
+    `;
+    list.appendChild(el);
+  });
+  list.querySelectorAll('button[data-view]').forEach(b => b.onclick = async () => {
+    const id = b.getAttribute('data-view');
+    const conv = (await api(`/conversations/${id}`)).conversation;
+    const msgs = (await api(`/conversations/${id}/messages?limit=100`)).items;
+    alert(`Conversation: ${conv.title || conv.id}\n\n${msgs.map(m => `${m.role}: ${m.content?.slice(0,100)}...`).join('\n\n')}`);
+  });
+  list.querySelectorAll('button[data-archive]').forEach(b => b.onclick = async () => {
+    const id = b.getAttribute('data-archive');
+    if (!confirm('Archive conversation?')) return;
+    await api(`/conversations/${id}`, 'PUT', { archived: true });
+    refreshConversations();
+  });
+}
+document.getElementById('refreshConv')?.addEventListener('click', refreshConversations);
+document.getElementById('searchConv')?.addEventListener('click', refreshConversations);
+document.getElementById('newConv')?.addEventListener('click', () => {
+  const id = prompt('Conversation ID:');
+  const title = prompt('Title (optional):');
+  if (!id) return;
+  api('/conversations', 'POST', { id, title }).then(() => refreshConversations());
+});
+
+/* Templates */
+const tName = document.getElementById('tName');
+const tDesc = document.getElementById('tDesc');
+const tTags = document.getElementById('tTags');
+const tTemplate = document.getElementById('tTemplate');
+
+let editTemplateId = null;
+async function refreshTemplates() {
+  const data = await api('/templates');
+  const tb = document.querySelector('#templatesTbl tbody'); tb.innerHTML='';
+  data.items.forEach(t => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${t.id}</td><td>${t.name}</td><td>${t.version}</td><td>${t.description||''}</td>
+      <td>${t.usage_count||0}</td><td>${t.avg_cost||0}</td>
+      <td>
+        <button class="ghost" data-edit="${t.id}">Edit</button>
+        <button class="danger" data-del="${t.id}">Delete</button>
+      </td>`;
+    tb.appendChild(tr);
+  });
+  tb.querySelectorAll('button[data-edit]').forEach(b => b.onclick = async () => {
+    const id = b.getAttribute('data-edit');
+    const t = (await api(`/templates/${id}`)).template;
+    editTemplateId = t.id;
+    tName.value = t.name; tDesc.value = t.description || ''; 
+    tTemplate.value = t.template;
+    tTags.value = (t.tags || []).join(', ');
+  });
+  tb.querySelectorAll('button[data-del]').forEach(b => b.onclick = async () => {
+    const id = b.getAttribute('data-del');
+    if (!confirm('Delete template?')) return;
+    await api(`/templates/${id}`, 'DELETE');
+    refreshTemplates();
+  });
+}
+document.getElementById('saveTemplate').onclick = async () => {
+  const body = {
+    name: tName.value.trim(),
+    description: tDesc.value.trim(),
+    template: tTemplate.value.trim(),
+    tags: tTags.value.split(',').map(t => t.trim()).filter(Boolean)
+  };
+  if (!body.name || !body.template) { alert('name and template required'); return; }
+  if (editTemplateId) await api(`/templates/${editTemplateId}`, 'PUT', body);
+  else await api('/templates', 'POST', body);
+  editTemplateId = null;
+  tName.value = ''; tDesc.value = ''; tTemplate.value = ''; tTags.value = '';
+  refreshTemplates();
+};
+document.getElementById('resetTemplate').onclick = () => {
+  editTemplateId = null;
+  tName.value = ''; tDesc.value = ''; tTemplate.value = ''; tTags.value = '';
+};
+document.getElementById('testTemplate').onclick = async () => {
+  const vars = prompt('Template variables (JSON):');
+  if (!vars) return;
+  const body = { variables: JSON.parse(vars) };
+  const result = await api(`/templates/${editTemplateId}/render`, 'POST', body);
+  alert('Rendered:\n\n' + result.rendered);
+};
+
+/* Debug tools */
+document.getElementById('runDryRun').onclick = async () => {
+  const msgs = JSON.parse(document.getElementById('dryMessages').value || '[]');
+  const body = {
+    model_id: Number(document.getElementById('dryModelId').value),
+    messages: msgs,
+    temperature: Number(document.getElementById('dryTemp').value) || 0.7,
+    dry_run: true
+  };
+  try {
+    const result = await api('/v1/chat?dry_run=1', 'POST', body);
+    document.getElementById('dryResult').innerHTML = `<pre>${JSON.stringify(result, null, 2)}</pre>`;
+  } catch (e) {
+    document.getElementById('dryResult').innerHTML = `<div style="color:red">Error: ${e.message}</div>`;
+  }
+};
+
+document.getElementById('runReplay').onclick = async () => {
+  const id = document.getElementById('replayId').value;
+  try {
+    const result = await api(`/debug/replay/${id}`, 'POST');
+    document.getElementById('replayResult').innerHTML = `<pre>${JSON.stringify(result, null, 2)}</pre>`;
+  } catch (e) {
+    document.getElementById('replayResult').innerHTML = `<div style="color:red">Error: ${e.message}</div>`;
+  }
+};
+
+document.getElementById('runValidate').onclick = async () => {
+  const body = JSON.parse(document.getElementById('validateBody').value || '{}');
+  try {
+    const result = await api('/debug/validate', 'POST', body);
+    document.getElementById('validateResult').innerHTML = `<pre>${JSON.stringify(result, null, 2)}</pre>`;
+  } catch (e) {
+    document.getElementById('validateResult').innerHTML = `<div style="color:red">Error: ${e.message}</div>`;
+  }
+};
+
+/* Live telemetry (existing code unchanged) */
 const sseUrlTxt = document.getElementById('sseUrlTxt');
 const scopeSel = document.getElementById('scopeSel');
 const convId = document.getElementById('convId');
@@ -400,7 +647,7 @@ function filterMatches(rec) {
     const has = rec?.meta?.conversation_id || rec?.conversation_id;
     return has === want;
   }
-  return true; // 'live'
+  return true;
 }
 
 function renderList() {
@@ -468,9 +715,8 @@ function escapeHtml(s='') {
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-/* ---------------- Boot ---------------- */
+/* Boot */
 refreshProviders(); refreshModels(); refreshUsage();
-// default view = Admin; click "Live" to start SSE
 </script>
 </body>
 </html>
