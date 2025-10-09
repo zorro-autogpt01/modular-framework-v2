@@ -1,0 +1,52 @@
+{
+  "default_id": "conn-1760036972992",
+  "connections": [
+    {
+      "id": "default",
+      "repo_url": "https://github.com/zorro-autogpt01/modular-framework-v2",
+      "base_url": "https://api.github.com",
+      "default_branch": "dev",
+      "branches": [
+        "dev",
+        "dev-temp",
+        "dev-temp-codeparser",
+        "dev-temp-llm-workflows",
+        "dev-temp-nginx",
+        "dev-temp-splunk",
+        "main"
+      ],
+      "name": "",
+      "token_plain": "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"
+    },
+    {
+      "id": "my-repo",
+      "repo_url": "https://github.com/zorro-autogpt01/modulare-framework-v2.git",
+      "base_url": "https://api.github.com",
+      "default_branch": "dev-temp-nginx",
+      "name": "modular-framework",
+      "token_plain": "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"
+    },
+    {
+      "id": "conn-1760036972992",
+      "repo_url": "",
+      "base_url": "https://api.github.com",
+      "default_branch": "main",
+      "name": "",
+      "token_plain": "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"
+    },
+    {
+      "id": "conn-1760036997045",
+      "repo_url": "",
+      "base_url": "https://api.github.com",
+      "default_branch": "main",
+      "name": ""
+    },
+    {
+      "id": "conn-1760036997945",
+      "repo_url": "",
+      "base_url": "https://api.github.com",
+      "default_branch": "main",
+      "name": ""
+    }
+  ]
+}
