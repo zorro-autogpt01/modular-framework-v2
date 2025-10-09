@@ -60,14 +60,25 @@ services:
     environment:
       - RUNNER_TOKEN=${RUNNER_TOKEN}
       - RUNNER_BASE_DIR=/srv/runner
+      - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN:-supersecret}
+      - RUNNER_REG_TOKEN=${RUNNER_REG_TOKEN:-supersecret}
       - RUNNER_DEFAULT_TIMEOUT_MS=30000
       - RUNNER_ALLOW_ENV=HTTP_PROXY,HTTPS_PROXY
+      - HEALTH_INTERVAL_SEC=15
+      - ARTIFACTS_DIR=/app/data/artifacts
     volumes:
       - /srv/runner:/srv/runner
+      - runner-controller-data:/app/data
+      - runner-artifacts:/app/data/artifacts
     ports:
       - "4010:4010"
     networks:
       - app-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:4015/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   llm-workflows-module:
     build: ./llm-workflows
@@ -81,6 +92,14 @@ services:
       - LLM_RUNNER_CONTROLLER_TOKEN=${LLM_RUNNER_CONTROLLER_TOKEN}
       - LLM_RUNNER_CONTROLLER_BASE=http://llm-runner-controller:4015/api/llm-runner
       - LOG_TO_CONSOLE=true 
+      - GITHUB_HUB_BASE=http://github-hub-module:3002
+      - DEFAULT_GH_CONN_ID=core-repo
+      - REPOOPS_MAX_INPUT_TOKENS=48000
+      - REPOOPS_MAX_FILES=20
+      - REPOOPS_MAX_FILE_KB=64
+      - REPOOPS_MAX_TOTAL_KB=512
+      - REPOOPS_TEST_TIMEOUT_MS=900000
+      - GITHUB_CLONE_TOKEN=${GITHUB_CLONE_TOKEN}
       # INTERNAL_API_TOKEN:
       #   Protects "dangerous" backend endpoints (testStep with execute, run workflow).
       #   The frontend must send Authorization: Bearer <this token>.
@@ -101,12 +120,21 @@ services:
       - "3005:3005"
     volumes:
       - ./llm-workflows/data:/app/data
+      - workflows-node-modules:/app/node_modules
     depends_on:
       - llm-gateway
+      - github-hub-module
+      - llm-runner-controller
       - splunk
     restart: unless-stopped
     networks:
       - app-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3005/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 #  runner-agent:
 #    build: ./runner-agent
@@ -150,6 +178,11 @@ services:
       - "3002:3002"
     networks:
       - app-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3002/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   llm-chat:
     build: ./llm-chat
@@ -266,6 +299,11 @@ services:
     networks:
       - app-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3010/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   llm-documentor:
     build: ./llm-documentor
@@ -398,7 +436,59 @@ services:
     networks:
       - app-network
 
+volumes:
+  workflows-node-modules:
+    driver: local
+  runner-controller-data:
+    driver: local
+  runner-artifacts:
+    driver: local
+  runner-workspace:
+    driver: local
 
 networks:
   app-network:
     driver: bridge
+
+    # Production considerations:
+# 
+# 1. Use external secrets management:
+#    environment:
+#      - GITHUB_CLONE_TOKEN=${GITHUB_CLONE_TOKEN}
+#    
+#    Set via:
+#    - AWS Secrets Manager
+#    - HashiCorp Vault
+#    - Kubernetes Secrets
+#    - Docker Swarm Secrets
+#
+# 2. Use named volumes with backup strategy:
+#    volumes:
+#      runner-controller-data:
+#        driver: local
+#        driver_opts:
+#          type: none
+#          device: /mnt/data/runner-controller
+#          o: bind
+#
+# 3. Add resource limits:
+#    deploy:
+#      resources:
+#        limits:
+#          cpus: '2'
+#          memory: 4G
+#        reservations:
+#          cpus: '1'
+#          memory: 2G
+#
+# 4. Configure logging:
+#    logging:
+#      driver: "json-file"
+#      options:
+#        max-size: "10m"
+#        max-file: "3"
+#
+# 5. Use external network for multi-compose setups:
+#    networks:
+#      modular-backend:
+#        external: true

@@ -101,19 +101,420 @@
 
         <div id="stepEditor" style="display:none">
           <h3>Edit Step</h3>
-          <label>Step Name</label>
-          <input id="stepName" />
-
-          <label>Prompt Template</label>
-          <textarea id="stepPrompt" rows="6" placeholder="Use {{var}}"></textarea>
-
-          <label>JSON Schema</label>
-          <textarea id="stepSchema" rows="8"></textarea>
 
           <div class="wf-row">
-            <label><input type="checkbox" id="stepNoGuard" /> Disable system guard</label>
-            <label><input type="checkbox" id="stepDontStop" /> Don't stop on failure</label>
+            <div>
+              <label>Step Name</label>
+              <input id="stepName" />
+            </div>
+            <div>
+              <label>Step Type</label>
+              <select id="stepType">
+                <option value="llm">LLM</option>
+                <option value="repoops">RepoOps</option>
+              </select>
+            </div>
           </div>
+
+          <!-- LLM-only fields -->
+          <div class="llm-only">
+            <label>Prompt Template</label>
+            <textarea id="stepPrompt" rows="6" placeholder="Use {{var}}"></textarea>
+
+            <label>JSON Schema</label>
+            <textarea id="stepSchema" rows="8"></textarea>
+
+            <div class="wf-row">
+              <label><input type="checkbox" id="stepNoGuard" /> Disable system guard</label>
+              <label><input type="checkbox" id="stepDontStop" /> Don't stop on failure</label>
+            </div>
+          </div>
+
+          <!-- RepoOps block -->
+          <div id="repoOpsEditor" style="display:none">
+            <h3>RepoOps Configuration</h3>
+            
+            <!-- Repository -->
+            <div class="wf-row">
+              <div>
+                <label>GitHub Connection</label>
+                <select id="repoOpsConnId"></select>
+              </div>
+              <div>
+                <label>Base Branch</label>
+                <input id="repoOpsBaseBranch" value="main" placeholder="main" />
+              </div>
+            </div>
+
+            <div class="wf-row">
+              <div>
+                <label>Feature Branch <small>(templatable)</small></label>
+                <input id="repoOpsHeadBranch" placeholder="feature/{{feature_name}}" />
+              </div>
+              <div>
+                <label>Language Hints</label>
+                <input id="repoOpsLanguageHints" placeholder="ts,tsx,js" />
+              </div>
+            </div>
+
+            <!-- Change Request -->
+            <label>Change Request <small>(supports {{vars}})</small></label>
+            <textarea id="repoOpsChangeRequest" rows="4" 
+              placeholder="Add a new API endpoint /api/health that returns status and version..."></textarea>
+
+            <!-- Path Filters -->
+            <details style="margin: 12px 0">
+              <summary>Path Filters & Guardrails</summary>
+              <div style="margin-top: 8px">
+                <label>Allowed Paths (glob patterns)</label>
+                <textarea id="repoOpsAllowPaths" rows="2" 
+                  placeholder="src/**&#10;tests/**&#10;docs/**"></textarea>
+                
+                <label>Denied Paths (glob patterns)</label>
+                <textarea id="repoOpsDenyPaths" rows="2" 
+                  placeholder="**/*.png&#10;dist/**&#10;node_modules/**"></textarea>
+              </div>
+            </details>
+
+            <!-- LLM Settings -->
+            <details style="margin: 12px 0">
+              <summary>LLM Settings</summary>
+              <div class="wf-row" style="margin-top: 8px">
+                <div>
+                  <label>Model</label>
+                  <input id="repoOpsModel" placeholder="gpt-4o-mini" />
+                </div>
+                <div>
+                  <label>Temperature</label>
+                  <input id="repoOpsTemperature" type="number" step="0.1" value="0.2" style="width:80px" />
+                </div>
+              </div>
+            </details>
+
+            <!-- Testing -->
+            <details style="margin: 12px 0">
+              <summary>Testing Configuration</summary>
+              <div style="margin-top: 8px">
+                <label>
+                  <input type="checkbox" id="repoOpsTestEnabled" />
+                  Enable Testing
+                </label>
+
+                <div id="repoOpsTestSettings" style="margin-top: 8px; display:none">
+                  <label>Runner</label>
+                  <select id="repoOpsTestRunner"></select>
+                  
+                  <label>Test Commands (one per line)</label>
+                  <textarea id="repoOpsTestCommands" rows="3" 
+                    placeholder="npm ci&#10;npm test"></textarea>
+                  
+                  <label>Timeout (ms)</label>
+                  <input id="repoOpsTestTimeout" type="number" value="900000" />
+                </div>
+              </div>
+            </details>
+
+            <!-- PR Options -->
+            <details style="margin: 12px 0">
+              <summary>Pull Request Options</summary>
+              <div style="margin-top: 8px">
+                <label>
+                  <input type="checkbox" id="repoOpsOpenPR" />
+                  Open Pull Request
+                </label>
+                
+                <label>
+                  <input type="checkbox" id="repoOpsPRDraft" />
+                  Create as Draft
+                </label>
+              </div>
+            </details>
+
+            <!-- Approval & Exports -->
+            <details style="margin: 12px 0">
+              <summary>Advanced Options</summary>
+              <div style="margin-top: 8px">
+                <label>
+                  <input type="checkbox" id="repoOpsRequireApproval" />
+                  Require Manual Approval
+                </label>
+                
+                <label>Export PR URL as</label>
+                <input id="repoOpsExportPRAs" placeholder="pr_url" />
+                
+                <label>Export Branch Name as</label>
+                <input id="repoOpsExportBranchAs" placeholder="feature_branch" />
+              </div>
+            </details>
+
+            <div class="wf-actions" style="margin-top: 16px">
+              <button id="repoOpsPlanBtn" class="ghost">📋 Plan Only</button>
+              <button id="repoOpsTestStepBtn" class="ghost">🧪 Full Test</button>
+            </div>
+
+            <div id="repoOpsTestOutput" style="margin-top: 12px"></div>
+          </div>
+
+          <script>
+          // RepoOps UI Integration (self-contained; exposes RepoOpsUI)
+          (function() {
+            let githubConnections = [];
+            let runners = [];
+
+            async function loadGitHubConnections() {
+              try {
+                const GITHUB_HUB_BASE = '/github-hub-module:3002';
+                const resp = await fetch(`${GITHUB_HUB_BASE}/api/connections`, {
+                  headers: authHeaders()
+                });
+                const data = await resp.json();
+                githubConnections = data.connections || [];
+                populateConnectionsDropdown();
+              } catch (e) {
+                console.warn('Failed to load GitHub connections:', e);
+                githubConnections = [];
+                populateConnectionsDropdown();
+              }
+            }
+
+            function populateConnectionsDropdown() {
+              const sel = document.getElementById('repoOpsConnId');
+              if (!sel) return;
+              sel.innerHTML = '';
+              if (!githubConnections.length) {
+                const opt = document.createElement('option');
+                opt.value = '';
+                opt.textContent = '-- No connections available --';
+                sel.appendChild(opt);
+                return;
+              }
+              for (const conn of githubConnections) {
+                const opt = document.createElement('option');
+                opt.value = conn.id;
+                opt.textContent = `${conn.name || conn.id} (${conn.repo_url || 'unknown'})`;
+                sel.appendChild(opt);
+              }
+            }
+
+            async function loadRunners() {
+              try {
+                const resp = await fetch('./api/runners', { headers: authHeaders() });
+                const data = await resp.json();
+                runners = data.runners || [];
+              } catch (e) {
+                console.warn('Failed to load runners:', e);
+                runners = [];
+              }
+              populateRunnersDropdown();
+            }
+
+            function populateRunnersDropdown() {
+              const sel = document.getElementById('repoOpsTestRunner');
+              if (!sel) return;
+              sel.innerHTML = '';
+              for (const r of runners) {
+                const opt = document.createElement('option');
+                opt.value = r.name;
+                opt.textContent = `${r.name} ${r.url ? `(${r.url})` : ''}`;
+                sel.appendChild(opt);
+              }
+            }
+
+            document.getElementById('repoOpsTestEnabled')?.addEventListener('change', (e) => {
+              const settings = document.getElementById('repoOpsTestSettings');
+              if (settings) settings.style.display = e.target.checked ? '' : 'none';
+            });
+
+            function collectRepoOpsConfig() {
+              const allowPaths = (document.getElementById('repoOpsAllowPaths')?.value || '')
+                .split('\n').map(s => s.trim()).filter(Boolean);
+              const denyPaths = (document.getElementById('repoOpsDenyPaths')?.value || '')
+                .split('\n').map(s => s.trim()).filter(Boolean);
+              const languageHints = (document.getElementById('repoOpsLanguageHints')?.value || '')
+                .split(',').map(s => s.trim()).filter(Boolean);
+              const testCommands = (document.getElementById('repoOpsTestCommands')?.value || '')
+                .split('\n').map(s => s.trim()).filter(Boolean);
+
+              return {
+                kind: 'repoops',
+                conn_id: document.getElementById('repoOpsConnId')?.value || '',
+                base_branch: document.getElementById('repoOpsBaseBranch')?.value || 'main',
+                head_branch: document.getElementById('repoOpsHeadBranch')?.value || '',
+                change_request: document.getElementById('repoOpsChangeRequest')?.value || '',
+                allow_paths: allowPaths.length ? allowPaths : undefined,
+                deny_paths: denyPaths.length ? denyPaths : undefined,
+                language_hints: languageHints.length ? languageHints : undefined,
+                llm_model: document.getElementById('repoOpsModel')?.value || 'gpt-4o-mini',
+                temperature: parseFloat(document.getElementById('repoOpsTemperature')?.value || '0.2'),
+                test: {
+                  enabled: document.getElementById('repoOpsTestEnabled')?.checked || false,
+                  runner: document.getElementById('repoOpsTestRunner')?.value || '',
+                  commands: testCommands,
+                  timeoutMs: parseInt(document.getElementById('repoOpsTestTimeout')?.value || '900000')
+                },
+                open_pr: document.getElementById('repoOpsOpenPR')?.checked || false,
+                pr_draft: document.getElementById('repoOpsPRDraft')?.checked || false,
+                require_approval: document.getElementById('repoOpsRequireApproval')?.checked || false,
+                export_pr_url_as: document.getElementById('repoOpsExportPRAs')?.value || '',
+                export_head_branch_as: document.getElementById('repoOpsExportBranchAs')?.value || ''
+              };
+            }
+
+            document.getElementById('repoOpsPlanBtn')?.addEventListener('click', async () => {
+              const config = collectRepoOpsConfig();
+              const vars = parseJson(document.getElementById('varsInput')?.value || '{}', {});
+              const output = document.getElementById('repoOpsTestOutput');
+              output.innerHTML = '<p class="muted">Planning...</p>';
+              try {
+                const resp = await fetch('./api/repoops/plan', {
+                  method: 'POST',
+                  headers: authHeaders({ 'Content-Type': 'application/json' }),
+                  body: JSON.stringify({
+                    conn_id: config.conn_id,
+                    base_branch: config.base_branch,
+                    change_request: renderTemplateClient(config.change_request, vars),
+                    allow_paths: config.allow_paths,
+                    deny_paths: config.deny_paths,
+                    language_hints: config.language_hints,
+                    llm_model: config.llm_model,
+                    temperature: config.temperature
+                  })
+                });
+                const data = await resp.json();
+                if (!resp.ok) {
+                  output.innerHTML = `<div class="error">Plan failed: ${data.error || 'Unknown error'}</div>`;
+                  return;
+                }
+                output.innerHTML = `
+                  <div class="card">
+                    <h4>✅ Plan Generated</h4>
+                    <p><strong>Files selected:</strong> ${data.discovery?.files?.length || 0}</p>
+                    <p><strong>Changes proposed:</strong> ${data.proposed?.changes?.length || 0}</p>
+                    <details>
+                      <summary>Discovery</summary>
+                      <pre class="code">${escapeHtml(JSON.stringify(data.discovery, null, 2))}</pre>
+                    </details>
+                    <details>
+                      <summary>Proposed Changes</summary>
+                      <pre class="code">${escapeHtml(JSON.stringify(data.proposed, null, 2))}</pre>
+                    </details>
+                  </div>
+                `;
+              } catch (e) {
+                output.innerHTML = `<div class="error">Plan failed: ${e.message}</div>`;
+              }
+            });
+
+            document.getElementById('repoOpsTestStepBtn')?.addEventListener('click', async () => {
+              const config = collectRepoOpsConfig();
+              const vars = parseJson(document.getElementById('varsInput')?.value || '{}', {});
+              const output = document.getElementById('repoOpsTestOutput');
+              output.innerHTML = '<p class="muted">Running full RepoOps flow...</p>';
+              try {
+                const headBranch = config.head_branch || `test/${Date.now()}`;
+                const resp = await fetch('./api/repoops/run', {
+                  method: 'POST',
+                  headers: authHeaders({ 'Content-Type': 'application/json' }),
+                  body: JSON.stringify({
+                    conn_id: config.conn_id,
+                    base_branch: config.base_branch,
+                    head_branch: headBranch,
+                    change_request: renderTemplateClient(config.change_request, vars),
+                    allow_paths: config.allow_paths,
+                    deny_paths: config.deny_paths,
+                    language_hints: config.language_hints,
+                    llm_model: config.llm_model,
+                    temperature: config.temperature,
+                    test: config.test,
+                    open_pr: config.open_pr,
+                    pr_draft: config.pr_draft,
+                    require_approval: false
+                  })
+                });
+                const data = await resp.json();
+                if (!resp.ok) {
+                  output.innerHTML = `<div class="error">Run failed: ${data.error || 'Unknown error'}</div>`;
+                  return;
+                }
+                const phases = data.phases || {};
+                output.innerHTML = `
+                  <div class="card">
+                    <h4>${data.status === 'completed' ? '✅' : '⚠️'} ${data.status}</h4>
+                    ${phases.plan ? `<p><strong>Plan:</strong> ${phases.plan.proposed?.changes?.length || 0} changes</p>` : ''}
+                    ${phases.apply ? `<p><strong>Applied:</strong> ${phases.apply.applied} files (commit: ${phases.apply.commit_sha?.slice(0, 8)})</p>` : ''}
+                    ${phases.test ? `<p><strong>Tests:</strong> ${phases.test.ok ? '✅ Passed' : '❌ Failed'}</p>` : ''}
+                    ${phases.pr ? `<p><strong>PR:</strong> <a href="${phases.pr.url}" target="_blank">#${phases.pr.number}</a></p>` : ''}
+                    <details>
+                      <summary>Full Results</summary>
+                      <pre class="code">${escapeHtml(JSON.stringify(data, null, 2))}</pre>
+                    </details>
+                  </div>
+                `;
+              } catch (e) {
+                output.innerHTML = `<div class="error">Run failed: ${e.message}</div>`;
+              }
+            });
+
+            function renderTemplateClient(tpl, vars) {
+              return (tpl || '').replace(/\{\{\s*([\w.\-]+)\s*\}\}/g, (_m, k) => {
+                const parts = k.split('.');
+                let cur = vars;
+                for (const p of parts) {
+                  if (cur && typeof cur === 'object' && p in cur) cur = cur[p];
+                  else return '';
+                }
+                return (cur === undefined || cur === null) ? '' : String(cur);
+              });
+            }
+
+            if (document.readyState === 'loading') {
+              document.addEventListener('DOMContentLoaded', () => {
+                loadGitHubConnections();
+                loadRunners();
+              });
+            } else {
+              loadGitHubConnections();
+              loadRunners();
+            }
+
+            window.RepoOpsUI = {
+              loadConnections: loadGitHubConnections,
+              loadRunners,
+              collectConfig: collectRepoOpsConfig
+            };
+          })();
+          </script>
+
+          <style>
+          /* RepoOps-specific styles */
+          #repoOpsEditor details {
+            background: #1a1a1a;
+            border: 1px solid #3e3e42;
+            border-radius: 6px;
+            padding: 8px;
+          }
+          #repoOpsEditor details summary {
+            cursor: pointer;
+            font-weight: 600;
+            padding: 4px;
+          }
+          #repoOpsEditor details[open] summary {
+            border-bottom: 1px solid #3e3e42;
+            margin-bottom: 8px;
+            padding-bottom: 8px;
+          }
+          #repoOpsTestOutput .card {
+            background: #1a1a1a;
+            margin-top: 8px;
+          }
+          #repoOpsTestOutput .error {
+            background: #3a1a1a;
+            border: 1px solid #a1260d;
+            border-radius: 6px;
+            padding: 8px;
+            color: #f48771;
+          }
+          </style>
 
           <div class="wf-row">
             <div>
@@ -231,7 +632,7 @@
   </section>
 
   <script>
-// Enhanced LLM Workflows with Gateway Integration
+// Core app state
 const state = {
   workflows: [],
   current: null,
@@ -271,7 +672,7 @@ function promptSetToken() {
   const next = prompt('Enter INTERNAL_API_TOKEN:', cur);
   if (next != null) {
     if (next.trim()) localStorage.setItem(INTERNAL_TOKEN_KEY, next.trim());
-    else localStorage.removeItem(INTERNAL_TOKEN_KEY);
+    else localStorage.removeItem(INTERNAL_API_TOKEN);
   }
   updateTokenUi();
 }
@@ -299,13 +700,6 @@ function buildSystemGuard(schema) {
     'JSON Schema:',
     schemaStr
   ].join('\n');
-}
-
-function computeFullPromptForStep(step, vars) {
-  if (!step) return '';
-  const sys = (step.systemGuard === false) ? (step.system || '') : buildSystemGuard(step.schema);
-  const user = renderTemplate(step.prompt || '', vars || {});
-  return [sys, user].filter(Boolean).join('\n\n');
 }
 
 // Gateway models
@@ -390,7 +784,7 @@ function onModelSelectChanged(isStep = false) {
 // Runners
 async function fetchRunners() {
   try {
-    const r = await fetch('./api/runners');
+    const r = await fetch('./api/runners', { headers: authHeaders() });
     const data = await r.json();
     state.runners = data.runners || [];
   } catch {
@@ -404,12 +798,10 @@ function populateRunnersSelect() {
   if (!sel) return;
   const val = state.current?.steps?.[state.currentStepIdx]?.target || '';
   sel.innerHTML = '';
-  
   const none = document.createElement('option');
   none.value = '';
   none.textContent = '— local —';
   sel.appendChild(none);
-  
   for (const r of state.runners) {
     const opt = document.createElement('option');
     opt.value = r.name;
@@ -422,7 +814,7 @@ function populateRunnersSelect() {
 // Templates
 async function fetchGatewayTemplates() {
   try {
-    const r = await fetch('./api/llm-templates');
+    const r = await fetch('./api/llm-templates', { headers: authHeaders() });
     const data = await r.json();
     state.templates = data.items || [];
   } catch (e) {
@@ -436,12 +828,10 @@ function renderTemplates() {
   const list = $('templatesList');
   if (!list) return;
   list.innerHTML = '';
-  
   if (!state.templates.length) {
     list.innerHTML = '<p class="muted">No templates available</p>';
     return;
   }
-  
   for (const t of state.templates) {
     const div = document.createElement('div');
     div.className = 'card';
@@ -462,7 +852,6 @@ function renderTemplates() {
     `;
     list.appendChild(div);
   }
-  
   list.querySelectorAll('.use-template-btn').forEach(btn => {
     btn.onclick = () => {
       const tid = btn.dataset.templateId;
@@ -481,7 +870,7 @@ function renderTemplates() {
 // Telemetry
 async function fetchGatewayTelemetry() {
   try {
-    const r = await fetch('./api/gateway/telemetry?limit=50');
+    const r = await fetch('./api/gateway/telemetry?limit=50', { headers: authHeaders() });
     const data = await r.json();
     renderTelemetry(data.items || []);
   } catch (e) {
@@ -494,19 +883,16 @@ function renderTelemetry(items) {
   const list = $('telemetryList');
   if (!list) return;
   list.innerHTML = '';
-  
   if (!items.length) {
     list.innerHTML = '<p class="muted">No telemetry data</p>';
     return;
   }
-  
   for (const item of items) {
     const div = document.createElement('div');
     div.className = 'card';
     const status = item.state === 'done' ? '✓' : item.state === 'error' ? '✗' : '⋯';
     const wfId = item.meta?.workflow_id || item.meta?.metadata?.workflow_id || '—';
     const convId = item.meta?.conversation_id || '—';
-    
     div.innerHTML = `
       <div class="horz">
         <span class="badge">${status}</span>
@@ -515,7 +901,7 @@ function renderTelemetry(items) {
         <div class="grow"></div>
         <span class="muted small">${item.started_at || ''}</span>
       </div>
-      <div class="muted small">Workflow: ${escapeHtml(wfId)} · Conversation: ${convId.slice(0, 12)}</div>
+      <div class="muted small">Workflow: ${escapeHtml(wfId)} · Conversation: ${String(convId).slice(0, 12)}</div>
       ${item.inTok || item.outTok ? `
         <div class="kv">
           <span class="kvp">in: ${item.inTok || 0} tokens</span>
@@ -533,7 +919,6 @@ function populateCostWorkflowSelect() {
   const sel = $('costWorkflowSelect');
   if (!sel) return;
   sel.innerHTML = '';
-  
   for (const wf of state.workflows) {
     const opt = document.createElement('option');
     opt.value = wf.id;
@@ -545,20 +930,16 @@ function populateCostWorkflowSelect() {
 async function loadWorkflowCost() {
   const sel = $('costWorkflowSelect');
   if (!sel || !sel.value) return;
-  
   const workflowId = sel.value;
   const report = $('costReport');
   report.innerHTML = '<p class="muted">Loading...</p>';
-  
   try {
-    const r = await fetch(`./api/workflows/${encodeURIComponent(workflowId)}/cost?limit=100`);
+    const r = await fetch(`./api/workflows/${encodeURIComponent(workflowId)}/cost?limit=100`, { headers: authHeaders() });
     const data = await r.json();
-    
     if (!data.usage_records) {
       report.innerHTML = '<p class="muted">No cost data found for this workflow</p>';
       return;
     }
-    
     report.innerHTML = `
       <div class="kv">
         <span class="kvp"><strong>Records:</strong> ${data.usage_records}</span>
@@ -600,26 +981,6 @@ function newWorkflow() {
   };
 }
 
-function newStep() {
-  const currentModel = state.current?.chat?.model || '';
-  return {
-    id: `step_${Date.now().toString(36)}`,
-    name: 'Step',
-    prompt: 'Given the task: {{task}}\nReturn actions to perform.\n',
-    schema: defaultActionSchema(),
-    systemGuard: true,
-    stopOnFailure: true,
-    exportPath: '',
-    exportAs: '',
-    provider: '',
-    baseUrl: '',
-    apiKey: '',
-    model: currentModel,
-    temperature: '',
-    target: ''
-  };
-}
-
 function defaultActionSchema() {
   return {
     $schema: 'http://json-schema.org/draft-07/schema#',
@@ -646,51 +1007,35 @@ function defaultActionSchema() {
   };
 }
 
+function newStep() {
+  const currentModel = state.current?.chat?.model || '';
+  return {
+    id: `step_${Date.now().toString(36)}`,
+    type: 'llm',
+    name: 'Step',
+    prompt: 'Given the task: {{task}}\nReturn actions to perform.\n',
+    schema: defaultActionSchema(),
+    systemGuard: true,
+    stopOnFailure: true,
+    exportPath: '',
+    exportAs: '',
+    provider: '',
+    baseUrl: '',
+    apiKey: '',
+    model: currentModel,
+    temperature: '',
+    target: '',
+    repoOps: null
+  };
+}
+
 async function loadWorkflows() {
   try {
-    const resp = await fetch('./api/workflows');
-
+    let resp = await fetch('./api/workflows', { headers: authHeaders() });
     if (resp.status === 401) {
-      // Prompt for internal API token and retry once
       promptSetToken();
       updateTokenUi();
-      const resp2 = await fetch(`./api/workflows/${wf.id}/run`, {
-        method: 'POST',
-        headers: authHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ vars })
-      });
-      const data2 = await resp2.json();
-      if (!resp2.ok) {
-        toast('Run failed: ' + (data2.error || resp2.statusText));
-        return;
-      }
-      renderRunResult(data2);
-      await loadRuns();
-      return;
-    }
-
-    if (resp.status === 401) {
-      // Prompt for internal API token and retry once
-      promptSetToken();
-      updateTokenUi();
-      const resp2 = await fetch('./api/testStep', {
-        method: 'POST',
-        headers: authHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({
-          chat: wf.chat,
-          step,
-          vars,
-          execute: $('execInTest')?.checked === true
-        })
-      });
-      const data2 = await resp2.json();
-      if (!resp2.ok) {
-        toast('Step test failed: ' + (data2.error || resp2.statusText));
-        renderStepTestResult({ ok:false, error: data2.error || 'HTTP error', raw: data2.errorText || '' });
-        return;
-      }
-      renderStepTestResult(data2);
-      return;
+      resp = await fetch('./api/workflows', { headers: authHeaders() });
     }
     const data = await resp.json();
     state.workflows = data.workflows || [];
@@ -707,12 +1052,12 @@ async function saveCurrent() {
   try {
     const resp = await fetch('./api/workflows', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(wf)
     });
     const data = await resp.json();
-    if (!data.ok) {
-      toast('Save failed: ' + (data.error || 'Unknown'));
+    if (!resp.ok || !data.ok) {
+      toast('Save failed: ' + (data.error || resp.statusText || 'Unknown'));
       return;
     }
     state.current = data.workflow;
@@ -735,7 +1080,10 @@ async function deleteCurrent() {
   }
   if (!confirm('Delete this workflow?')) return;
   try {
-    const resp = await fetch(`./api/workflows/${state.current.id}`, { method: 'DELETE' });
+    const resp = await fetch(`./api/workflows/${state.current.id}`, {
+      method: 'DELETE',
+      headers: authHeaders()
+    });
     if (resp.ok) {
       state.workflows = state.workflows.filter(w => w.id !== state.current.id);
       state.current = null;
@@ -783,8 +1131,11 @@ async function testStep() {
     toast('Select a step');
     return;
   }
+  if (step.type === 'repoops') {
+    toast('Use "Plan Only" or "Full Test" in the RepoOps section to test this step.');
+    return;
+  }
   const vars = parseJson($('varsInput').value || '{}', {});
-  
   try {
     const resp = await fetch('./api/testStep', {
       method: 'POST',
@@ -815,7 +1166,10 @@ async function dryRunStep() {
     toast('Select a step');
     return;
   }
-  
+  if (step.type === 'repoops') {
+    toast('Dry run is only for LLM steps.');
+    return;
+  }
   try {
     const resp = await fetch('./api/testStep', {
       method: 'POST',
@@ -860,10 +1214,7 @@ function collectWorkflowFromForm() {
   if (state.currentStepIdx >= 0 && state.current.steps[state.currentStepIdx]) {
     const s = state.current.steps[state.currentStepIdx];
     s.name = $('stepName').value.trim();
-    s.prompt = $('stepPrompt').value;
-    s.systemGuard = !$('stepNoGuard').checked;
-    s.schema = parseJson($('stepSchema').value || '', s.schema);
-    s.stopOnFailure = !$('stepDontStop').checked;
+    s.type = $('stepType').value || 'llm';
     s.exportPath = $('stepExportPath').value.trim();
     s.exportAs = $('stepExportAs').value.trim();
     s.provider = $('sProvider').value.trim();
@@ -872,6 +1223,16 @@ function collectWorkflowFromForm() {
     s.model = $('sModel').value.trim();
     s.target = $('sTarget')?.value || '';
     s.temperature = $('sTemp').value !== '' ? Number($('sTemp').value) : '';
+
+    if (s.type === 'llm') {
+      s.prompt = $('stepPrompt').value;
+      s.systemGuard = !$('stepNoGuard').checked;
+      s.schema = parseJson($('stepSchema').value || '', s.schema);
+      s.stopOnFailure = !$('stepDontStop').checked;
+      s.repoOps = null;
+    } else if (s.type === 'repoops') {
+      s.repoOps = window.RepoOpsUI?.collectConfig?.() || null;
+    }
   }
   return state.current;
 }
@@ -892,7 +1253,7 @@ function renderWorkflowList() {
     const btn = div.querySelector('button');
     btn.onclick = async () => {
       try {
-        const resp = await fetch(`./api/workflows/${w.id}`);
+        const resp = await fetch(`./api/workflows/${w.id}`, { headers: authHeaders() });
         const data = await resp.json();
         state.current = data.workflow;
         state.currentStepIdx = -1;
@@ -946,7 +1307,7 @@ function renderSteps() {
     row.innerHTML = `
       <div class="horz">
         <strong>${escapeHtml(s.name || s.id)}</strong>
-        <span class="pill">${s.model || '(inherit)'}</span>
+        <span class="pill">${s.type === 'repoops' ? 'RepoOps' : (s.model || '(inherit)')}</span>
         <div class="grow"></div>
         <button class="ghost">↑</button>
         <button class="ghost">↓</button>
@@ -963,6 +1324,13 @@ function renderSteps() {
   });
 }
 
+function toggleStepTypeUi(type) {
+  const llmOnly = document.querySelector('.llm-only');
+  const repo = $('repoOpsEditor');
+  if (llmOnly) llmOnly.style.display = type === 'llm' ? '' : 'none';
+  if (repo) repo.style.display = type === 'repoops' ? '' : 'none';
+}
+
 function renderStepEditor() {
   const steps = state.current?.steps || [];
   const s = steps[state.currentStepIdx];
@@ -972,10 +1340,16 @@ function renderStepEditor() {
   if (noStep) return;
 
   $('stepName').value = s.name || '';
+  $('stepType').value = s.type || 'llm';
+  toggleStepTypeUi(s.type || 'llm');
+
+  // LLM-only
   $('stepPrompt').value = s.prompt || '';
   $('stepSchema').value = typeof s.schema === 'string' ? s.schema : fmtJson(s.schema || {});
   $('stepNoGuard').checked = !s.systemGuard;
   $('stepDontStop').checked = !s.stopOnFailure;
+
+  // exports and overrides
   $('stepExportPath').value = s.exportPath || '';
   $('stepExportAs').value = s.exportAs || '';
   $('sProvider').value = s.provider || '';
@@ -1016,7 +1390,7 @@ function addStep() {
 
 async function loadRuns() {
   try {
-    const resp = await fetch('./api/runs');
+    const resp = await fetch('./api/runs', { headers: authHeaders() });
     const data = await resp.json();
     state.runs = data.runs || [];
   } catch (e) {
@@ -1037,7 +1411,7 @@ function renderRuns() {
       <div>
         <strong>${escapeHtml(r.name)}</strong>
         <span class="badge ${badge}">${r.status}</span>
-        <div class="muted small">${r.id.slice(0, 8)} · ${r.startedAt}</div>
+        <div class="muted small">${r.id?.slice(0, 8) || ''} · ${r.startedAt || ''}</div>
       </div>
       <button class="ghost">Details</button>
     `;
@@ -1052,18 +1426,18 @@ function renderRunResult(run) {
     <div class="card">
       <div class="horz">
         <div>
-          <strong>${escapeHtml(run.name)}</strong>
-          <span class="badge">${run.status}</span>
+          <strong>${escapeHtml(run.name || '')}</strong>
+          <span class="badge">${run.status || ''}</span>
         </div>
         <div class="grow"></div>
         ${run.conversationId ? `<button class="ghost" onclick="exportConversation('${run.id}')">📤 Export Conversation</button>` : ''}
       </div>
-      <div class="muted">Started: ${run.startedAt} · Finished: ${run.finishedAt || ''}</div>
+      <div class="muted">Started: ${run.startedAt || ''} · Finished: ${run.finishedAt || ''}</div>
       ${run.conversationId ? `<div class="muted small">Conversation ID: ${run.conversationId}</div>` : ''}
       <h4>Artifacts (${run.artifacts?.length || 0})</h4>
       ${renderArtifacts(run.artifacts || [])}
       <h4>Logs</h4>
-      <pre class="wf-log">${(run.logs || []).map(l => `[${l.ts}] [${l.step || '-'}] ${l.level.toUpperCase()} ${l.msg}${l.meta ? ' ' + JSON.stringify(l.meta) : ''}`).join('\n')}</pre>
+      <pre class="wf-log">${(run.logs || []).map(l => `[${l.ts}] [${l.step || '-'}] ${String(l.level || '').toUpperCase()} ${l.msg}${l.meta ? ' ' + JSON.stringify(l.meta) : ''}`).join('\n')}</pre>
     </div>
   `;
 }
@@ -1110,7 +1484,7 @@ function renderStepTestResult(data) {
 
 async function exportConversation(runId) {
   try {
-    const r = await fetch(`./api/runs/${runId}/conversation`);
+    const r = await fetch(`./api/runs/${runId}/conversation`, { headers: authHeaders() });
     const data = await r.json();
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -1132,8 +1506,6 @@ function activateTab(name) {
     $(`tab-${t}`).style.display = (t === name) ? '' : 'none';
     $(`tabBtn${capitalize(t)}`).classList.toggle('active', t === name);
   });
-  
-  // Load data when switching to certain tabs
   if (name === 'telemetry') fetchGatewayTelemetry();
   if (name === 'templates') fetchGatewayTemplates();
 }
@@ -1167,26 +1539,32 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('refreshModelsBtn')?.addEventListener('click', fetchGatewayModels);
   $('refreshModelsBtn2')?.addEventListener('click', fetchGatewayModels);
   $('refreshRunnersBtn')?.addEventListener('click', fetchRunners);
-  
+
   $('refreshTelemetryBtn')?.addEventListener('click', fetchGatewayTelemetry);
   $('refreshTemplatesBtn')?.addEventListener('click', fetchGatewayTemplates);
   $('loadCostBtn')?.addEventListener('click', loadWorkflowCost);
+
+  $('stepType')?.addEventListener('change', (e) => {
+    toggleStepTypeUi(e.target.value);
+    collectWorkflowFromForm();
+  });
   
-  // Auto-update on form changes
-  ['wfName', 'wfDesc', 'provider', 'baseUrl', 'apiKey', 'model', 'temperature', 'max_tokens', 'defaults',
-   'stepName', 'stepPrompt', 'stepSchema', 'stepNoGuard', 'stepDontStop', 'stepExportPath', 'stepExportAs',
-   'sProvider', 'sBaseUrl', 'sApiKey', 'sModel', 'sTemp', 'sTarget'
-  ].forEach(id => {
+  const autoIds = [
+    'wfName','wfDesc','provider','baseUrl','apiKey','model','temperature','max_tokens','defaults',
+    'stepName','stepPrompt','stepSchema','stepNoGuard','stepDontStop','stepExportPath','stepExportAs',
+    'sProvider','sBaseUrl','sApiKey','sModel','sTemp','sTarget'
+  ];
+  autoIds.forEach(id => {
     const el = $(id);
     if (el) {
       el.addEventListener('change', collectWorkflowFromForm);
       if (el.tagName === 'TEXTAREA') el.addEventListener('input', collectWorkflowFromForm);
     }
   });
-  
+
   updateTokenUi();
   activateTab('builder');
-  
+
   await fetchGatewayModels();
   await fetchRunners();
   await loadWorkflows();

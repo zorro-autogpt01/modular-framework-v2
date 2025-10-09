@@ -9,6 +9,15 @@
       "branches": [
         "main"
       ]
+    },
+    {
+      "id": "my-repo",
+      "repo_url": "https://github.com/zorro-autogpt01/testrepo.git",
+      "base_url": "https://api.github.com",
+      "default_branch": "main",
+      "name": "testrepo",
+      "branches": [],
+      "token_plain": "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"
     }
   ]
 }
