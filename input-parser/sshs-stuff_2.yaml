@@ -1,0 +1,569 @@
+version: "1.0"
+project_root: "."
+dry_run: false
+backup: true
+
+changes:
+  - id: "ctrl-schema-add-run-logs-and-artifacts"
+    description: "Append run_logs and artifacts tables to controller schema.sql"
+    op: write_file
+    path: "modular-framework/modules/llm-runner-controller/server/db/schema.sql"
+    mode: append
+    content: |
+      
+      -- Phase 2: streaming logs and artifacts
+      CREATE TABLE IF NOT EXISTS run_logs (
+        run_id TEXT,
+        seq INTEGER,
+        stream TEXT CHECK(stream IN ('stdout','stderr')),
+        chunk TEXT,
+        ts TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY(run_id, seq)
+      );
+      CREATE TABLE IF NOT EXISTS artifacts (
+        id TEXT PRIMARY KEY,
+        run_id TEXT,
+        name TEXT,
+        mime TEXT,
+        size INTEGER,
+        sha256 TEXT,
+        store_url TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+
+  - id: "ctrl-db-migrate-run-logs-artifacts"
+    description: "Ensure run_logs and artifacts tables exist on boot via migrate()"
+    op: patch_text
+    path: "modular-framework/modules/llm-runner-controller/server/services/db.js"
+    patches:
+      - type: insert_after
+        anchor: "function migrate() {"
+        replacement: |
+          
+          // streaming logs (idempotent)
+          try {
+            db.exec(`CREATE TABLE IF NOT EXISTS run_logs (
+              run_id TEXT,
+              seq INTEGER,
+              stream TEXT CHECK(stream IN ('stdout','stderr')),
+              chunk TEXT,
+              ts TEXT DEFAULT (datetime('now')),
+              PRIMARY KEY(run_id, seq)
+            )`);
+          } catch { /* ignore */ }
+          // artifacts (idempotent)
+          try {
+            db.exec(`CREATE TABLE IF NOT EXISTS artifacts (
+              id TEXT PRIMARY KEY,
+              run_id TEXT,
+              name TEXT,
+              mime TEXT,
+              size INTEGER,
+              sha256 TEXT,
+              store_url TEXT,
+              created_at TEXT DEFAULT (datetime('now'))
+            )`);
+          } catch { /* ignore */ }
+
+  - id: "ctrl-add-streams-service"
+    description: "Add per-run SSE stream hub and log helpers"
+    op: write_file
+    path: "modular-framework/modules/llm-runner-controller/server/services/streams.js"
+    mode: create_if_missing
+    content: |
+      const db = require('./db');
+      const crypto = require('crypto');
+      
+      const runClients = new Map(); // runId -> Set(res)
+      
+      function ensureSet(id) {
+        if (!runClients.has(id)) runClients.set(id, new Set());
+        return runClients.get(id);
+      }
+      
+      function sse(req, res) {
+        const { runId } = req.params;
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+          'Access-Control-Allow-Origin': '*'
+        });
+        res.write('\n');
+        const set = ensureSet(runId);
+        set.add(res);
+        req.on('close', () => {
+          try { set.delete(res); } catch {}
+        });
+      }
+      
+      function send(runId, type, payload) {
+        const set = runClients.get(runId);
+        if (!set || set.size === 0) return;
+        const data = JSON.stringify({ type, payload, ts: new Date().toISOString(), runId });
+        for (const res of set) {
+          try { res.write(`data: ${data}\n\n`); } catch { /* ignore */ }
+        }
+      }
+      
+      function nextSeq(runId) {
+        const r = db.one('SELECT COALESCE(MAX(seq), 0) AS m FROM run_logs WHERE run_id = ?', [runId]);
+        return Number(r?.m || 0) + 1;
+      }
+      
+      function appendLog(runId, stream, chunk) {
+        const seq = nextSeq(runId);
+        db.run('INSERT INTO run_logs (run_id, seq, stream, chunk) VALUES (?,?,?,?)', [runId, seq, stream, String(chunk || '')]);
+        send(runId, 'run.output', { stream, data: String(chunk || '') });
+      }
+      
+      function finished(runId, summary) {
+        send(runId, 'run.finished', summary || {});
+      }
+      
+      function uuid() { return crypto.randomUUID(); }
+      
+      module.exports = { sse, send, appendLog, finished, uuid };
+
+  - id: "ctrl-add-artifacts-service"
+    description: "Add artifact storage service for saving and serving artifacts"
+    op: write_file
+    path: "modular-framework/modules/llm-runner-controller/server/services/artifacts.js"
+    mode: create_if_missing
+    content: |
+      const fs = require('fs');
+      const path = require('path');
+      const crypto = require('crypto');
+      const db = require('./db');
+      
+      const BASE_DIR = process.env.ARTIFACTS_DIR || path.join(process.cwd(), 'app', 'data', 'artifacts');
+      function ensureDir(p) { if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true }); }
+      ensureDir(BASE_DIR);
+      
+      function sha256(buf) {
+        return crypto.createHash('sha256').update(buf).digest('hex');
+      }
+      function uuid() { return crypto.randomUUID(); }
+      
+      function saveBuffer({ runId, name, buf, mime = 'application/octet-stream' }) {
+        const id = uuid();
+        const runDir = path.join(BASE_DIR, runId);
+        ensureDir(runDir);
+        const safeName = String(name || 'artifact.bin').replace(/[^\w.\-]+/g, '_').slice(0, 200) || 'artifact.bin';
+        const filePath = path.join(runDir, safeName);
+        fs.writeFileSync(filePath, buf);
+        const size = fs.statSync(filePath).size;
+        const hash = sha256(buf);
+        const url = `/api/llm-runner/artifacts/${encodeURIComponent(id)}/raw`;
+        db.run('INSERT INTO artifacts (id, run_id, name, mime, size, sha256, store_url) VALUES (?,?,?,?,?,?,?)',
+          [id, runId, safeName, mime, size, hash, url        return { id, run_id: runId, name: safeName, mime, size, sha256: hash, store_url: url };
+      }
+      
+      function readFileById(id) {
+        const row = db.one('SELECT * FROM artifacts WHERE id = ?', [id]);
+        if (!row) return null;
+        const filePath = path.join(BASE_DIR, row.run_id, row.name);
+        if (!fs.existsSync(filePath)) return null;
+        const buf = fs.readFileSync(filePath);
+        return { row, buf };
+      }
+      
+      // Express handlers
+      function getRaw(req, res) {
+        const { id } = req.params;
+        const r = readFileById(id);
+        if (!r) return res.status(404).json({ error: 'not found' });
+        res.setHeader('Content-Type', r.row.mime || 'application/octet-stream');
+        res.setHeader('Content-Length', String(r.row.size || r.buf.length));
+        res.setHeader('X-Artifact-Name', r.row.name || 'artifact');
+        res.send(r.buf);
+      }
+      
+      module.exports = { saveBuffer, getRaw };
+
+  - id: "ctrl-exec-start-service"
+    description: "Add async start endpoints for exec and ssh exec with streaming to SSE and run_logs"
+    op: write_file
+    path: "modular-framework/modules/llm-runner-controller/server/services/exec_stream.js"
+    mode: create_if_missing
+    content: |
+      const axios = require('axios');
+      const crypto = require('crypto');
+      const db = require('./db');
+      const streams = require('./streams');
+      const events = require('./events');
+      
+      function trim(u){ return String(u||'').replace(/\/+$/,''); }
+      function sha256(s){ return crypto.createHash('sha256').update(String(s||''),'utf8').digest('hex'); }
+      function head(s, n=4000){ return String(s||'').slice(0, n); }
+      
+      async function startExec(req, res) {
+        const { id } = req.params;
+        const a = db.one('SELECT * FROM agents WHERE id = ? OR name = ?', [id, id]);
+        if (!a) return res.status(404).json({ error: 'agent not found' });
+        const { type, cmd, code, cwd, env, timeoutMs } = req.body || {};
+        const kind = (type || (code ? 'python' : 'bash')).toLowerCase();
+        const payload = kind === 'bash'
+          ? { type: 'bash', cmd: cmd || code || '', cwd, env, timeoutMs, stream: true }
+          : { type: 'python', script: code || '', cwd, env, timeoutMs, stream: true };
+        const runId = streams.uuid();
+        const started = Date.now();
+        const envRedacted = env && typeof env === 'object' ? Object.fromEntries(Object.keys(env).map(k => [k, '***REDACTED***'])) : null;
+        res.json({ ok: true, runId });
+      
+        (async () => {
+          try {
+            const r = await axios.post(`${trim(a.url)}/exec`, payload, {
+              headers: a.token_plain ? { Authorization: `Bearer ${a.token_plain}` } : {},
+              timeout: Math.max(4000, Number(timeoutMs || 20000) + 4000),
+              responseType: 'stream'
+            });
+            await consumeStream({ runId, stream: r.data });
+            // After stream ends, try to get final summary if the runner writes a trailer; otherwise fallback to code - assume 0
+            const duration_ms = Date.now() - started;
+            db.run(
+              'INSERT INTO runs (id, agent_id, requester, kind, code_hash, cwd, env_redacted, status, exit_code, stdout_head, stderr_head, duration_ms) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+              [runId, a.id, 'controller', kind, sha256(payload.cmd || payload.script || ''), cwd || null, JSON.stringify(envRedacted || {}), 'ok', 0, '', '', duration_ms]
+            );
+            streams.finished(runId, { ok: true, exitCode: 0 });
+            events.emit('run.finished', { id: runId, agent_id: a.id, status: 'ok', exit_code: 0 });
+          } catch (e) {
+            const duration_ms = Date.now() - started;
+            const msg = e?.response?.data?.error || e.message || 'exec stream failed';
+            db.run(
+              'INSERT INTO runs (id, agent_id, requester, kind, code_hash, cwd, env_redacted, status, exit_code, stdout_head, stderr_head, duration_ms) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+              [runId, a.id, 'controller', kind, sha256(payload.cmd || payload.script || ''), cwd || null, JSON.stringify(envRedacted || {}), 'error', -1, '', head(msg), duration_ms]
+            );
+            streams.finished(runId, { ok: false, exitCode: -1, error: msg });
+            events.emit('run.finished', { id: runId, agent_id: a.id, status: 'error', exit_code: -1 });
+          }
+        })();
+      }
+      
+      async function startSshExec(req, res) {
+        if (String(process.env.ENABLE_SSH || 'false').toLowerCase() !== 'true') {
+          return res.status(503).json({ ok:false, error: 'SSH disabled (ENABLE_SSH=false)' });
+        }
+        const { id } = req.params;
+        const a = db.one('SELECT * FROM agents WHERE id = ? OR name = ?', [id, id]);
+        if (!a) return res.status(404).json({ error: 'agent not found' });
+      
+        const { host, user, port, cmd, env, cwd, timeoutMs, bastion, pty, knownHosts } = req.body || {};
+        const payload = { host, user, port, cmd, env, cwd, timeoutMs, bastion, pty, knownHosts, stream: true };
+        const runId = streams.uuid();
+        const started = Date.now();
+        const envRedacted = env && typeof env === 'object' ? Object.fromEntries(Object.keys(env).map(k => [k, '***REDACTED***'])) : null;
+        res.json({ ok: true, runId });
+      
+        (async () => {
+          try {
+            const r = await axios.post(`${trim(a.url)}/ssh/exec`, payload, {
+              headers: a.token_plain ? { Authorization: `Bearer ${a.token_plain}` } : {},
+              timeout: Math.max(4000, Number(timeoutMs || 20000) + 6000),
+              responseType: 'stream'
+            });
+            await consumeStream({ runId, stream: r.data });
+            const duration_ms = Date.now() - started;
+            db.run(
+              'INSERT INTO runs (id, agent_id, requester, kind, code_hash, cwd, env_redacted, status, exit_code, stdout_head, stderr_head, duration_ms, host) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+              [runId, a.id, 'controller', 'ssh', sha256(cmd || ''), cwd || null, JSON.stringify(envRedacted || {}), 'ok', 0, '', '', duration_ms, host || null]
+            );
+            streams.finished(runId, { ok: true, exitCode: 0 });
+            events.emit('run.finished', { id: runId, agent_id: a.id, status: 'ok', exit_code: 0, kind:'ssh', host });
+          } catch (e) {
+            const duration_ms = Date.now() - started;
+            const msg = e?.response?.data?.error || e.message || 'ssh stream failed';
+            db.run(
+              'INSERT INTO runs (id, agent_id, requester, kind, code_hash, cwd, env_redacted, status, exit_code, stdout_head, stderr_head, duration_ms, host) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+              [runId, a.id, 'controller', 'ssh', sha256(cmd || ''), cwd || null, JSON.stringify(envRedacted || {}), 'error', -1, '', head(msg), duration_ms, host || null]
+            );
+            streams.finished(runId, { ok: false, exitCode: -1, error: msg });
+            events.emit('run.finished', { id: runId, agent_id: a.id, status: 'error', exit_code: -1, kind:'ssh', host });
+          }
+        })();
+      }
+      
+      async function consumeStream({ runId, stream }) {
+        return new Promise((resolve, reject) => {
+          stream.on('data', (chunk) => {
+            const str = chunk.toString();
+            // Try SSE 'data: {...}' lines
+            const lines = str.split('\n');
+            let any = false;
+            for (const line of lines) {
+              const t = line.trim();
+              if (!t.startsWith('data:')) continue;
+              any = true;
+              const payload = t.slice(5).trim();
+              try {
+                const evt = JSON.parse(payload);
+                const s = evt?.stream || evt?.payload?.stream;
+                const d = evt?.data || evt?.payload?.data || '';
+                const which = (s === 'stderr' ? 'stderr' : 'stdout');
+                streams.appendLog(runId, which, d);
+              } catch {
+                streams.appendLog(runId, 'stdout', payload);
+              }
+            }
+            // Fallback: if not SSE-like, treat raw as stdout
+            if (!any && str) {
+              streams.appendLog(runId, 'stdout', str);
+            }
+          });
+          stream.on('end', resolve);
+          stream.on('error', reject);
+        });
+      }
+      
+      module.exports = { startExec, startSshExec }
+
+  - id: "ctrl-ssh-upload-download"
+    description: "Extend SSH service with upload and download proxies; persist downloaded file as artifact"
+    op: patch_text
+    path: "modular-framework/modules/llm-runner-controller/server/services/ssh.js"
+    patches:
+      - type: insert_after
+        anchor: "module.exports = { exec };"
+        replacement: |
+          async function upload(req, res) {
+            if (String(process.env.ENABLE_SSH || 'false').toLowerCase() !== 'true') {
+              return res.status(503).json({ ok:false, error: 'SSH disabled (ENABLE_SSH=false)' });
+            }
+            const { id } = req.params;
+            const a = db.one('SELECT * FROM agents WHERE id = ? OR name = ?', [id, id]);
+            if (!a) return res.status(404).json({ error: 'agent not found' });
+            const body = req.body || {};
+            try {
+              const r = await require('axios').post(`${(String(a.url||'')).replace(/\/+$/,'')}/ssh/upload`, body, {
+                headers: a.token_plain ? { Authorization: `Bearer ${a.token_plain}` } : {},
+                timeout: 300000
+              });
+              res.json(r.data || { ok: true });
+            } catch (e) {
+              res.status(502).json({ ok:false, error: e?.response?.data?.error || e.message || 'upload failed' });
+            }
+          }
+          
+          async function download(req, res) {
+            if (String(process.env.ENABLE_SSH || 'false').toLowerCase() !== 'true') {
+              return res.status(503).json({ ok:false, error: 'SSH disabled (ENABLE_SSH=false)' });
+            }
+            const { id } = req.params;
+            const a = db.one('SELECT * FROM agents WHERE id = ? OR name = ?', [id, id]);
+            if (!a) return res.status(404).json({ error: 'agent not found' });
+            const body = req.body || {};
+            try {
+              const r = await require('axios').post(`${(String(a.url||'')).replace(/\/+$/,'')}/ssh/download`, body, {
+                headers: a.token_plain ? { Authorization: `Bearer ${a.token_plain}` } : {},
+                timeout: 300000
+              });
+              const out = r.data || {};
+              const b64 = out.contentBase64 || out.base64 || null;
+              if (!b64) return res.status(502).json({ ok:false, error:'runner did not return base64 content' });
+              const buf = Buffer.from(b64, 'base64');
+              const name = out.name || body.path?.split('/').pop() || 'download.bin';
+              const mime = out.mime || 'application/octet-stream';
+              const runId = body.runId || streams.uuid();
+              const art = require('./artifacts').saveBuffer({ runId, name, buf, mime });
+              res.json({ ok: true, artifactId: art.id, name: art.name, size: art.size, mime: art.mime });
+            } catch (e) {
+              res.status(502).json({ ok:false, error: e?.response?.data?.error || e.message || 'download failed' });
+            }
+          }
+          
+          module.exports = { exec, upload, download };
+
+  - id: "ctrl-app-wire-streams-and-artifacts-and-start"
+    description: "Wire new SSE, artifact, and start endpoints in controller app"
+    op: patch_text
+    path: "modular-framework/modules/llm-runner-controller/server/app.js"
+    patches:
+      - type: insert_after
+        anchor: "const execProxy = require('./services/exec');"
+        replacement: "const execStream = require('./services/exec_stream');"
+        newline: true
+      - type: insert_after
+        anchor: "const updates = require('./services/updates');"
+        replacement: "const streams = require('./services/streams');\nconst artifacts = require('./services/artifacts');"
+        newline: true
+      - type: insert_after
+        anchor: "app.post('/api/llm-runner/agents/:id/exec', requireAdmin, execProxy.run);"
+        replacement: |
+          // start-mode (async streaming)
+          app.post('/api/llm-runner/agents/:id/exec/start', requireAdmin, execStream.startExec);
+          app.post('/api/llm-runner/agents/:id/ssh/exec/start', requireAdmin, execStream.startSshExec);
+      - type: insert_after
+        anchor: "app.post('/api/llm-runner/agents/:id/exec', requireAdmin, execProxy.run);"
+        replacement: "app.post('/api/llm-runner/runs/:runId/stream', requireAdminOptional, streams.sse);"
+        newline: true
+      - type: insert_after
+        anchor: "const sshProxy = require('./services/ssh');"
+        replacement: ""
+        newline: false
+      - type: insert_after
+        anchor: "app.post('/api/llm-runner/agents/:id/ssh/exec', requireAdmin, sshProxy.exec);"
+        replacement: |
+          app.post('/api/llm-runner/agents/:id/ssh/upload', requireAdmin, sshProxy.upload);
+          app.post('/api/llm-runner/agents/:id/ssh/download', requireAdmin, sshProxy.download);
+      - type: insert_after
+        anchor: "app.get('/install/systemd.sh', (req,res)=> installers.systemdScript(req,res));"
+        replacement: "app.get('/api/llm-runner/artifacts/:id/raw', requireAdmin, artifacts.getRaw);"
+        newline: true
+
+  - id: "wf-runner-client-export-ctrl-base"
+    description: "Expose controller base and support stream start mode in runnerClient"
+    op: patch_text
+    path: "modular-framework/modules/llm-workflows/server/runnerClient.js"
+    patches:
+      - type: replace_literal
+        match: "async function execRemote({ target, kind, code, cwd, env, timeoutMs }) {"
+        replacement: "async function execRemote({ target, kind, code, cwd, env, timeoutMs, stream }) {"
+      - type: insert_after
+        anchor: "function getRunner(name) {"
+        replacement: ""
+        newline: false
+      - type: insert_after
+        anchor: "module.exports = { listRunners, getRunner, upsertRunner, removeRunner, execRemote };"
+        replacement: "module.exports = { listRunners, getRunner, upsertRunner, removeRunner, execRemote, getControllerBase: () => CTRL_BASE };"
+        newline: false
+      - type: insert_after
+        anchor: "if (CTRL_BASE) {"
+        replacement: ""
+        newline: false
+      - type: insert_after
+        anchor: "if (CTRL_BASE) {"
+        replacement: ""
+        newline: false
+      - type: insert_after
+        anchor: "if (CTRL_BASE) {"
+        replacement: ""
+        newline: false
+      - type: insert_after
+        anchor: "if (CTRL_BASE) {"
+        replacement: ""
+        newline: false
+      - type: insert_after
+        anchor: "if (CTRL_BASE) {"
+        replacement: ""
+        newline: false
+      - type: insert_after
+        anchor: "if (CTRL_BASE) {"
+        replacement: ""
+        newline: false
+      - type: insert_after
+        anchor: "if (CTRL_BASE) {"
+        replacement: ""
+        newline: false
+      - type: replace_literal
+        match: "      // Use controller proxy: /api/llm-runner/agents/:id/exec\n      const url = `${CTRL_BASE}/agents/${encodeURIComponent(target)}/exec`;\n      const resp = await axios.post(url, body, { headers: getAdminHeaders(), timeout: Math.max(2000, Number(timeoutMs || 20000) + 4000) });\n      return resp.data;"
+        replacement: "      // Use controller proxy: exec or start (stream)\n      if (stream) {\n        const url = `${CTRL_BASE}/agents/${encodeURIComponent(target)}/${kind === 'ssh' ? 'ssh/exec/start' : 'exec/start'}`;\n        const resp = await axios.post(url, body, { headers: getAdminHeaders(), timeout: 10000 });\n        return resp.data; // { ok, runId }\n      } else {\n        const url = `${CTRL_BASE}/agents/${encodeURIComponent(target)}/${kind === 'ssh' ? 'ssh/exec' : 'exec'}`;\n        const resp = await axios.post(url, body, { headers: getAdminHeaders(), timeout: Math.max(2000, Number(timeoutMs || 20000) + 4000) });\n        return resp.data;\n      }"
+      - type: replace_literal
+        match: "      // Legacy direct-to-runner\n      const base = `${trim(r.url)}`;\n      const url = (kind === 'ssh') ? `${base}/ssh/exec` : `${base}/exec`;\n      const resp = await axios.post(url, body, {\n        headers: r.token ? { Authorization: `Bearer ${r.token}` } : {},\n        timeout: Math.max(2000, Number(timeoutMs || 20000) + 4000)\n      });\n      return resp.data;"
+        replacement: "      // Legacy direct-to-runner (no start/stream mode here)\n      const base = `${trim(r.url)}`;\n      const url = (kind === 'ssh') ? `${base}/ssh/exec` : `${base}/exec`;\n      const resp = await axios.post(url, body, {\n        headers: r.token ? { Authorization: `Bearer ${r.token}` } : {},\n        timeout: Math.max(2000, Number(timeoutMs || 20000) + 4000)\n      });\n      return resp.data;"
+
+  - id: "wf-testStep-stream-attempt-remote"
+    description: "In testStep remote branch, attempt streaming via controller start endpoint and SSE; fallback to sync"
+    op: patch_text
+    path: "modular-framework/modules/llm-workflows/server/app.js"
+    patches:
+      - type: insert_after
+        anchor: "if (target && getRunner(target)) {"
+        replacement: |
+          
+          // Optional streaming via controller: start + SSE (best-effort)
+          let streamed = false;
+          try {
+            const start = await require('./runnerClient').execRemote({ target, kind, code, cwd, env: a.env, timeoutMs, stream: true });
+            const CTRL = require('./runnerClient').getControllerBase?.();
+            if (start && start.runId && CTRL) {
+              const axios = require('axios');
+              const url = `${CTRL}/runs/${encodeURIComponent(start.runId)}/stream`;
+              let outBuf = '', errBuf = '', exitCode = null, finished = false;
+              const resp = await axios.post(url, {}, { responseType: 'stream', timeout: Math.max(60000, (timeoutMs || 20000) + 10000) });
+              await new Promise((resolve) => {
+                resp.data.on('data', (chunk) => {
+                  const str = chunk.toString();
+                  for (const line of str.split('\n')) {
+                    const t = line.trim();
+                    if (!t.startsWith('data:')) continue;
+                    try {
+                      const evt = JSON.parse(t.slice(5).trim());
+                      if (evt?.type === 'run.output' && evt?.payload?.stream) {
+                        if (evt.payload.stream === 'stdout') outBuf += evt.payload.data || '';
+                        else if (evt.payload.stream === 'stderr') errBuf += evt.payload.data || '';
+                      } else if (evt?.type === 'run.finished') {
+                        exitCode = evt?.payload?.exitCode ?? 0;
+                        finished = true;
+                      }
+                    } catch { /* ignore */ }
+                  }
+                });
+                resp.data.on('end', resolve);
+                resp.data.on('error', resolve);
+              });
+              if (finished) {
+                actionResults.push({ index:i, kind, target, exitCode, killed:false, stdout: outBuf, stderr: errBuf });
+                streamed = true;
+              }
+            }
+          } catch { /* fall back */ }
+          if (streamed) { continue; }
+
+  - id: "wf-run-stream-attempt-remote"
+    description: "In workflow run execute=true remote branch, attempt streaming via controller start endpoint and SSE; fallback to sync"
+    op: patch_text
+    path: "modular-framework/modules/llm-workflows/server/app.js"
+    patches:
+      - type: insert_after
+        anchor: "if (target && getRunner(target)) {"
+        replacement: |
+          
+          // Optional streaming via controller: start + SSE (best-effort)
+          let streamed = false;
+          try {
+            const start = await require('./runnerClient').execRemote({ target, kind, code, cwd, env: a.env, timeoutMs, stream: true });
+            const CTRL = require('./runnerClient').getControllerBase?.();
+            if (start && start.runId && CTRL) {
+              const axios = require('axios');
+              const url = `${CTRL}/runs/${encodeURIComponent(start.runId)}/stream`;
+              let sOut = '', sErr = '', exitCode = null, finished = false;
+              const resp = await axios.post(url, {}, { responseType: 'stream', timeout: Math.max(60000, (timeoutMs || 20000) + 10000) });
+              await new Promise((resolve) => {
+                resp.data.on('data', (chunk) => {
+                  const str = chunk.toString();
+                  for (const line of str.split('\n')) {
+                    const t = line.trim();
+                    if (!t.startsWith('data:')) continue;
+                    try {
+                      const evt = JSON.parse(t.slice(5).trim());
+                      if (evt?.type === 'run.output' && evt?.payload?.stream) {
+                        if (evt.payload.stream === 'stdout') sOut += evt.payload.data || '';
+                        else if (evt.payload.stream === 'stderr') sErr += evt.payload.data || '';
+                      } else if (evt?.type === 'run.finished') {
+                        exitCode = evt?.payload?.exitCode ?? 0;
+                        finished = true;
+                      }
+                    } catch { /* ignore */ }
+                  }
+                });
+                resp.data.on('end', resolve);
+                resp.data.on('error', resolve);
+              });
+              if (finished) {
+                allStdout += sOut; allStderr += sErr;
+                execResults.push({ index:i, kind, target, exitCode, killed:false, stdout:sOut, stderr:sErr });
+                streamed = true;
+              }
+            }
+          } catch { /* fall back */ }
+          if (streamed) { continue; }
+
+  - id: "ctrl-doc-note"
+    description: "Add a short note in controller health endpoint JSON about SSE availability (optional clarity)"
+    op: patch_text
+    path: "modular-framework/modules/llm-runner-controller/server/app.js"
+    patches:
+      - type: insert_after
+        anchor: "app.get('/health', (_req,res)=> res.json({status:'healthy'}));"
+        replacement: "app.get('/health', (_req,res)=> res.json({status:'healthy', sse:'/api/llm-runner/runs/:runId/stream'}));"
+        newline: true

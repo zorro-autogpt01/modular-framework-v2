@@ -1,0 +1,287 @@
+version: "1.0"
+project_root: "."
+dry_run: false
+backup: true
+
+changes:
+  - id: "controller-add-host-column-in-runs-schema"
+    description: "Add host column to runs table definition for new DBs (schema.sql)"
+    op: patch_text
+    path: "modular-framework/modules/llm-runner-controller/server/db/schema.sql"
+    patches:
+      - type: insert_after
+        anchor: "  agent_id TEXT NOT NULL,"
+        replacement: "  host TEXT,"
+        newline: true
+
+  - id: "controller-db-migrations-add-host-and-backfill-kind"
+    description: "Add lightweight migration in services/db.js to ensure runs.host exists and backfill kind default"
+    op: patch_text
+    path: "modular-framework/modules/llm-runner-controller/server/services/db.js"
+    patches:
+      - type: insert_after
+        anchor: "function init() {"
+        replacement: |
+          // Lightweight, idempotent migrations for SQLite
+          function columnExists(table, col) {
+            try {
+              const rows = db.prepare(`PRAGMA table_info(${table})`).all();
+              return rows.some(r => String(r.name).toLowerCase() === String(col).toLowerCase());
+            } catch {
+              return false;
+            }
+          }
+          function migrate() {
+            try {
+              if (!columnExists('runs', 'host')) {
+                db.exec('ALTER TABLE runs ADD COLUMN host TEXT');
+              }
+            } catch { /* ignore */ }
+            try {
+              db.exec(`UPDATE runs SET kind = 'bash' WHERE kind IS NULL OR TRIM(kind) = ''`);
+            } catch { /* ignore */ }
+          }
+      - type: insert_after
+        anchor: "  db.exec(sql);"
+        replacement: |
+          
+          // Run simple migrations after schema init
+          migrate();
+
+  - id: "controller-ssh-service"
+    description: "Create SSH proxy service to forward to runner and record runs.kind='ssh' with host"
+    op: write_file
+    path: "modular-framework/modules/llm-runner-controller/server/services/ssh.js"
+    mode: create_if_missing
+    content: |
+      const crypto = require('crypto');
+      const axios = require('axios');
+      const db = require('./db');
+      const events = require('./events');
+      
+      function uuid(){ return crypto.randomUUID(); }
+      function sha256(s){ return crypto.createHash('sha256').update(String(s||''),'utf8').digest('hex'); }
+      function head(s, n=4000){ return String(s||'').slice(0, n); }
+      function trim(u){ return String(u||'').replace(/\/+$/,''); }
+      
+      async function exec(req, res) {
+        if (String(process.env.ENABLE_SSH || 'false').toLowerCase() !== 'true') {
+          return res.status(503).json({ ok:false, error: 'SSH disabled (ENABLE_SSH=false)' });
+        }
+        const { id } = req.params;
+        const a = db.one('SELECT * FROM agents WHERE id = ? OR name = ?', [id, id]);
+        if (!a) return res.status(404).json({ error: 'agent not found' });
+      
+        const {
+          host, user, port, cmd, env, cwd, timeoutMs,
+          bastion, pty, knownHosts
+        } = req.body || {};
+      
+        const payload = {
+          host, user, port, cmd, env, cwd, timeoutMs,
+          bastion, pty, knownHosts
+        };
+      
+        const runId = uuid();
+        const started = Date.now();
+        const envRedacted = env && typeof env === 'object'
+          ? Object.fromEntries(Object.keys(env).map(k => [k, '***REDACTED***']))
+          : null;
+      
+        try {
+          const r = await axios.post(`${trim(a.url)}/ssh/exec`, payload, {
+            headers: a.token_plain ? { Authorization: `Bearer ${a.token_plain}` } : {},
+            timeout: Math.max(4000, Number(timeoutMs || 20000) + 6000)
+          });
+          const out = r.data || {};
+          const duration_ms = Date.now() - started;
+          db.run(
+            'INSERT INTO runs (id, agent_id, requester, kind, code_hash, cwd, env_redacted, status, exit_code, stdout_head, stderr_head, duration_ms, host) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+            [runId, a.id, 'controller', 'ssh', sha256(cmd || ''), cwd || null, JSON.stringify(envRedacted || {}), out.ok ? 'ok' : 'error', Number(out.exitCode ?? -1), head(out.stdout), head(out.stderr), duration_ms, host || null]
+          );
+          events.emit('run.finished', { id: runId, agent_id: a.id, status: out.ok ? 'ok' : 'error', exit_code: out.exitCode, kind: 'ssh', host });
+          return res.json({
+            ok: !!out.ok || (typeof out.exitCode === 'number' && out.exitCode === 0),
+            exitCode: out.exitCode ?? null,
+            stdout: out.stdout || '',
+            stderr: out.stderr || '',
+            killed: !!out.killed,
+            timedOut: !!out.timedOut
+          });
+        } catch (e) {
+          const duration_ms = Date.now() - started;
+          const msg = e?.response?.data?.error || e.message || 'ssh exec failed';
+          db.run(
+            'INSERT INTO runs (id, agent_id, requester, kind, code_hash, cwd, env_redacted, status, exit_code, stdout_head, stderr_head, duration_ms, host) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+            [runId, a.id, 'controller', 'ssh', sha256(cmd || ''), cwd || null, JSON.stringify(envRedacted || {}), 'error', -1, '', head(msg), duration_ms, host || null]
+          );
+          events.emit('run.finished', { id: runId, agent_id: a.id, status: 'error', exit_code: -1, kind: 'ssh', host });
+          return res.status(502).json({ ok:false, error: msg });
+        }
+      }
+      
+      module.exports = { exec };
+
+  - id: "controller-wire-ssh-route"
+    description: "Add SSH proxy route to controller app"
+    op: patch_text
+    path: "modular-framework/modules/llm-runner-controller/server/app.js"
+    patches:
+      - type: insert_after
+        anchor: "const execProxy = require('./services/exec');"
+        replacement: "const sshProxy = require('./services/ssh');"
+        newline: true
+      - type: insert_after
+        anchor: "app.post('/api/llm-runner/agents/:id/exec', requireAdmin, execProxy.run);"
+        replacement: "app.post('/api/llm-runner/agents/:id/ssh/exec', requireAdmin, sshProxy.exec);"
+        newline: true
+
+  - id: "workflows-add-ssh-feature-flag"
+    description: "Gate SSH execution with ENABLE_SSH flag in workflows server"
+    op: patch_text
+    path: "modular-framework/modules/llm-workflows/server/app.js"
+    patches:
+      - type: insert_after
+        anchor: "const ALLOW_STEP_EXEC = String(process.env.ALLOW_STEP_EXEC || 'false').toLowerCase() === 'true';"
+        replacement: "const ENABLE_SSH = String(process.env.ENABLE_SSH || 'false').toLowerCase() === 'true';"
+        newline: true
+
+  - id: "workflows-testStep-exec-ssh"
+    description: "Handle ssh actions in /api/testStep execution path (insert early branch)"
+    op: patch_text
+    path: "modular-framework/modules/llm-workflows/server/app.js"
+    patches:
+      - type: insert_after
+        anchor: "const target = (a.meta && a.meta.target) ? String(a.meta.target) : defaultTarget;"
+        replacement: |
+          
+          if (kind === 'ssh') {
+            if (!ENABLE_SSH) {
+              actionResults.push({ index:i, kind, skipped:true, reason:'ssh disabled by server (ENABLE_SSH=false)' });
+            } else if (!target || !getRunner(target)) {
+              actionResults.push({ index:i, kind, skipped:true, reason:'ssh requires a runner target' });
+            } else {
+              const sshMeta = {
+                host: a?.meta?.host,
+                user: a?.meta?.user,
+                port: a?.meta?.port,
+                bastion: a?.meta?.bastion,
+                pty: a?.meta?.pty,
+                knownHosts: a?.meta?.knownHosts
+              };
+              const rmt = await execRemote({ target, kind:'ssh', code, cwd, env: a.env, timeoutMs, sshMeta });
+              actionResults.push({ index:i, kind, target, exitCode:rmt.exitCode, killed:rmt.killed, stdout:rmt.stdout, stderr:rmt.stderr });
+            }
+            continue;
+          }
+
+  - id: "workflows-run-exec-ssh"
+    description: "Support ssh actions during workflow runs (execute=true) with early branch handling"
+    op: patch_text
+    path: "modular-framework/modules/llm-workflows/server/app.js"
+    patches:
+      - type: insert_after
+        anchor: "const target = (a.meta && a.meta.target) ? String(a.meta.target) : defaultTarget;"
+        replacement: |
+          
+          if (kind === 'ssh') {
+            if (!ENABLE_SSH) {
+              execResults.push({ index:i, kind, target: target || 'n/a', skipped:true, reason:'ssh disabled by server (ENABLE_SSH=false)' });
+            } else if (!target || !getRunner(target)) {
+              execResults.push({ index:i, kind, target: target || 'n/a', skipped:true, reason:'ssh requires a runner target' });
+            } else {
+              const sshMeta = {
+                host: a?.meta?.host,
+                user: a?.meta?.user,
+                port: a?.meta?.port,
+                bastion: a?.meta?.bastion,
+                pty: a?.meta?.pty,
+                knownHosts: a?.meta?.knownHosts
+              };
+              const r2 = await execRemote({ target, kind:'ssh', code, cwd, env: a.env, timeoutMs, sshMeta });
+              allStdout += r2.stdout || ''; allStderr += r2.stderr || '';
+              execResults.push({ index:i, kind, target, exitCode:r2.exitCode, killed:r2.killed, stdout:r2.stdout, stderr:r2.stderr });
+            }
+            continue;
+          }
+
+  - id: "runnerClient-signature-sshMeta"
+    description: "runnerClient: extend execRemote signature to accept sshMeta"
+    op: patch_text
+    path: "modular-framework/modules/llm-workflows/server/runnerClient.js"
+    patches:
+      - type: replace_literal
+        match: "async function execRemote({ target, kind, code, cwd, env, timeoutMs }) {"
+        replacement: "async function execRemote({ target, kind, code, cwd, env, timeoutMs, sshMeta }) {"
+
+  - id: "runnerClient-body-builder-ssh"
+    description: "runnerClient: construct body for bash/python/ssh without regex"
+    op: patch_text
+    path: "modular-framework/modules/llm-workflows/server/runnerClient.js"
+    patches:
+      - type: replace_literal
+        match: "  const body = kind === 'bash'\n    ? { type: 'bash', cmd: code, cwd, env, timeoutMs }\n    : { type: 'python', script: code, cwd, env, timeoutMs };\n"
+        replacement: "  let body;\n  if (kind === 'bash') {\n    body = { type: 'bash', cmd: code, cwd, env, timeoutMs };\n  } else if (kind === 'python') {\n    body = { type: 'python', script: code, cwd, env, timeoutMs };\n  } else if (kind === 'ssh') {\n    const m = sshMeta || {};\n    body = { host: m.host, user: m.user, port: m.port, cmd: code, env, cwd, timeoutMs, bastion: m.bastion, pty: m.pty, knownHosts: m.knownHosts };\n  } else {\n    throw new Error(`unsupported kind: ${kind}`);\n  }\n"
+
+  - id: "runnerClient-controller-url-ssh"
+    description: "runnerClient: controller branch builds URL for exec or ssh/exec"
+    op: patch_text
+    path: "modular-framework/modules/llm-workflows/server/runnerClient.js"
+    patches:
+      - type: replace_literal
+        match: "      // Use controller proxy: /api/llm-runner/agents/:id/exec\n      const url = `${CTRL_BASE}/agents/${encodeURIComponent(target)}/exec`;\n"
+        replacement: "      // Use controller proxy: /api/llm-runner/agents/:id/(exec|ssh/exec)\n      const base = `${CTRL_BASE}/agents/${encodeURIComponent(target)}`;\n      const url = (kind === 'ssh') ? `${base}/ssh/exec` : `${base}/exec`;\n"
+
+  - id: "runnerClient-direct-url-ssh"
+    description: "runnerClient: direct-to-runner branch builds URL for exec or ssh/exec"
+    op: patch_text
+    path: "modular-framework/modules/llm-workflows/server/runnerClient.js"
+    patches:
+      - type: replace_literal
+        match: "      // Legacy direct-to-runner\n      const resp = await axios.post(`${trim(r.url)}/exec`, body, {\n"
+        replacement: "      // Legacy direct-to-runner\n      const base = `${trim(r.url)}`;\n      const url = (kind === 'ssh') ? `${base}/ssh/exec` : `${base}/exec`;\n      const resp = await axios.post(url, body, {\n"
+
+  - id: "server-schema-allow-ssh"
+    description: "Server action schema: include 'ssh' in enum"
+    op: patch_text
+    path: "modular-framework/modules/llm-workflows/server/app.js"
+    patches:
+      - type: replace_literal
+        match: "type: { type: 'string', enum: ['bash', 'python', 'sql', 'http', 'plan', 'text'] },"
+        replacement: "type: { type: 'string', enum: ['bash', 'python', 'sql', 'http', 'plan', 'text', 'ssh'] },"
+
+  - id: "ui-temp-schema-allow-ssh"
+    description: "UI _temp: include 'ssh' in action schema enum"
+    op: patch_text
+    path: "modular-framework/modules/llm-workflows/public/js/_temp"
+    patches:
+      - type: replace_literal
+        match: "type: { type: 'string', enum: ['bash', 'python', 'sql', 'http', 'plan', 'text'] },"
+        replacement: "type: { type: 'string', enum: ['bash', 'python', 'sql', 'http', 'plan', 'text', 'ssh'] },"
+
+  - id: "ui-index-schema-allow-ssh"
+    description: "UI index.page.js: include 'ssh' in action schema enum"
+    op: patch_text
+    path: "modular-framework/modules/llm-workflows/public/js/index.page.js"
+    patches:
+      - type: replace_literal
+        match: "type: { type: 'string', enum: ['bash', 'python', 'sql', 'http', 'plan', 'text'] },"
+        replacement: "type: { type: 'string', enum: ['bash', 'python', 'sql', 'http', 'plan', 'text', 'ssh'] },"
+
+  - id: "ui-workflows-page-schema-allow-ssh"
+    description: "UI workflows.page.js: include 'ssh' in action schema enum"
+    op: patch_text
+    path: "modular-framework/modules/llm-workflows/public/js/workflows.page.js"
+    patches:
+      - type: replace_literal
+        match: "type: { type: 'string', enum: ['bash', 'python', 'sql', 'http', 'plan', 'text'] },"
+        replacement: "type: { type: 'string', enum: ['bash', 'python', 'sql', 'http', 'plan', 'text', 'ssh'] },"
+
+  - id: "ui-workflows-run-schema-kinds"
+    description: "UI workflows.run.js: extend WF_SCHEMAS actions kind string to include ssh"
+    op: patch_text
+    path: "modular-framework/modules/llm-workflows/public/js/workflows.run.js"
+    patches:
+      - type: replace_literal
+        match: "      \"kind\": \"bash | python\","
+        replacement: "      \"kind\": \"bash | python | ssh\","

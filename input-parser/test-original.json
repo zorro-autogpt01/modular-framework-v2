@@ -1,0 +1,53 @@
+{
+  "": "1.0",
+  "_root": "",
+  "dry_run": false,
+  "": true,
+  "": [
+    {
+      "id": "ui-prompts-html",
+      "description": "Add a lightweight UI ui/prompts_ui manage test prompts (name, template, variables with a simple preview.",
+      "op": "write_file",
+      "path": "ui/prompts_ui/index.html",      
+      "content": "<!DOCTYPE html>\\n<html lang='en'>\\n<head>\\n  <meta charset='UTF-8'>\\n  <meta name='viewport' content='width=device-width, initial-scale=1.0'>\\n  <title>Test Prompt Studio</title>\\n  <link rel='stylesheet' href='style.css'>\\n</head>\\n<body>\\n  <div class='app'>\\n    <header>\\n      <h1>Test Prompt Studio</h1>\\n      <p>Define, edit, and preview prompts used to generate tests.</p>\\n    </header>\\n    <div class='content'>\\n      <section class='sidebar'>\\n        <button id='newBtn' class='btn'>New Prompt</button>\\n        <ul id='promptList' class='list'></ul>\\n      </section>\\n      <section class='editor'>\\n        <label>Name:<input id='name' type='text' placeholder='e.g. UserLoginTest'/></label>\\n        <label>Template (use {{var}} for placeholders):\\n          <textarea id='template' rows='8' placeholder='Prompt template...'></textarea>\\n        </label>\\n        <label>Variables (JSON):\\n          <textarea id='vars' rows='6' placeholder='[{\"name\":\"var\",\"default\":\"value\"}]'></textarea>\\n        </label>\\n        <div class='actions'>\\n          <button id='saveBtn' class='btn'>Save</button>\\n          <button id='deleteBtn' class='btn danger'>Delete</button>\\n        </div>\\n        <h3>Preview</h3>\\n        <pre id='preview' class='preview'></pre>\\n      </section>\\n    </div>\\n  </div>\\n  <script src='script.js'></script>\\n</body>\\n</html>"
+    },
+    {
+      "id": "ui-prompts-script",
+      "description": "Add minimal vanilla JS for the prompts UI to interact with the backend API.",
+      "op": "write_file",
+      "path": "ui/prompts_ui/script.js",
+      "content": "// Minimal prompts UI\\n// Assumes backend at /api/prompts\\n\\ndocument.addEventListener('DOMContentLoaded', function() {\\n  const listEl = document.getElementById('promptList');\\n  const nameEl = document.getElementById('name');\\n  const templateEl = document.getElementById('template');\\n  const varsEl = document.getElementById('vars');\\n  const saveBtn = document.getElementById('saveBtn');\\n  const deleteBtn = document.getElementById('deleteBtn');\\n  const previewEl = document.getElementById('preview');\\n  let prompts = [];\\n  let currentId = null;\\n\\n  function loadPrompts() {\\n    fetch('/api/prompts')\\n      .then(res => res.json())\\n      .then(data => { prompts = data || []; renderList(); })\\n      .catch(() => { prompts = []; renderList(); });\\n  }\\n\\n  function renderList() {\\n    listEl.innerHTML = '';\\n    prompts.forEach(p => {\\n      const li = document.createElement('li');\\n      li.textContent = p.name || '(unnamed)';\\n      li.className = 'item';\\n      li.onclick = () => loadPromptIntoEditor(p);\\n      listEl.appendChild(li);\\n    });\\n  }\\n\\n  function loadPromptIntoEditor(p) {\\n    currentId = p.id;\\n    nameEl.value = p.name || '';\\n    templateEl.value = p.template || '';\\n    varsEl.value = JSON.stringify(p.variables || [], null, 2);\\n    renderPreview();\\n  }\\n\\n  function renderPreview() {\\n    const tmpl = templateEl.value || '';\\n    let vars = [];\\n    try { vars = JSON.parse(varsEl.value); } catch (e) { vars = []; }\\n    const data = {};\\n    vars.forEach(v => { data[v.name] = v.default || ''; });\\n    const re = /\\\\{\\\\{\\\\s*(\\\\w+)\\\\s*\\\\}\\\\}/g;\\n    const rendered = tmpl.replace(re, (m, key) => (data[key] !== undefined ? data[key] : m));\\n    previewEl.textContent = rendered;\\n  }\\n\\n  saveBtn.onclick = () => {\\n    const payload = {\\n      name: nameEl.value,\\n      template: templateEl.value,\\n      variables: (() => {\\n        try { return JSON.parse(varsEl.value); } catch { return []; }\\n      })()\\n    };\\n    if (currentId) {\\n      fetch('/api/prompts/' + currentId, {\\n        method: 'PUT',\\n        headers: { 'Content-Type': 'application/json' },\\n        body: JSON.stringify(payload)\\n      }).then(() => loadPrompts())\\n        .catch(() => alert('Failed to save prompt'));\\n    } else {\\n      fetch('/api/prompts', {\\n        method: 'POST',\\n        headers: { 'Content-Type': 'application/json' },\\n        body: JSON.stringify(payload)\\n      }).then(() => { loadPrompts(); currentId = null; clearEditor(); })\\n        .catch(() => alert('Failed to create prompt'));\\n    }\\n  };\\n\\n  deleteBtn.onclick = () => {\\n    if (!currentId) return;\\n    fetch('/api/prompts/' + currentId, { method: 'DELETE' })\\n      .then(() => { loadPrompts(); clearEditor(); })\\n      .catch(() => alert('Failed to delete'));\\n  };\\n\\n  nameEl.addEventListener('input', renderPreview);\\n  templateEl.addEventListener('input', renderPreview);\\n  varsEl.addEventListener('input', renderPreview);\\n\\n  function clearEditor() {\\n    currentId = null;\\n    nameEl.value = '';\\n    templateEl.value = '';\\n    varsEl.value = '[]';\\n    previewEl.textContent = '';\\n  }\\n\\n  loadPrompts();\\n});"
+    },
+    {
+      "id": "ui-prompts-css",
+      "description": "Add minimal CSS for the prompts UI.",
+      "op": "write_file",
+      "path": "ui/prompts_ui/style.css",
+      "content": "/* Minimal prompts UI styling */\\n* { box-sizing: border-box; }\\nhtml, body { height: 100%; font-family: Arial, sans-serif; margin: 0; }\\n.app { display: flex; flex-direction: column; min-height: 100%; }\\nheader { padding: 1rem; background: #2e3b55; color: white; }\\n.content { display: grid; grid-template-columns: 280px 1fr; gap: 1rem; padding: 1rem; }\\n.sidebar { border-right: 1px solid #ddd; padding-right: 1rem; }\\n.btn { padding: 0.5rem 1rem; margin: 0.25rem; border: none; background: #4a90e2; color: white; border-radius: 4px; cursor: pointer; }\\n.btn.danger { background: #e74c3c; }\\n.list { list-style: none; padding: 0; margin: 0; }\\n.item { padding: 0.5rem; border-bottom: 1px solid #eee; cursor: pointer; }\\n.editor label { display: block; margin: 0.5rem 0; }\\n.editor input, .editor textarea { width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; }\\n.editor .actions { margin-top: 0.5rem; }\\n.preview { background: #f6f6f6; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; min-height: 120px; }\\n@media (max-width: 900px) { .content { grid-template-columns: 1fr; } }"
+    },
+    {
+      "id": "server-app",
+      "description": "Add a lightweight Express server to host a small API for managing test prompts and to optionally serve the UI.",
+      "op": "write_file",
+      "path": "server/app.js",
+      "content": "\"use strict\";\\n// Lightweight backend to manage test prompts for the UI at /api/prompts\\n// Endpoints: GET /api/prompts, POST /api/prompts, PUT /api/prompts/:id, DELETE /api/prompts/:id\\n\\nconst express = require('express');\\nconst fs = require('fs');\\nconst path = require('path');\\n\\nconst app = express();\\napp.use(express.json());\\n\\nconst DATA_DIR = path.join(__dirname, 'data');\\nconst DATA_FILE = path.join(DATA_DIR, 'prompts.json');\\n\\nif (!fs.existsSync(DATA_DIR)) {\\n  fs.mkdirSync(DATA_DIR, { recursive: true });\\n}\\n\\nfunction readPrompts() {\\n  try {\\n    const raw = fs.readFileSync(DATA_FILE, 'utf8');\\n    return JSON.parse(raw || '[]');\\n  } catch (e) {\\n    return [];\\n  }\\n}\\n\\nfunction writePrompts(items) {\\n  fs.writeFileSync(DATA_FILE, JSON.stringify(items, null, 2));\\n}\\n\\napp.get('/api/prompts', (req, res) => {\\n  res.json(readPrompts());\\n});\\n\\napp.post('/api/prompts', (req, res) => {\\n  const data = req.body || {};\\n  const items = readPrompts();\\n  const newItem = {\\n    id: Date.now().toString(),\\n    name: data.name || 'Untitled Prompt',\\n    template: data.template || '',\\n    variables: data.variables || []\\n  };\\n  items.push(newItem);\\n  writePrompts(items);\\n  res.json(newItem);\\n});\\n\\napp.put('/api/prompts/:id', (req, res) => {\\n  const id = req.params.id;\\n  const data = req.body || {};\\n  let items = readPrompts();\\n  items = items.map(it => (it.id === id ? { ...it, ...data } : it));\\n  writePrompts(items);\\n  res.json(items.find(it => it.id === id));\\n});\\n\\napp.delete('/api/prompts/:id', (req, res) => {\\n  const id = req.params.id;\\n  let items = readPrompts();\\n  items = items.filter(it => it.id !== id);\\n  writePrompts(items);\\n  res.json({ ok: true });\\n});\\n\\napp.use('/ui', express.static(path.join(__dirname, '../ui/prompts_ui')));\\n\\nconst PORT = process.env.PORT || 3000;\\napp.listen(PORT, () => {\\n  console.log(`Test Prompt API server listening on port ${PORT}`);\\n});",
+      "mode": "create_if_missing"
+    },
+    {
+      "id": "prompts-data",
+      "description": "Initialize storage for prompts as an empty array.",
+      "op": "write_file",
+      "path": "server/data/prompts.json",
+      "content": "[]",
+      "mode": "create_if_missing"
+    },
+    {
+      "id": "readme-instructions",
+      "description": "Add a brief README with how to run the UI + API locally.",
+      "op": "write_file",
+      "path": "server/README.md",
+      "content": "# Test Prompt Studio Backend\\n\\nHow to run:\\n\\n1. Ensure Node.js is installed.\\n2. Start the API server:\\n   - cd server\\n   - node app.js\\n3. Open ui/prompts_ui/index.html in a browser or serve via static server.\\n\\nThe UI communicates with /api/prompts for CRUD operations.\\n",
+      "mode": "create_if_missing"
+    }
+  ]
+}

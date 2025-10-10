@@ -1,0 +1,1062 @@
+version: "1.0"
+project_root: "."
+dry_run: false
+backup: true
+
+changes:
+  - id: "create-llm-runner-controller-package"
+    description: "Create package.json for llm-runner-controller with required dependencies"
+    op: write_file
+    path: "modular-framework/modules/llm-runner-controller/package.json"
+    mode: create_if_missing
+    content: |
+      {
+        "name": "llm-runner-controller",
+        "version": "0.1.0",
+        "description": "Runner Controller for managing LLM runner-agents (registry, health, exec proxy, configs, updates, installers, SSE events)",
+        "main": "server/index.js",
+        "scripts": {
+          "start": "node server/index.js",
+          "dev": "nodemon server/index.js"
+        },
+        "dependencies": {
+          "argon2": "^0.41.1",
+          "axios": "^1.7.2",
+          "better-sqlite3": "^9.6.0",
+          "body-parser": "^1.20.2",
+          "cors": "^2.8.5",
+          "express": "^4.19.2"
+        },
+        "devDependencies": {
+          "nodemon": "^3.1.0"
+        }
+      }
+
+  - id: "create-llm-runner-controller-dockerfile"
+    description: "Create Dockerfile for llm-runner-controller"
+    op: write_file
+    path: "modular-framework/modules/llm-runner-controller/Dockerfile"
+    mode: create_if_missing
+    content: |
+      FROM node:18-alpine
+      WORKDIR /app
+
+      RUN apk add --no-cache python3 make g++ bash curl
+
+      COPY package.json ./
+      RUN npm install --production
+
+      COPY . .
+
+      ENV NODE_ENV=production
+      ENV PORT=4015
+      ENV INTERNAL_API_TOKEN=supersecret
+      ENV RUNNER_REG_TOKEN=supersecret
+      ENV DB_URL=sqlite:///app/data/runner.db
+      ENV HEALTH_INTERVAL_SEC=15
+      ENV EXEC_MAX_TIMEOUT_MS=300000
+      ENV LOG_TO_CONSOLE=false
+
+      EXPOSE 4015
+
+      HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+        CMD wget -qO- http://localhost:$PORT/health || exit 1
+
+      CMD ["node", "server/index.js"]
+
+  - id: "create-llm-runner-controller-index"
+    description: "Create server entrypoint for llm-runner-controller"
+    op: write_file
+    path: "modular-framework/modules/llm-runner-controller/server/index.js"
+    mode: create_if_missing
+    content: |
+      const app = require('./app');
+      const PORT = Number(process.env.PORT || 4015);
+      app.listen(PORT, () => {
+        console.log(`llm-runner-controller listening on :${PORT}`);
+      });
+
+  - id: "create-llm-runner-controller-app"
+    description: "Create Express app for llm-runner-controller (routes and wiring)"
+    op: write_file
+    path: "modular-framework/modules/llm-runner-controller/server/app.js"
+    mode: create_if_missing
+    content: |
+      // modules/llm-runner-controller/server/app.js
+      const express = require('express');
+      const bodyParser = require('body-parser');
+      const cors = require('cors');
+      const path = require('path');
+
+      const { requireAdmin, requireAdminOptional, requireReg, requireAgentAuth } = require('./auth');
+      const registry = require('./services/registry');
+      const health = require('./services/health');
+      const execProxy = require('./services/exec');
+      const configs = require('./services/configs');
+      const updates = require('./services/updates');
+      const events = require('./services/events');
+      const installers = require('./services/installers');
+
+      const app = express();
+      app.use(cors({ origin: true, credentials: true }));
+      app.use(bodyParser.json({ limit: '2mb' }));
+
+      app.get('/health', (_req,res)=> res.json({status:'healthy'}));
+
+      // SSE Events
+      app.get('/api/llm-runner/events', events.sse);
+
+      // Agents
+      app.get('/api/llm-runner/agents', requireAdminOptional, registry.list);
+      app.post('/api/llm-runner/agents', requireAdmin, registry.upsert);
+      app.post('/api/llm-runner/agents/register', requireReg, registry.selfRegister);
+      app.get('/api/llm-runner/agents/:id', requireAdminOptional, registry.get);
+      app.delete('/api/llm-runner/agents/:id', requireAdmin, registry.remove);
+      app.post('/api/llm-runner/agents/:id/ping', requireAdmin, health.pingNow);
+      app.get('/api/llm-runner/agents/:id/health', requireAdmin, health.proxy);
+      app.post('/api/llm-runner/agents/:id/exec', requireAdmin, execProxy.run);
+
+      // Catalog (discovery)
+      app.get('/api/llm-runner/catalog', registry.catalog);
+
+      // Configs
+      app.get('/api/llm-runner/configs', requireAdmin, configs.list);
+      app.post('/api/llm-runner/configs', requireAdmin, configs.create);
+      app.post('/api/llm-runner/agents/:id/configs/assign', requireAdmin, configs.assign);
+      app.get('/api/llm-runner/agents/:id/configs/effective', requireAdmin, configs.effective);
+      // agent-friendly pull (auth with agent token)
+      app.get('/api/llm-runner/agents/:id/configs/pull', requireAgentAuth, configs.pullForAgent);
+
+      // Updates
+      app.post('/api/llm-runner/agents/:id/update', requireAdmin, updates.trigger);
+      app.get('/api/llm-runner/updates/:updId', requireAdmin, updates.get);
+
+      // Installers
+      app.get('/install/runner.sh', (req,res)=> installers.dockerScript(req,res));
+      app.get('/install/systemd.sh', (req,res)=> installers.systemdScript(req,res));
+
+      // Static (optional public docs later)
+      app.use('/public', express.static(path.join(__dirname, '..', 'public')));
+
+      // Start health scheduler
+      health.startScheduler();
+
+      module.exports = app;
+
+  - id: "create-llm-runner-controller-auth"
+    description: "Auth middlewares for admin/reg/agent"
+    op: write_file
+    path: "modular-framework/modules/llm-runner-controller/server/auth.js"
+    mode: create_if_missing
+    content: |
+      const db = require('./services/db');
+
+      function bearerToken(req) {
+        const h = req.headers['authorization'] || '';
+        if (!h.startsWith('Bearer ')) return '';
+        return h.slice('Bearer '.length).trim();
+      }
+
+      function requireAdmin(req, res, next) {
+        const token = process.env.INTERNAL_API_TOKEN || '';
+        if (!token) return res.status(503).json({ error: 'admin token not configured' });
+        const got = bearerToken(req);
+        if (got && got === token) return next();
+        return res.status(401).json({ error: 'unauthorized' });
+      }
+
+      function requireAdminOptional(_req, _res, next) {
+        // Allow anonymous reads for discovery; protect sensitive fields in handlers themselves.
+        next();
+      }
+
+      function requireReg(req, res, next) {
+        const t = process.env.RUNNER_REG_TOKEN || '';
+        if (!t) return res.status(503).json({ error: 'registration disabled' });
+        const got = bearerToken(req);
+        if (got && got === t) return next();
+        return res.status(401).json({ error: 'unauthorized' });
+      }
+
+      async function requireAgentAuth(req, res, next) {
+        const { id } = req.params || {};
+        const token = bearerToken(req);
+        if (!id || !token) return res.status(401).json({ error: 'unauthorized' });
+        try {
+          const agent = db.one('SELECT id, token_plain FROM agents WHERE id = ?', [id]);
+          if (!agent) return res.status(404).json({ error: 'not found' });
+          // NOTE: Minimal MVP uses token_plain. For production, store encrypted and verify against hash.
+          if (String(agent.token_plain || '') !== token) return res.status(401).json({ error: 'unauthorized' });
+          return next();
+        } catch (e) {
+          return res.status(500).json({ error: 'auth error' });
+        }
+      }
+
+      module.exports = { requireAdmin, requireAdminOptional, requireReg, requireAgentAuth };
+
+  - id: "create-llm-runner-controller-db"
+    description: "SQLite helper and schema bootstrap"
+    op: write_file
+    path: "modular-framework/modules/llm-runner-controller/server/services/db.js"
+    mode: create_if_missing
+    content: |
+      const fs = require('fs');
+      const path = require('path');
+      const Database = require('better-sqlite3');
+
+      function resolveSqlitePath() {
+        const url = process.env.DB_URL || 'sqlite:///app/data/runner.db';
+        if (url.startsWith('sqlite://')) {
+          const file = url.replace(/^sqlite:\/\//, '').replace(/^file:/, '');
+          return file.startsWith('/') ? file : path.join(process.cwd(), file);
+        }
+        return path.join(process.cwd(), 'data', 'runner.db');
+      }
+
+      const file = resolveSqlitePath();
+      const dir = path.dirname(file);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+      const db = new Database(file);
+      db.pragma('journal_mode = WAL');
+
+      function init() {
+        const schemaPath = path.join(__dirname, '..', 'db', 'schema.sql');
+        const sql = fs.readFileSync(schemaPath, 'utf8');
+        db.exec(sql);
+      }
+
+      function all(sql, params = []) { return db.prepare(sql).all(params); }
+      function one(sql, params = []) { return db.prepare(sql).get(params); }
+      function run(sql, params = []) { return db.prepare(sql).run(params); }
+      function txn(fn) { const t = db.transaction(fn); return t(); }
+
+      init();
+
+      module.exports = { db, all, one, run, txn };
+
+  - id: "create-llm-runner-controller-schema"
+    description: "DB schema for llm-runner-controller"
+    op: write_file
+    path: "modular-framework/modules/llm-runner-controller/server/db/schema.sql"
+    mode: create_if_missing
+    content: |
+      CREATE TABLE IF NOT EXISTS agents (
+        id TEXT PRIMARY KEY,
+        name TEXT UNIQUE NOT NULL,
+        url TEXT NOT NULL,
+        token_hash TEXT,
+        token_plain TEXT, -- MVP: stored to enable proxy; replace with encrypted storage later
+        default_cwd TEXT,
+        group_id TEXT,
+        version TEXT,
+        labels TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        last_seen_at TEXT,
+        status TEXT DEFAULT 'offline' CHECK (status IN ('online','degraded','offline'))
+      );
+
+      CREATE TABLE IF NOT EXISTS agent_groups (
+        id TEXT PRIMARY KEY,
+        name TEXT UNIQUE NOT NULL,
+        description TEXT,
+        labels TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE IF NOT EXISTS configs (
+        id TEXT PRIMARY KEY,
+        scope TEXT NOT NULL CHECK (scope IN ('global','group','agent')),
+        ref_id TEXT,
+        version INTEGER NOT NULL,
+        name TEXT,
+        data TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE IF NOT EXISTS assignments (
+        agent_id TEXT NOT NULL,
+        config_id TEXT NOT NULL,
+        effective_version INTEGER NOT NULL,
+        created_at TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (agent_id, config_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS runs (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        requester TEXT,
+        kind TEXT,
+        code_hash TEXT,
+        cwd TEXT,
+        env_redacted TEXT,
+        status TEXT,
+        exit_code INTEGER,
+        stdout_head TEXT,
+        stderr_head TEXT,
+        duration_ms INTEGER,
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE IF NOT EXISTS updates (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        target TEXT,
+        strategy TEXT,
+        status TEXT,
+        logs TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE IF NOT EXISTS api_keys (
+        id TEXT PRIMARY KEY,
+        name TEXT,
+        token_hash TEXT NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('reader','writer','admin')),
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_agents_status ON agents(status);
+      CREATE INDEX IF NOT EXISTS idx_runs_agent ON runs(agent_id);
+      CREATE INDEX IF NOT EXISTS idx_configs_scope_ref ON configs(scope, ref_id);
+
+      -- Initialize a global config record if not present
+      INSERT INTO configs (id, scope, ref_id, version, name, data)
+      SELECT 'cfg_global_v1', 'global', '*', 1, 'default', '{"runner":{"allowEnv":"HTTP_PROXY,HTTPS_PROXY"}}'
+      WHERE NOT EXISTS (SELECT 1 FROM configs WHERE scope='global');
+
+  - id: "create-llm-runner-controller-registry"
+    description: "Agent registry service with list, get, upsert, self-register, remove, catalog"
+    op: write_file
+    path: "modular-framework/modules/llm-runner-controller/server/services/registry.js"
+    mode: create_if_missing
+    content: |
+      const crypto = require('crypto');
+      const argon2 = require('argon2');
+      const axios = require('axios');
+      const db = require('./db');
+      const events = require('./events');
+
+      function uuid() {
+        return crypto.randomUUID();
+      }
+
+      function redactedAgentRow(a) {
+        return {
+          id: a.id, name: a.name, url: a.url, default_cwd: a.default_cwd || null,
+          group_id: a.group_id || null, labels: a.labels ? JSON.parse(a.labels) : {},
+          status: a.status || 'offline', last_seen_at: a.last_seen_at || null, version: a.version || null
+        };
+      }
+
+      async function verifyAgent(url, token) {
+        try {
+          const r = await axios.get(`${url.replace(/\\/+$/, '')}/health`, {
+            headers: { Authorization: `Bearer ${token}` },
+            timeout: 5000
+          });
+          return { ok: true, data: r.data };
+        } catch (e) {
+          return { ok: false, error: e.message };
+        }
+      }
+
+      async function list(_req, res) {
+        const rows = db.all('SELECT * FROM agents ORDER BY name ASC');
+        res.json({ items: rows.map(redactedAgentRow) });
+      }
+
+      async function get(req, res) {
+        const { id } = req.params;
+        const a = db.one('SELECT * FROM agents WHERE id = ? OR name = ?', [id, id]);
+        if (!a) return res.status(404).json({ error: 'not found' });
+        return res.json(redactedAgentRow(a));
+      }
+
+      async function upsert(req, res) {
+        const { name, url, token, default_cwd, group, labels } = req.body || {};
+        if (!name || !url || !token) return res.status(400).json({ error: 'name, url, token required' });
+
+        const exists = db.one('SELECT * FROM agents WHERE name = ?', [name]);
+
+        const id = exists?.id || uuid();
+        const now = new Date().toISOString();
+        const lbl = labels ? JSON.stringify(labels) : null;
+
+        const token_hash = await argon2.hash(token);
+
+        db.txn(() => {
+          if (exists) {
+            db.run(
+              'UPDATE agents SET url=?, token_hash=?, token_plain=?, default_cwd=?, group_id=?, labels=?, updated_at=? WHERE id=?',
+              [url, token_hash, token, default_cwd || null, group || null, lbl, now, exists.id]
+            );
+          } else {
+            db.run(
+              'INSERT INTO agents (id, name, url, token_hash, token_plain, default_cwd, group_id, labels, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+              [id, name, url, token_hash, token, default_cwd || null, group || null, lbl, 'offline', now, now]
+            );
+          }
+        });
+
+        const a = db.one('SELECT * FROM agents WHERE id = ?', [id]);
+        res.json({ ok: true, agent: redactedAgentRow(a) });
+      }
+
+      async function selfRegister(req, res) {
+        const { name, url, token, default_cwd } = req.body || {};
+        if (!name || !url || !token) return res.status(400).json({ error: 'name, url, token required' });
+        const check = await verifyAgent(url, token);
+        if (!check.ok) {
+          // do not fail hard; allow deferred health
+        }
+        req.body.group = null;
+        req.body.labels = { source: 'self' };
+        return upsert(req, res);
+      }
+
+      async function remove(req, res) {
+        const { id } = req.params;
+        const a = db.one('SELECT * FROM agents WHERE id = ? OR name = ?', [id, id]);
+        if (!a) return res.json({ ok: true, removed: 0 });
+        db.run('DELETE FROM agents WHERE id = ?', [a.id]);
+        events.emit('agent.removed', { id: a.id, name: a.name });
+        res.json({ ok: true, removed: 1 });
+      }
+
+      async function catalog(_req, res) {
+        const rows = db.all('SELECT id, name, default_cwd, labels, status FROM agents ORDER BY name ASC');
+        res.json({
+          agents: rows.map(r => ({
+            id: r.id, name: r.name, default_cwd: r.default_cwd || null,
+            labels: r.labels ? JSON.parse(r.labels) : {}, status: r.status || 'offline'
+          }))
+        });
+      }
+
+      module.exports = { list, get, upsert, selfRegister, remove, catalog };
+
+  - id: "create-llm-runner-controller-health"
+    description: "Health proxy and background scheduler"
+    op: write_file
+    path: "modular-framework/modules/llm-runner-controller/server/services/health.js"
+    mode: create_if_missing
+    content: |
+      const axios = require('axios');
+      const db = require('./db');
+      const events = require('./events');
+
+      function trim(u){ return String(u||'').replace(/\\/+$/,''); }
+
+      async function pingAgentRow(a) {
+        const url = trim(a.url);
+        const token = a.token_plain;
+        const started = Date.now();
+        let status = 'offline', payload = null;
+        try {
+          const resp = await axios.get(`${url}/health`, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            timeout: 5000
+          });
+          payload = resp.data || null;
+          status = 'online';
+        } catch (e) {
+          status = 'offline';
+          payload = { error: e.message };
+        }
+        const now = new Date().toISOString();
+        const last = a.status;
+        db.run('UPDATE agents SET status=?, last_seen_at=?, updated_at=? WHERE id=?', [status, now, now, a.id]);
+        if (last !== status) {
+          events.emit(`agent.${status}`, { id: a.id, name: a.name, last_status: last, payload });
+        }
+        const latency_ms = Date.now() - started;
+        return { ok: status === 'online', latency_ms, payload };
+      }
+
+      async function pingNow(req, res) {
+        const { id } = req.params;
+        const a = db.one('SELECT * FROM agents WHERE id = ? OR name = ?', [id, id]);
+        if (!a) return res.status(404).json({ error: 'not found' });
+        const r = await pingAgentRow(a);
+        res.json(r);
+      }
+
+      async function proxy(req, res) {
+        const { id } = req.params;
+        const a = db.one('SELECT * FROM agents WHERE id = ? OR name = ?', [id, id]);
+        if (!a) return res.status(404).json({ error: 'not found' });
+
+        try {
+          const r = await axios.get(`${trim(a.url)}/health`, {
+            headers: a.token_plain ? { Authorization: `Bearer ${a.token_plain}` } : {},
+            timeout: 5000
+          });
+          res.json(r.data);
+        } catch (e) {
+          res.status(502).json({ error: e.message || 'health proxy failed' });
+        }
+      }
+
+      function startScheduler() {
+        const interval = Math.max(5, Number(process.env.HEALTH_INTERVAL_SEC || 15)) * 1000;
+        setInterval(() => {
+          try {
+            const agents = db.all('SELECT * FROM agents');
+            agents.forEach(a => pingAgentRow(a).catch(()=>{}));
+          } catch {
+            // ignore
+          }
+        }, interval);
+      }
+
+      module.exports = { pingNow, proxy, startScheduler };
+
+  - id: "create-llm-runner-controller-exec"
+    description: "Exec proxy to agent /exec with audit in runs table"
+    op: write_file
+    path: "modular-framework/modules/llm-runner-controller/server/services/exec.js"
+    mode: create_if_missing
+    content: |
+      const crypto = require('crypto');
+      const axios = require('axios');
+      const db = require('./db');
+      const events = require('./events');
+
+      function uuid(){ return crypto.randomUUID(); }
+      function sha256(s){ return crypto.createHash('sha256').update(String(s||''),'utf8').digest('hex'); }
+      function head(s, n=4000){ return String(s||'').slice(0, n); }
+
+      async function run(req, res) {
+        const { id } = req.params;
+        const { type, cmd, code, script, cwd, env, timeoutMs } = req.body || {};
+        const a = db.one('SELECT * FROM agents WHERE id = ? OR name = ?', [id, id]);
+        if (!a) return res.status(404).json({ error: 'not found' });
+
+        const kind = (type || (script ? 'python' : 'bash')).toLowerCase();
+        const payload = kind === 'bash'
+          ? { type: 'bash', cmd: cmd || code || '', cwd, env, timeoutMs }
+          : { type: 'python', script: script || code || '', cwd, env, timeoutMs };
+
+        const runId = uuid();
+        const started = Date.now();
+        const envRedacted = env && typeof env === 'object' ? Object.fromEntries(Object.keys(env).map(k => [k, '***REDACTED***'])) : null;
+
+        try {
+          const r = await axios.post(`${a.url.replace(/\\/+$/, '')}/exec`, payload, {
+            headers: a.token_plain ? { Authorization: `Bearer ${a.token_plain}` } : {},
+            timeout: Math.max(4000, Number(timeoutMs || 20000) + 4000)
+          });
+
+          const out = r.data || {};
+          const duration_ms = Date.now() - started;
+          db.run(
+            'INSERT INTO runs (id, agent_id, requester, kind, code_hash, cwd, env_redacted, status, exit_code, stdout_head, stderr_head, duration_ms) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+            [runId, a.id, 'controller', kind, sha256(payload.cmd || payload.script || ''), cwd || null, JSON.stringify(envRedacted || {}), out.ok ? 'ok' : 'error', Number(out.exitCode ?? -1), head(out.stdout), head(out.stderr), duration_ms]
+          );
+          events.emit('run.finished', { id: runId, agent_id: a.id, status: out.ok ? 'ok' : 'error', exit_code: out.exitCode });
+
+          res.json({
+            ok: !!out.ok || (typeof out.exitCode === 'number' && out.exitCode === 0),
+            exitCode: out.exitCode ?? null,
+            stdout: out.stdout || '',
+            stderr: out.stderr || '',
+            killed: !!out.killed
+          });
+        } catch (e) {
+          const duration_ms = Date.now() - started;
+          const msg = e?.response?.data?.error || e.message || 'exec failed';
+          db.run(
+            'INSERT INTO runs (id, agent_id, requester, kind, code_hash, cwd, env_redacted, status, exit_code, stdout_head, stderr_head, duration_ms) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+            [runId, a.id, 'controller', kind, sha256(payload.cmd || payload.script || ''), cwd || null, JSON.stringify(envRedacted || {}), 'error', -1, '', head(msg), duration_ms]
+          );
+          events.emit('run.finished', { id: runId, agent_id: a.id, status: 'error', exit_code: -1 });
+          res.status(502).json({ ok: false, error: msg });
+        }
+      }
+
+      module.exports = { run };
+
+  - id: "create-llm-runner-controller-configs"
+    description: "Configs service with layered merge and agent pull"
+    op: write_file
+    path: "modular-framework/modules/llm-runner-controller/server/services/configs.js"
+    mode: create_if_missing
+    content: |
+      const db = require('./db');
+
+      function deepMerge(a, b) {
+        if (b === null || b === undefined) return a;
+        if (Array.isArray(a) || Array.isArray(b) || typeof a !== 'object' || typeof b !== 'object') return b;
+        const out = { ...a };
+        for (const k of Object.keys(b)) out[k] = deepMerge(a[k], b[k]);
+        return out;
+      }
+
+      function list(req, res) {
+        const { scope, ref_id } = req.query || {};
+        let rows = [];
+        if (scope) {
+          rows = ref_id
+            ? db.all('SELECT * FROM configs WHERE scope = ? AND ref_id = ? ORDER BY version DESC', [scope, ref_id])
+            : db.all('SELECT * FROM configs WHERE scope = ? ORDER BY version DESC', [scope]);
+        } else {
+          rows = db.all('SELECT * FROM configs ORDER BY created_at DESC LIMIT 200');
+        }
+        res.json({
+          items: rows.map(r => ({
+            id: r.id, scope: r.scope, ref_id: r.ref_id, version: r.version,
+            name: r.name, data: JSON.parse(r.data || '{}'), created_at: r.created_at
+          }))
+        });
+      }
+
+      function nextVersion(scope, ref_id) {
+        const r = db.one('SELECT MAX(version) as v FROM configs WHERE scope=? AND ref_id=?', [scope, ref_id]);
+        return Number(r?.v || 0) + 1;
+      }
+
+      function create(req, res) {
+        const { scope, ref_id, name, data } = req.body || {};
+        if (!scope || !['global','group','agent'].includes(scope)) return res.status(400).json({ error: 'invalid scope' });
+        const rid = ref_id || (scope === 'global' ? '*' : null);
+        if (!rid) return res.status(400).json({ error: 'ref_id required for non-global' });
+
+        const version = nextVersion(scope, rid);
+        const id = `${scope}:${rid}:v${version}`;
+        db.run('INSERT INTO configs (id, scope, ref_id, version, name, data) VALUES (?,?,?,?,?,?)',
+          [id, scope, rid, version, name || null, JSON.stringify(data || {})]);
+
+        res.json({ ok: true, id, version });
+      }
+
+      function assign(req, res) {
+        const { id } = req.params; // agent id or name
+        const body = req.body || {};
+        const agent = db.one('SELECT * FROM agents WHERE id = ? OR name = ?', [id, id]);
+        if (!agent) return res.status(404).json({ error: 'agent not found' });
+
+        const configId = body.config_id;
+        const cfg = db.one('SELECT * FROM configs WHERE id = ?', [configId]);
+        if (!cfg) return res.status(404).json({ error: 'config not found' });
+
+        db.run('INSERT OR REPLACE INTO assignments (agent_id, config_id, effective_version) VALUES (?,?,?)',
+          [agent.id, cfg.id, cfg.version]);
+
+        res.json({ ok: true, effective_version: cfg.version });
+      }
+
+      function getEffective(agentRow) {
+        // global
+        const g = db.one('SELECT * FROM configs WHERE scope="global" ORDER BY version DESC LIMIT 1');
+        let effective = g ? JSON.parse(g.data || '{}') : {};
+        // group
+        if (agentRow.group_id) {
+          const grp = db.one('SELECT * FROM configs WHERE scope="group" AND ref_id=? ORDER BY version DESC LIMIT 1', [agentRow.group_id]);
+          if (grp) effective = deepMerge(effective, JSON.parse(grp.data || '{}'));
+        }
+        // agent
+        const ag = db.one('SELECT * FROM configs WHERE scope="agent" AND ref_id=? ORDER BY version DESC LIMIT 1', [agentRow.id]);
+        if (ag) effective = deepMerge(effective, JSON.parse(ag.data || '{}'));
+
+        // assignment overlay takes precedence if present
+        const ass = db.one('SELECT a.config_id, c.data FROM assignments a JOIN configs c ON a.config_id = c.id WHERE a.agent_id=? ORDER BY effective_version DESC LIMIT 1', [agentRow.id]);
+        if (ass) effective = deepMerge(effective, JSON.parse(ass.data || '{}'));
+
+        const version = Date.now(); // simple monotonic version for pull
+        return { version, data: effective };
+      }
+
+      function effective(req, res) {
+        const { id } = req.params;
+        const agent = db.one('SELECT * FROM agents WHERE id = ? OR name = ?', [id, id]);
+        if (!agent) return res.status(404).json({ error: 'agent not found' });
+        return res.json(getEffective(agent));
+      }
+
+      function pullForAgent(req, res) {
+        const { id } = req.params;
+        const agent = db.one('SELECT * FROM agents WHERE id = ? OR name = ?', [id, id]);
+        if (!agent) return res.status(404).json({ error: 'agent not found' });
+        const eff = getEffective(agent);
+        res.json({ ok: true, ...eff });
+      }
+
+      module.exports = { list, create, assign, effective, pullForAgent };
+
+  - id: "create-llm-runner-controller-updates"
+    description: "Updates service (MVP stub that records request)"
+    op: write_file
+    path: "modular-framework/modules/llm-runner-controller/server/services/updates.js"
+    mode: create_if_missing
+    content: |
+      const crypto = require('crypto');
+      const axios = require('axios');
+      const db = require('./db');
+      const events = require('./events');
+
+      function uuid(){ return crypto.randomUUID(); }
+
+      async function trigger(req, res) {
+        const { id } = req.params;
+        const { target, strategy } = req.body || {};
+        const a = db.one('SELECT * FROM agents WHERE id = ? OR name = ?', [id, id]);
+        if (!a) return res.status(404).json({ error: 'agent not found' });
+        const updId = uuid();
+
+        db.run('INSERT INTO updates (id, agent_id, target, strategy, status, logs) VALUES (?,?,?,?,?,?)',
+          [updId, a.id, target || null, strategy || 'now', 'queued', '']);
+
+        // Best-effort call /update on agent if available
+        try {
+          const r = await axios.post(`${a.url.replace(/\\/+$/, '')}/update`, { target, strategy }, {
+            headers: a.token_plain ? { Authorization: `Bearer ${a.token_plain}` } : {},
+            timeout: 15000
+          });
+          db.run('UPDATE updates SET status=?, logs=?, updated_at=datetime("now") WHERE id=?',
+            ['done', JSON.stringify(r.data || {}), updId]);
+          events.emit('agent.updated', { agent_id: a.id, update_id: updId, status: 'done' });
+        } catch (e) {
+          db.run('UPDATE updates SET status=?, logs=?, updated_at=datetime("now") WHERE id=?',
+            ['error', e.message || 'update failed', updId]);
+        }
+
+        res.json({ ok: true, id: updId });
+      }
+
+      function get(req, res) {
+        const { updId } = req.params;
+        const r = db.one('SELECT * FROM updates WHERE id = ?', [updId]);
+        if (!r) return res.status(404).json({ error: 'not found' });
+        res.json({ id: r.id, agent_id: r.agent_id, target: r.target, strategy: r.strategy, status: r.status, logs: r.logs });
+      }
+
+      module.exports = { trigger, get };
+
+  - id: "create-llm-runner-controller-events"
+    description: "SSE event bus for controller"
+    op: write_file
+    path: "modular-framework/modules/llm-runner-controller/server/services/events.js"
+    mode: create_if_missing
+    content: |
+      const clients = new Set();
+
+      function sse(req, res) {
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+          'Access-Control-Allow-Origin': '*'
+        });
+        res.write('\n');
+        const client = { res };
+        clients.add(client);
+        req.on('close', () => clients.delete(client));
+      }
+
+      function emit(type, payload) {
+        const data = JSON.stringify({ type, payload, ts: new Date().toISOString() });
+        for (const c of clients) {
+          try { c.res.write(`data: ${data}\n\n`); } catch { /* ignore */ }
+        }
+      }
+
+      module.exports = { sse, emit };
+
+  - id: "create-llm-runner-controller-installers"
+    description: "Installer scripts endpoints (docker and systemd)"
+    op: write_file
+    path: "modular-framework/modules/llm-runner-controller/server/services/installers.js"
+    mode: create_if_missing
+    content: |
+      function dockerScript(req, res) {
+        const REG_TOKEN = process.env.RUNNER_REG_TOKEN || '';
+        const server = (req.query.server || process.env.PUBLIC_EDGE_BASE || 'http://localhost:8080').replace(/\\/+$/, '');
+        res.type('text/x-shellscript');
+        res.send(`#!/usr/bin/env bash
+      set -euo pipefail
+
+      # Usage:
+      #   curl -fsSL "${server}/install/runner.sh" | bash -s -- --name myrunner --server ${server} --runner-url http://localhost:4010 --port 4010 --image ghcr.io/modular-framework/runner-agent:latest
+
+      RUNNER_NAME=""
+      SERVER_BASE="${server}"
+      RUNNER_URL=""
+      RUNNER_PORT="4010"
+      RUNNER_TOKEN=""
+      BASE_DIR="/tmp/runner-agent"
+      ALLOW_ENV=""
+      RUNNER_IMAGE="ghcr.io/modular-framework/runner-agent:latest"
+
+      while [[ $# -gt 0 ]]; do
+        case "$1" in
+          --name) RUNNER_NAME="$2"; shift 2;;
+          --server) SERVER_BASE="$2"; shift 2;;
+          --runner-url) RUNNER_URL="$2"; shift 2;;
+          --port) RUNNER_PORT="$2"; shift 2;;
+          --token) RUNNER_TOKEN="$2"; shift 2;;
+          --base-dir) BASE_DIR="$2"; shift 2;;
+          --allow-env) ALLOW_ENV="$2"; shift 2;;
+          --image) RUNNER_IMAGE="$2"; shift 2;;
+          *) echo "Unknown arg: $1"; exit 1;;
+        esac
+      done
+
+      if ! command -v docker >/dev/null 2>&1; then
+        echo "Docker is required on the target machine." >&2
+        exit 1
+      fi
+
+      if [[ -z "\${RUNNER_NAME}" ]]; then
+        RUNNER_NAME="agent-$(hostname)-$(date +%s)"
+      fi
+      if [[ -z "\${RUNNER_TOKEN}" ]]; then
+        RUNNER_TOKEN="$(tr -dc A-Za-z0-9 </dev/urandom | head -c 24)"
+      fi
+      if [[ -z "\${SERVER_BASE}" ]]; then
+        echo "Missing --server (e.g., http://localhost:8080)" >&2
+        exit 1
+      fi
+      if [[ -z "\${RUNNER_URL}" ]]; then
+        RUNNER_URL="http://localhost:\${RUNNER_PORT}"
+      fi
+
+      echo ">>> Starting runner: \${RUNNER_NAME} on port \${RUNNER_PORT}"
+      mkdir -p "\${BASE_DIR}"
+
+      if docker ps -a --format '{{.Names}}' | grep -q "^runner-agent-\${RUNNER_NAME}\$"; then
+        docker rm -f "runner-agent-\${RUNNER_NAME}" >/dev/null 2>&1 || true
+      fi
+
+      docker run -d --name "runner-agent-\${RUNNER_NAME}" --restart unless-stopped \\
+        -p "\${RUNNER_PORT}:4010" \\
+        -e RUNNER_TOKEN="\${RUNNER_TOKEN}" \\
+        -e RUNNER_BASE_DIR="\${BASE_DIR}" \\
+        -e RUNNER_DEFAULT_TIMEOUT_MS="30000" \\
+        -e RUNNER_ALLOW_ENV="\${ALLOW_ENV}" \\
+        -v "\${BASE_DIR}:\${BASE_DIR}" \\
+        "\${RUNNER_IMAGE}"
+
+      echo ">>> Waiting for health..."
+      for i in $(seq 1 30); do
+        if curl -fsS -H "Authorization: Bearer \${RUNNER_TOKEN}" "\${RUNNER_URL}/health" >/dev/null 2>&1; then
+          echo "Runner healthy."
+          break
+        fi
+        sleep 1
+        if [[ "$i" == "30" ]]; then
+          echo "Runner did not become healthy in time." >&2
+          exit 1
+        fi
+      done
+
+      echo ">>> Registering runner in controller..."
+      curl -fsS -X POST \\
+        -H "Authorization: Bearer ${REG_TOKEN}" \\
+        -H "Content-Type: application/json" \\
+        -d '{
+          "name": "'"'\${RUNNER_NAME}'"'",
+          "url": "'"'\${RUNNER_URL}'"'",
+          "token": "'"'\${RUNNER_TOKEN}'"'",
+          "default_cwd": "'"'\${BASE_DIR}'"'"
+        }' "\${SERVER_BASE}/api/llm-runner/agents/register"
+
+      echo ">>> Done. Runner \"\${RUNNER_NAME}\" registered at \${RUNNER_URL}"
+      `);
+      }
+
+      function systemdScript(req, res) {
+        const server = (req.query.server || process.env.PUBLIC_EDGE_BASE || 'http://localhost:8080').replace(/\\/+$/, '');
+        res.type('text/x-shellscript');
+        res.send(`#!/usr/bin/env bash
+      set -euo pipefail
+
+      # This is a placeholder for a systemd installer; customize to your agent implementation.
+      echo "Systemd installer not implemented in MVP. Use Docker installer via ${server}/install/runner.sh"
+      `);
+      }
+
+      module.exports = { dockerScript, systemdScript };
+
+  - id: "patch-edge-nginx-add-cors-origin-llm-runner-controller"
+    description: "Allow llm-runner-controller in CORS origin map"
+    op: patch_text
+    path: "modular-framework/modules/edge-nginx/nginx.conf"
+    patches:
+      - type: insert_after
+        anchor: '    "~^https?://rag-api-module(:[0-9]+)?$"         "$http_origin";'
+        replacement: '    "~^https?://llm-runner-controller(:[0-9]+)?$" "$http_origin";'
+
+  - id: "patch-edge-nginx-add-runner-controller-locations"
+    description: "Add reverse proxy locations for llm-runner-controller API and installers"
+    op: patch_text
+    path: "modular-framework/modules/edge-nginx/nginx.conf"
+    patches:
+      - type: insert_after
+        anchor: "    rewrite ^/llm-workflows(.*)$ /workflows$1 permanent;  # 301 is fine; use 308 if you prefer"
+        replacement: |
+          
+          # --- LLM Runner Controller ---
+          # NEW: /api/llm-runner/ (controller API) and /install/*.sh (installers)
+          location /api/llm-runner/ {
+            proxy_http_version 1.1;
+            proxy_buffering off;
+            proxy_read_timeout 86400;
+            proxy_set_header Host              $host;
+            proxy_set_header X-Real-IP         $remote_addr;
+            proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto https;
+            proxy_set_header X-Request-Id      $request_id;
+
+            add_header 'Access-Control-Allow-Origin'  $cors_origin always;
+            add_header 'Access-Control-Allow-Methods' $cors_methods always;
+            add_header 'Access-Control-Allow-Headers' $cors_headers always;
+            add_header 'Access-Control-Allow-Credentials' 'true' always;
+            if ($request_method = OPTIONS) { return 204; }
+
+            proxy_pass http://llm-runner-controller:4015/api/llm-runner/;
+          }
+
+          location /install/runner.sh {
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_pass http://llm-runner-controller:4015/install/runner.sh;
+          }
+          location /install/systemd.sh {
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_pass http://llm-runner-controller:4015/install/systemd.sh;
+          }
+
+  - id: "update-llm-workflows-runner-client-to-controller"
+    description: "Replace in-memory runnerClient with controller-backed client using INTERNAL_API_TOKEN"
+    op: write_file
+    path: "modular-framework/modules/llm-workflows/server/runnerClient.js"
+    mode: overwrite
+    content: |
+      // runnerClient.js -> delegate to llm-runner-controller
+      const axios = require('axios');
+      const { logWarn, logError } = require('./logger');
+
+      const BASE = (process.env.RUNNER_CONTROLLER_BASE || 'http://llm-runner-controller:4015/api/llm-runner').replace(/\\/+$/, '');
+      function HDR() {
+        const t = process.env.INTERNAL_API_TOKEN || '';
+        return t ? { Authorization: `Bearer ${t}` } : {};
+      }
+
+      function trim(u){ return String(u||'').replace(/\\/+$/, ''); }
+
+      async function listRunners() {
+        try {
+          const r = await axios.get(`${BASE}/agents`, { headers: HDR(), timeout: 10000 });
+          const items = r.data?.items || [];
+          // never expose token
+          return items.map(a => ({ name: a.name, url: a.url, default_cwd: a.default_cwd }));
+        } catch (e) {
+          logWarn('controller_list_runners_failed', { msg: e.message });
+          return [];
+        }
+      }
+
+      async function getRunner(name) {
+        try {
+          const r = await axios.get(`${BASE}/agents/${encodeURIComponent(name)}`, { headers: HDR(), timeout: 7000 });
+          const a = r.data || null;
+          if (!a) return null;
+          return { name: a.name, url: a.url, default_cwd: a.default_cwd };
+        } catch {
+          return null;
+        }
+      }
+
+      async function upsertRunner({ name, url, token, default_cwd }) {
+        try {
+          const r = await axios.post(`${BASE}/agents`, { name, url: trim(url), token, default_cwd }, { headers: HDR(), timeout: 10000 });
+          const a = r.data?.agent || {};
+          return { name: a.name, url: a.url, default_cwd: a.default_cwd };
+        } catch (e) {
+          logError('controller_upsert_runner_failed', { msg: e.message });
+          throw e;
+        }
+      }
+
+      async function removeRunner(name) {
+        try {
+          await axios.delete(`${BASE}/agents/${encodeURIComponent(name)}`, { headers: HDR(), timeout: 10000 });
+        } catch (e) {
+          logError('controller_remove_runner_failed', { msg: e.message });
+        }
+      }
+
+      async function pingRunner(name) {
+        try {
+          const r = await axios.get(`${BASE}/agents/${encodeURIComponent(name)}/health`, { headers: HDR(), timeout: 7000 });
+          return r.data;
+        } catch (e) {
+          const status = e?.response?.status || 0;
+          const msg = e?.response?.data?.error || e.message;
+          logWarn('controller_ping_runner_failed', { name, status, msg });
+          return { ok: false, error: msg };
+        }
+      }
+
+      async function execRemote({ target, kind, code, cwd, env, timeoutMs }) {
+        try {
+          const body = (kind === 'bash')
+            ? { type:'bash', cmd: code, cwd, env, timeoutMs }
+            : { type:'python', script: code, cwd, env, timeoutMs };
+          const r = await axios.post(`${BASE}/agents/${encodeURIComponent(target)}/exec`, body, { headers: HDR(), timeout: Math.max(4000, Number(timeoutMs || 20000) + 5000) });
+          return r.data;
+        } catch (e) {
+          const status = e?.response?.status || 0;
+          const msg = e?.response?.data?.error || e.message;
+          logError('controller_exec_failed', { target, status, msg });
+          throw new Error(msg);
+        }
+      }
+
+      module.exports = { listRunners, getRunner, pingRunner, execRemote, upsertRunner, removeRunner };
+
+  - id: "patch-llm-workflows-dockerfile-add-controller-base"
+    description: "Add RUNNER_CONTROLLER_BASE env to llm-workflows Dockerfile for controller integration"
+    op: patch_text
+    path: "modular-framework/modules/llm-workflows/Dockerfile"
+    patches:
+      - type: insert_after
+        anchor: "ENV RUNNER_REG_TOKEN=supersecret"
+        replacement: "ENV RUNNER_CONTROLLER_BASE=http://llm-runner-controller:4015/api/llm-runner"
+
+  - id: "readme-runner-controller"
+    description: "Add minimal README for llm-runner-controller module"
+    op: write_file
+    path: "modular-framework/modules/llm-runner-controller/README.md"
+    mode: create_if_missing
+    content: |
+      # llm-runner-controller
+
+      A standalone Runner Controller that manages a fleet of runner-agents:
+      - Agent registry & discovery
+      - Health monitoring
+      - Exec proxy with audit (runs table)
+      - Layered config skeleton (global/group/agent)
+      - Updates stub (/agents/:id/update)
+      - SSE events (/api/llm-runner/events)
+      - Installer endpoints (/install/runner.sh, /install/systemd.sh)
+
+      Environment:
+      - PORT=4015
+      - INTERNAL_API_TOKEN=...
+      - RUNNER_REG_TOKEN=...
+      - DB_URL=sqlite:///app/data/runner.db
+      - HEALTH_INTERVAL_SEC=15
+      - EXEC_MAX_TIMEOUT_MS=300000
+
+      Endpoints base: /api/llm-runner/
+
+      Notes:
+      - MVP stores agent token in token_plain for proxying; do not expose it via API. Replace with encrypted-at-rest in production.
+      - Events and updates are basic; extend as needed.

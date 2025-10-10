@@ -1,0 +1,104 @@
+{
+  "version": "1.0",
+  "backup": true,
+  "changes": [
+    {
+      "op": "patch_text",
+      "id": "fix-inline-renderSteps-destructure",
+      "description": "Fix off-by-one destructuring so Edit/Remove buttons bind correctly and renderSteps doesn't crash",
+      "path": "modular-framework/modules/llm-workflows/public/index.html",
+      "patches": [
+        {
+          "type": "replace_literal",
+          "match": "const [_, bUp, bDown, bEdit, bRm] = row.querySelectorAll('button');",
+          "replacement": "const [bUp, bDown, bEdit, bRm] = row.querySelectorAll('button');",
+          "count": 1
+        }
+      ]
+    },
+    {
+        "op": "patch_text",
+        "id": "retry-auth-runCurrent",
+        "description": "Prompt for INTERNAL_API_TOKEN and retry once on 401 for Run workflow action",
+        "path": "modular-framework/modules/llm-workflows/public/index.html",
+        "patches": [
+        {
+            "type": "insert_before",
+            "anchor": "    const data = await resp.json();",
+            "replacement": "\n    if (resp.status === 401) {\n      // Prompt for internal API token and retry once\n      promptSetToken();\n      updateTokenUi();\n      const resp2 = await fetch(`./api/workflows/${wf.id}/run`, {\n        method: 'POST',\n        headers: authHeaders({ 'Content-Type': 'application/json' }),\n        body: JSON.stringify({ vars })\n      });\n      const data2 = await resp2.json();\n      if (!resp2.ok) {\n        toast('Run failed: ' + (data2.error || resp2.statusText));\n        return;\n      }\n      renderRunResult(data2);\n      await loadRuns();\n      return;\n    }\n",
+            "count": 1
+        }
+      ]
+    },
+    {
+        "op": "patch_text",
+        "id": "retry-auth-testStep",
+        "description": "Prompt for INTERNAL_API_TOKEN and retry once on 401 for Test Step action",
+        "path": "modular-framework/modules/llm-workflows/public/index.html",
+        "patches": [
+            {
+            "type": "insert_before",
+            "anchor": "    const data = await resp.json();",
+            "replacement": "\n    if (resp.status === 401) {\n      // Prompt for internal API token and retry once\n      promptSetToken();\n      updateTokenUi();\n      const resp2 = await fetch('./api/testStep', {\n        method: 'POST',\n        headers: authHeaders({ 'Content-Type': 'application/json' }),\n        body: JSON.stringify({\n          chat: wf.chat,\n          step,\n          vars,\n          execute: $('execInTest')?.checked === true\n        })\n      });\n      const data2 = await resp2.json();\n      if (!resp2.ok) {\n        toast('Step test failed: ' + (data2.error || resp2.statusText));\n        renderStepTestResult({ ok:false, error: data2.error || 'HTTP error', raw: data2.errorText || '' });\n        return;\n      }\n      renderStepTestResult(data2);\n      return;\n    }\n",
+            "count": 1
+            }
+        ]
+    },
+    {
+      "op": "delete_path",
+      "id": "remove-legacy-temp-js",
+      "description": "Remove overlapping legacy client scripts to prevent confusion and mismatched implementations (keep single inline implementation)",
+      "path": "modular-framework/modules/llm-workflows/public/js/_temp",
+      "recursive": false,
+      "if_absent": "skip"
+    },
+    {
+      "op": "delete_path",
+      "id": "remove-legacy-api-js",
+      "description": "Remove unused API helper with mismatched shapes",
+      "path": "modular-framework/modules/llm-workflows/public/js/api.js",
+      "recursive": false,
+      "if_absent": "skip"
+    },
+    {
+      "op": "delete_path",
+      "id": "remove-legacy-index-page-js",
+      "description": "Remove alternate page logic to avoid double-binding and API mismatch",
+      "path": "modular-framework/modules/llm-workflows/public/js/index.page.js",
+      "recursive": false,
+      "if_absent": "skip"
+    },
+    {
+      "op": "delete_path",
+      "id": "remove-legacy-sse-js",
+      "description": "Remove unused SSE parser in public bundle (not referenced by inline UI)",
+      "path": "modular-framework/modules/llm-workflows/public/js/sse.js",
+      "recursive": false,
+      "if_absent": "skip"
+    },
+    {
+      "op": "delete_path",
+      "id": "remove-legacy-workflows-page-js",
+      "description": "Remove second workflows page implementation",
+      "path": "modular-framework/modules/llm-workflows/public/js/workflows.page.js",
+      "recursive": false,
+      "if_absent": "skip"
+    },
+    {
+      "op": "delete_path",
+      "id": "remove-legacy-workflows-run-js",
+      "description": "Remove old run logic not used by current inline UI",
+      "path": "modular-framework/modules/llm-workflows/public/js/workflows.run.js",
+      "recursive": false,
+      "if_absent": "skip"
+    },
+    {
+      "op": "delete_path",
+      "id": "remove-legacy-workflows-store-js",
+      "description": "Remove legacy store with different API shapes",
+      "path": "modular-framework/modules/llm-workflows/public/js/workflows.store.js",
+      "recursive": false,
+      "if_absent": "skip"
+    }
+  ]
+}
