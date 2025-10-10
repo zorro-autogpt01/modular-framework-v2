@@ -2,23 +2,14 @@ const $ = (id)=>document.getElementById(id);
 const isSide = new URLSearchParams(location.search).get('embed') === 'side';
 
 // Figure out the module base (works standalone and when proxied)
-// Examples:
-//  - http://host:3005/ui/           -> API = /api
-//  - http://host:3005/              -> API = /api
-//  - http://framework/api/v1/github/ui/ -> API = /api/v1/github/api
-//  - http://framework/api/v1/github/    -> API = /api/v1/github/api
 const API = (() => {
   const p = location.pathname;
-
-  // If we’re under /.../ui/..., strip the /ui part
-  const idx = p.indexOf('/ui/');
-  if (idx !== -1) return p.slice(0, idx) + '/api';
-
-  // If we’re already under a proxied prefix like /api/v1/github/...
-  const m = p.match(/^(.*?\/api\/github-hub)(?:\/|$)/);
+  // When served under a gateway like /api/v1/github/ui, anchor API at /api/v1/github/api
+  // When served standalone at /ui, anchor API at /api
+  const uiIdx = p.indexOf('/ui/');
+  if (uiIdx !== -1) return p.slice(0, uiIdx) + '/api';
+  const m = p.match(/^(.*?\/api\/v1\/github)(?:\/|$)/);
   if (m) return `${m[1]}/api`;
-
-  // Standalone (served from module root)
   return '/api';
 })();
 
@@ -33,34 +24,59 @@ let EDITING_CONN = null;
 function slugify(s){
   return (s||'').toLowerCase()
     .replace(/https?:\/\/github\.com\//,'')
-    .replace(/[^\w\-]+/g,'-')
+    .replace(/[^a-z0-9\-_.]+/g,'-')
     .replace(/-+/g,'-')
     .replace(/^-|-$/g,'');
+}
+
+function isHttpUrl(u){
+  return typeof u === 'string' && (u.startsWith('http://') || u.startsWith('https://'));
+}
+
+function looksLikeRepoUrl(u){
+  if (!u || typeof u !== 'string') return false;
+  const s = u.trim();
+  if (s.startsWith('git@') && s.includes(':')) return true;
+  if (isHttpUrl(s) && s.split('/').filter(Boolean).length >= 4) return true; // scheme + host + owner + repo
+  return false;
+}
+
+function validateConnInput({ id, repo_url, base_url, token }){
+  const errs = [];
+  if (id && !/^[a-z0-9._\-]{1,128}$/.test(id)) errs.push('ID must be a slug (lowercase letters, numbers, . _ -)');
+  if (!looksLikeRepoUrl(repo_url)) errs.push('Repo URL must be https://.../owner/repo or git@host:owner/repo');
+  if (base_url && !isHttpUrl(base_url)) errs.push('Base API URL must start with http:// or https://');
+  if (token && token.length < 20) errs.push('Token looks too short');
+  return errs;
+}
+
+async function testConnectionPayload(payload){
+  // Note: do not attach conn_id to validation endpoint
+  const res = await api('/connections/validate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ repo_url: payload.repo_url, base_url: payload.base_url, token: payload.token || undefined })
+  }, { noConn: true });
+  return res;
 }
 
 async function getEncoder() {
   if (!_encPromise) {
     _encPromise = (async () => {
       try {
-        // Try the lite ESM first
         const { Tiktoken } = await import('https://cdn.jsdelivr.net/npm/js-tiktoken@1.0.21/lite.js');
-
-        // Prefer a local copy (add one later if you like), else fall back to CDN JSON
-        // Local (optional): place o200k_base.json under /public/js/tiktoken/
         let ranksRes;
         try {
           ranksRes = await fetch('./js/tiktoken/o200k_base.json', { cache: 'force-cache' });
           if (!ranksRes.ok) throw new Error('local ranks missing');
         } catch {
-          // CDN fallback
           ranksRes = await fetch('https://tiktoken.pages.dev/js/o200k_base.json', { cache: 'force-cache' });
         }
-
         const ranks = await ranksRes.json();
         return new Tiktoken(ranks);
       } catch (e) {
         console.warn('[github-hub] Tokenizer unavailable, using approximation:', e);
-        return null; // signal fallback
+        return null;
       }
     })();
   }
@@ -73,7 +89,6 @@ async function countTokensFor(text) {
     try { return enc.encode(text).length; }
     catch (e) { console.warn('[github-hub] encode failed, approx fallback:', e); }
   }
-  // Approx fallback: ~4 chars per token (rough heuristic)
   return Math.ceil(text.length / 4);
 }
 
@@ -91,22 +106,18 @@ async function getFileContent(path, branch) {
 async function buildClipboardText(paths, branch) {
   const parts = [];
   for (const p of paths) {
-    const name = p.split('/').pop() || p;
-    parts.push(`# ${p}\n`);                       // header for this file
+    parts.push(`# ${p}\n`);
     const content = await getFileContent(p, branch);
     parts.push(content.endsWith('\n') ? content : content + '\n');
-    // optional extra blank line between files (comment out if undesired)
     parts.push('\n');
   }
   return parts.join('');
 }
 
-
 let ACTIVE_CONN = null;   // current connection id (null => default)
 const endpointProbeCache = new Map();
 
 async function hasEndpoint(path) {
-  // checks for 2xx/3xx, caches per path
   if (endpointProbeCache.has(path)) return endpointProbeCache.get(path);
   try {
     const r = await fetch(`${API}${path}`, { method: 'OPTIONS' });
@@ -119,28 +130,32 @@ async function hasEndpoint(path) {
   }
 }
 
-async function api(path, init) {
-  // Build absolute URL so we can mutate search params safely
+async function api(path, init, opts) {
   const url = new URL(`${API}${path}`, location.origin);
-
-  // If the caller already set conn_id explicitly, respect it. Otherwise inject ACTIVE_CONN.
-  if (ACTIVE_CONN && !url.searchParams.has('conn_id')) {
+  const noConn = opts?.noConn || false;
+  if (!noConn && ACTIVE_CONN && !url.searchParams.has('conn_id')) {
     url.searchParams.set('conn_id', ACTIVE_CONN);
   }
-
   const headers = { ...(init?.headers || {}), 'X-Requested-With': 'github-hub' };
-  if (ACTIVE_CONN) headers['X-GH-Conn'] = ACTIVE_CONN;
+  if (!noConn && ACTIVE_CONN) headers['X-GH-Conn'] = ACTIVE_CONN;
 
   const res = await fetch(url.toString(), { ...init, headers });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  if (!res.ok) {
+    let errText = '';
+    try { errText = await res.text(); } catch {}
+    // Surface server-provided details if any
+    throw new Error(errText || `HTTP ${res.status}`);
+  }
+  const ct = res.headers.get('content-type') || '';
+  if (ct.includes('application/json')) return res.json();
+  const t = await res.text();
+  try { return JSON.parse(t); } catch { return { ok: true, raw: t }; }
 }
 
 async function loadConnections() {
   const sel = $('connSelect');
   const manageBtn = $('manageConnsBtn');
 
-  // Try new multi-conn endpoint first
   let multi = false;
   try {
     const r = await api('/connections');
@@ -157,34 +172,41 @@ async function loadConnections() {
 
     manageBtn.disabled = false;
     HAS_MULTI = true;
-   const active = conns.find(c => c.id === (ACTIVE_CONN || def)) || conns[0];
-   if (active) {
-     $('repoUrl').value = (active.repo_url || '').replace(/\/+$/,'');
-     $('baseUrl').value = active.base_url || 'https://api.github.com';
-   }
+    const active = conns.find(c => c.id === (ACTIVE_CONN || def)) || conns[0];
+    if (active) {
+      $('repoUrl').value = (active.repo_url || '').replace(/\/+$/,'');
+      $('baseUrl').value = active.base_url || 'https://api.github.com';
+    }
     multi = true;
   } catch {
-    // Fallback to legacy single-connection config
-    const c = await api('/config');
-    sel.innerHTML = '';
-    const o = new Option((c.repo_url || 'Default').replace(/\/+$/,''), 'default');
-    sel.appendChild(o);
-    ACTIVE_CONN = null;            // legacy: no conn_id
-    sel.value = 'default';
-    manageBtn.disabled = true;     // disable manager when backend lacks it
-    HAS_MULTI = false;
-  }
+    // Fallback single-connection mode
+    try {
+      const c = await api('/config', undefined, { noConn: true });
+      const defId = c.default_id || c.defaultId || null;
+      const d = (c.connections || []).find(x => x.id === defId) || (c.connections || [])[0] || {};
+      $('repoUrl').value = (d.repo_url || c.repo_url || '').replace(/\/+$/,'');
+      $('baseUrl').value = d.base_url || c.base_url || 'https://api.github.com';
 
-  // show/hide manage button
+      sel.innerHTML = '';
+      const o = new Option((d.name || d.id || d.repo_url || 'Default').replace(/\/+$/,''), 'default');
+      sel.appendChild(o);
+      ACTIVE_CONN = null;
+      sel.value = 'default';
+      manageBtn.disabled = true;
+      HAS_MULTI = false;
+    } catch (e) {
+      console.warn(e);
+    }
+  }
   if (!multi) manageBtn.classList.add('hidden'); else manageBtn.classList.remove('hidden');
 }
 
 function toast(msg, ok = true) {
-  const t = $('toast'); if (!t) return;
+  const t = $('toast'); if (!t) { alert(msg); return; }
   t.textContent = msg;
   t.style.borderColor = ok ? '#2d7d46' : '#a1260d';
   t.classList.add('show');
-  setTimeout(()=> t.classList.remove('show'), 2000);
+  setTimeout(()=> t.classList.remove('show'), 2200);
 }
 
 function openModal(id){ $(id)?.classList.add('show'); }
@@ -205,11 +227,12 @@ async function openConnManager() {
 
     box.innerHTML = list.map(c => {
       const isDef = c.id === def;
+      const bcount = (c.branches || []).length;
       return `
         <div class="item" style="display:flex;gap:8px;align-items:center;justify-content:space-between;border:1px solid var(--line);border-radius:6px;padding:6px 8px;margin:6px 0">
           <div>
             <strong>${c.name || c.id}</strong>
-            <div class="muted">${(c.repo_url||'').replace(/\/+$/,'')} • ${c.default_branch || 'main'}</div>
+            <div class="muted">${(c.repo_url||'').replace(/\/+$/,'')} • ${c.default_branch || 'main'} • ${bcount} branches</div>
           </div>
           <div>
             <button class="ghost" data-default="${c.id}" ${isDef?'disabled':''}>${isDef?'Default':'Make default'}</button>
@@ -219,10 +242,14 @@ async function openConnManager() {
         </div>`;
     }).join('');
 
-    // wire actions
     box.querySelectorAll('button[data-default]')?.forEach(b => b.onclick = async () => {
       const id = b.getAttribute('data-default');
-      try { await api(`/connections/${encodeURIComponent(id)}/default`, { method:'POST' });await api(`/connections/${encodeURIComponent(id)}/default`, { method:'PUT' }); toast('Default updated'); await loadConnections(); await openConnManager(); } catch(e){ toast(e.message,false); }
+      try {
+        await api(`/connections/${encodeURIComponent(id)}/default`, { method:'POST' });
+        await api(`/connections/${encodeURIComponent(id)}/default`, { method:'PUT' });
+        toast('Default updated');
+        await loadConnections(); await openConnManager();
+      } catch(e){ toast(e.message,false); }
     });
     box.querySelectorAll('button[data-del]')?.forEach(b => b.onclick = async () => {
       const id = b.getAttribute('data-del');
@@ -239,7 +266,7 @@ async function openConnManager() {
       $('mRepo').value = c.repo_url || '';
       $('mBranch').value = c.default_branch || 'main';
       $('mBase').value = c.base_url || 'https://api.github.com';
-      $('mTok').value = ''; // never prefill token
+      $('mTok').value = '';
     });
 
     openModal('connModal');
@@ -248,53 +275,78 @@ async function openConnManager() {
   }
 }
 
-
-
 export async function loadConfig(){
   try{
-    const c = await api("/config");
-    $('repoUrl').value = c.repo_url || '';
-    $('baseUrl').value = c.base_url || 'https://api.github.com';
-    //await loadBranches();
+    const c = await api('/config', undefined, { noConn: true });
+    const defId = c.default_id || c.defaultId || null;
+    const d = (c.connections || []).find(x => x.id === defId) || (c.connections || [])[0] || {};
+    $('repoUrl').value = (d.repo_url || c.repo_url || '').replace(/\/+$/,'');
+    $('baseUrl').value = d.base_url || c.base_url || 'https://api.github.com';
   }catch(e){ console.warn(e); }
+}
+
+async function testCurrentConfig(){
+  const payload = {
+    repo_url: $('repoUrl').value.trim(),
+    base_url: $('baseUrl').value.trim() || 'https://api.github.com',
+    token: $('token').value.trim() || undefined
+  };
+  const errs = validateConnInput({ id: 'tmp', ...payload });
+  if (errs.length) { toast(errs[0], false); return; }
+  try {
+    const res = await testConnectionPayload(payload);
+    toast(`OK • ${res.branches?.length || 0} branches`);
+    await loadBranches(res.branches);
+  } catch (e) {
+    toast(e.message, false);
+  }
 }
 
 export async function saveConfig(){
   const repo_url = $('repoUrl').value.trim();
-  const default_branch = $('branchSelect').value || 'main';
+  const default_branch = $('branchSelect').value || '';
   const base_url = $('baseUrl').value.trim() || 'https://api.github.com';
   const token = $('token').value.trim();
 
+  const id = HAS_MULTI ? (ACTIVE_CONN || slugify(repo_url) || 'default') : 'default';
+  const payload = { id, repo_url, default_branch: default_branch || undefined, base_url, token: token || undefined };
+  const errs = validateConnInput(payload);
+  if (errs.length) { toast(errs[0], false); return; }
+
+  // Test before saving
+  try {
+    const testRes = await testConnectionPayload({ repo_url, base_url, token });
+    if (!payload.default_branch) payload.default_branch = testRes.default_branch || 'main';
+  } catch (e) {
+    toast(`Validation failed: ${e.message}`, false);
+    return;
+  }
+
   if (HAS_MULTI) {
-    const id = ACTIVE_CONN || slugify(repo_url) || 'default';
-    const b = { id, repo_url, default_branch, base_url };
-    if (token) b.token = token;
-    await api('/connections', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(b) });
+    await api('/connections', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
     toast('Connection saved');
+    $('token').value = '';
     await loadConnections();
   } else {
-    await api('/config', { method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ repo_url, default_branch, base_url, token: token || undefined })
-    });
+    await api('/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ repo_url, default_branch: payload.default_branch, base_url, token: token || undefined }) }, { noConn: true });
   }
-  $('token').value = '';
   await loadBranches();
   await loadTree();
 }
 
-export async function loadBranches(){
+export async function loadBranches(prefetched = null){
   const sel = $('branchSelect');
   sel.innerHTML = '';
   try{
-    const b = await api("/branches");
+    const b = prefetched ? { branches: prefetched } : await api('/branches');
     const names = Array.from(new Set((b.branches||[])));
+    if (!names.length) throw new Error('No branches');
     names.forEach(name=>{
       const o = document.createElement('option');
       o.value = o.textContent = name;
       sel.appendChild(o);
     });
   }catch(e){
-    // fallback options
     ['main','master'].forEach(n=>{
       const o = document.createElement('option');
       o.value = o.textContent = n;
@@ -302,7 +354,6 @@ export async function loadBranches(){
     });
   }
 }
-
 
 let currentFile = null;
 let currentSha  = null;
@@ -341,12 +392,10 @@ function matchFilter(path, value) {
 function applyFilter(){
   const treeEl = $('tree'); const q = $('filterInput')?.value || '';
   if (!treeEl) return;
-  // toggle files
   treeEl.querySelectorAll('li.file').forEach(li=>{
     const p = li.dataset.path || '';
     li.style.display = matchFilter(p, q) ? '' : 'none';
   });
-  // toggle directories with no visible children
   treeEl.querySelectorAll('li.dir').forEach(li=>{
     const hasVisible = li.querySelector(':scope li.file:not([style*="display: none"])') ||
                        li.querySelector(':scope li.dir:not([style*="display: none"])');
@@ -378,7 +427,6 @@ async function createPR(){
   }
 }
 
-
 // -------- Tree (collapsed by default, folder-select selects all descendants) ----------
 export async function loadTree(){
   const treeEl = $('tree');
@@ -389,7 +437,6 @@ export async function loadTree(){
     const t = await api(`/tree?branch=${encodeURIComponent(branch)}&recursive=true`);
     const items = (t.items||[]).filter(i => i.type==='blob' || i.type==='tree');
 
-    // Build nested structure (no fake root row)
     function makeNode(name, type, fullPath){
       return { name, type, path: fullPath, children: new Map() };
     }
@@ -423,7 +470,7 @@ export async function loadTree(){
         return li;
       } else {
         const li = document.createElement('li');
-        li.className = 'dir collapsed'; /* collapsed by default */
+        li.className = 'dir collapsed';
         li.dataset.path = node.path;
         const label = node.name || '';
         li.innerHTML = `
@@ -458,9 +505,7 @@ export async function loadTree(){
     treeEl.innerHTML = '';
     treeEl.appendChild(ulRoot);
 
-    // --- Delegated handlers (set once per render using .onclick/.onchange) ---
     treeEl.onclick = async (e)=>{
-      // Expand/collapse on folder twisty/name
       const twisty = e.target.closest('.twisty');
       const name = e.target.closest('.name');
       const dirLi = (twisty || name) ? (twisty||name).closest('li.dir') : null;
@@ -469,8 +514,6 @@ export async function loadTree(){
         dirLi.classList.toggle('open');
         return;
       }
-
-      // File click => open or emit
       const a = e.target.closest('a[data-file]');
       if (a) {
         e.preventDefault();
@@ -511,7 +554,6 @@ export async function loadTree(){
       return Array.from(treeEl.querySelectorAll('li.file input.sel:checked')).map(cb => cb.dataset.path);
     }
 
-    /** Recompute token count for the EXACT text that will be copied */
     async function recalcTokensUI() {
       if (!tokenCountChip || !copyBtn) return;
       const files = collectSelectedFiles();
@@ -524,7 +566,7 @@ export async function loadTree(){
       }
 
       copyBtn.disabled = false;
-      tokenCountChip.textContent = '…'; // show work in progress
+      tokenCountChip.textContent = '…';
       try {
         const text = await buildClipboardText(files, branch);
         const n = await countTokensFor(text);
@@ -544,7 +586,6 @@ export async function loadTree(){
           '*'
         );
       }
-      // keep tokens in sync
       recalcTokensUI();
     }
 
@@ -559,7 +600,6 @@ export async function loadTree(){
       updateSelectionBadgeAndEmit();
     };
 
-    // Copy to clipboard with headers
     copyBtn.onclick = async () => {
       const files = collectSelectedFiles();
       if (files.length === 0) {
@@ -575,7 +615,6 @@ export async function loadTree(){
         copyBtn.textContent = 'Copied!';
         setTimeout(() => (copyBtn.textContent = old), 1000);
       } catch {
-        // Fallback for older browsers / HTTP
         const ta = document.createElement('textarea');
         ta.value = text;
         ta.style.position = 'fixed';
@@ -588,11 +627,8 @@ export async function loadTree(){
       }
     };
 
-    // initialize chips on first render
     updateSelectionBadgeAndEmit();
 
-
-    // Expand/Collapse all (overwrite handlers each render to avoid dupes)
     $('expandAllBtn').onclick = ()=>{
       treeEl.querySelectorAll('li.dir').forEach(li=>{
         li.classList.remove('collapsed'); li.classList.add('open');
@@ -617,6 +653,7 @@ function wireUIOnce(){
   _wired = true;
 
   $('saveCfgBtn')?.addEventListener('click', saveConfig);
+  $('testCfgBtn')?.addEventListener('click', testCurrentConfig);
   $('reloadBtn')?.addEventListener('click', loadTree);
   $('saveFileBtn')?.addEventListener('click', saveFile);
   $('branchSelect')?.addEventListener('change', loadTree);
@@ -628,18 +665,43 @@ function wireUIOnce(){
   });
   $('manageConnsBtn')?.addEventListener('click', openConnManager);
   $('closeConnBtn')?.addEventListener('click', ()=> closeModal('connModal'));
-  $('saveConnBtn')?.addEventListener('click', async ()=>{
-  const id = $('mId').value.trim() || EDITING_CONN ||
-             slugify($('mName').value) || slugify($('mRepo').value) ||
-             ('conn-' + Date.now());
-  const body = {
-    id,
+  $('testConnModalBtn')?.addEventListener('click', async ()=>{
+    const id = $('mId').value.trim() || slugify($('mName').value) || slugify($('mRepo').value) || ('conn-' + Date.now());
+    const body = {
+      id,
       name: $('mName').value.trim(),
       repo_url: $('mRepo').value.trim(),
-      default_branch: $('mBranch').value.trim() || 'main',
+      default_branch: $('mBranch').value.trim() || undefined,
       base_url: $('mBase').value.trim() || 'https://api.github.com'
     };
     const tok = $('mTok').value.trim(); if (tok) body.token = tok;
+    const errs = validateConnInput(body);
+    if (errs.length) { toast(errs[0], false); return; }
+    try {
+      const res = await testConnectionPayload({ repo_url: body.repo_url, base_url: body.base_url, token: body.token });
+      toast(`OK • ${res.branches?.length || 0} branches`);
+    } catch(e) {
+      toast(e.message, false);
+    }
+  });
+  $('saveConnBtn')?.addEventListener('click', async ()=>{
+    const id = $('mId').value.trim() || EDITING_CONN || slugify($('mName').value) || slugify($('mRepo').value) || ('conn-' + Date.now());
+    const body = {
+      id,
+      name: $('mName').value.trim(),
+      repo_url: $('mRepo').value.trim(),
+      default_branch: $('mBranch').value.trim() || undefined,
+      base_url: $('mBase').value.trim() || 'https://api.github.com'
+    };
+    const tok = $('mTok').value.trim(); if (tok) body.token = tok;
+    const errs = validateConnInput(body);
+    if (errs.length) { toast(errs[0], false); return; }
+    try {
+      await testConnectionPayload({ repo_url: body.repo_url, base_url: body.base_url, token: body.token });
+    } catch (e) {
+      toast(`Validation failed: ${e.message}`, false);
+      return;
+    }
     try {
       await api('/connections', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
       toast('Connection saved');
@@ -663,10 +725,8 @@ function wireUIOnce(){
 // Init
 window.addEventListener('DOMContentLoaded', async ()=>{
   wireUIOnce();
-  await loadConfig();     // legacy config still supported
-  await loadConnections();// populate connSelect (multi or legacy)
-  await loadBranches();   // uses ACTIVE_CONN via api()
-  await loadTree();       // builds tree
+  await loadConfig();
+  await loadConnections();
+  await loadBranches();
+  await loadTree();
 });
-
-

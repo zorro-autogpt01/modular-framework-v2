@@ -1,5 +1,3 @@
-
-
 <!doctype html>
 <html lang="en">
 <head>
@@ -28,8 +26,8 @@
 
     /* Tree */
     .tree { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px }
-    .tree > ul { list-style:none; margin:0; padding-left:0; }           /* flush-left root */
-    .tree ul ul { list-style:none; margin:0; padding-left: var(--indent); } /* indent only nested */
+    .tree > ul { list-style:none; margin:0; padding-left:0; }
+    .tree ul ul { list-style:none; margin:0; padding-left: var(--indent); }
     .tree li { margin:0; }
     .tree .row {
       display:grid;
@@ -52,9 +50,10 @@
     .tree-tools { display:flex; gap:6px; margin:6px 0 8px; align-items:center; }
     .chip { font-size:11px; color:#bbb; padding:2px 6px; border:1px solid #333; border-radius:999px; }
     button.ghost{background:#2a2c31}
+
+    .hidden { display: none; }
   </style>
   <script>
-    // Apply side mode class early to avoid reflow
     (function () {
       const params = new URLSearchParams(location.search);
       if ((params.get('embed')||'').toLowerCase() === 'side') {
@@ -82,6 +81,7 @@
       <select id="branchSelect"></select>
       <div class="row">
         <button id="saveCfgBtn">Save</button>
+        <button class="ghost" id="testCfgBtn" title="Test connection without saving">Test</button>
         <button class="ghost" id="reloadBtn">Reload</button>
       </div>
       <details>
@@ -102,7 +102,6 @@
       </div>
       <div id="tree" class="tree"></div>
     </div>
-    <!-- Hidden in embed=side -->
     <div class="main">
       <h3>Selected File</h3>
       <div id="fileMeta" class="muted"></div>
@@ -132,28 +131,15 @@
     <div id="connList" class="muted" style="margin:6px 0 10px">Loading…</div>
     <hr/>
 
-    <h4 style="margin:6px 0 8px">Add / Edit</h4>
-    <div class="grid2">
-      <div>
-        <label>Name (display)</label><input id="mName" placeholder="My Repo" />
-        <label>Repo URL</label><input id="mRepo" placeholder="https://github.com/owner/repo" />
-        <label>Default Branch</label><input id="mBranch" value="main" />
-      </div>
-      <div>
-        <label>Base API URL</label><input id="mBase" placeholder="https://api.github.com" />
-        <label>Token (PAT)</label><input id="mTok" placeholder="ghp_..." />
-      </div>
-    </div>
-
     <div class="row">
       <button id="saveConnBtn">Save</button>
+      <button class="ghost" id="testConnModalBtn">Test</button>
       <button class="ghost" id="closeConnBtn">Close</button>
     </div>
     <small class="muted">Tokens are stored encrypted if a key is configured on the server.</small>
   </div>
 </div>
 
-<!-- New PR modal -->
 <div id="prModal" class="modal">
   <div class="box">
     <h3>New Pull Request</h3>

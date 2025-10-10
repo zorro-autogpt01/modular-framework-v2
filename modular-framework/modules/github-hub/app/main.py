@@ -4,18 +4,27 @@ from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, HTTPException, Query, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import RedirectResponse
-from pydantic import BaseModel, Field
+from fastapi.responses import RedirectResponse, JSONResponse
+from pydantic import BaseModel
 from loguru import logger
 from pathlib import Path
+import requests
 
-from .store import (
-    list_connections, get_connection, upsert_connection,
-    delete_connection, set_default, load_all, save_all
-)
-from .github_api import GHClient
+# Support both package and flat module imports
+try:
+    from .store import (
+        list_connections, get_connection, upsert_connection,
+        delete_connection, set_default, load_all, save_all
+    )
+    from .github_api import GHClient
+except ImportError:
+    from store import (
+        list_connections, get_connection, upsert_connection,
+        delete_connection, set_default, load_all, save_all
+    )
+    from github_api import GHClient
 
-app = FastAPI(title="GitHub Hub", version="0.3.0")
+app = FastAPI(title="GitHub Hub", version="0.4.2")
 
 app.add_middleware(
     CORSMiddleware,
@@ -25,6 +34,7 @@ app.add_middleware(
 app.mount("/ui", StaticFiles(directory="public", html=True), name="ui")
 
 # ----- helpers -----
+
 def _client_for_conn(conn: Dict[str, Any]) -> GHClient:
     tok = conn.get("token")
     if not tok:
@@ -37,11 +47,25 @@ def _client_for_conn(conn: Dict[str, Any]) -> GHClient:
     base_url = conn.get("base_url") or os.getenv("GITHUB_API_BASE", "https://api.github.com")
     return GHClient(token=tok, base_url=base_url)
 
+def _client_for_input(token: Optional[str], base_url: Optional[str]) -> GHClient:
+    # Relaxed: allow missing token (unauthenticated validation for public repos)
+    tok = token
+    if not tok:
+        token_file = os.getenv("GITHUB_TOKEN_FILE")
+        if token_file and Path(token_file).exists():
+            tok = Path(token_file).read_text(encoding="utf-8").strip()
+        tok = tok or os.getenv("GITHUB_TOKEN")
+    base = base_url or os.getenv("GITHUB_API_BASE", "https://api.github.com")
+    return GHClient(token=tok or None, base_url=base)
+
 def _owner_repo(conn: Dict[str, Any]) -> tuple[str, str]:
     url = conn.get("repo_url")
     if not url:
         raise HTTPException(400, "Connection has no repo_url.")
-    return GHClient.parse_repo(url)
+    try:
+        return GHClient.parse_repo(url)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 def _resolve_conn(conn_id: Optional[str], x_conn: Optional[str]) -> Dict[str, Any]:
     cid = conn_id or x_conn
@@ -49,6 +73,47 @@ def _resolve_conn(conn_id: Optional[str], x_conn: Optional[str]) -> Dict[str, An
     if not conn:
         raise HTTPException(404, "Connection not found (or default unset).")
     return conn
+
+def _default_branch_from(branches: List[str]) -> str:
+    if not branches:
+        return "main"
+    if "main" in branches:
+        return "main"
+    if "master" in branches:
+        return "master"
+    return branches[0]
+
+def _validate_connection_inputs(repo_url: str, base_url: Optional[str]) -> None:
+    try:
+        GHClient.parse_repo(repo_url)
+    except ValueError as e:
+        raise HTTPException(400, f"Invalid repo_url: {e}")
+    if base_url:
+        base_url = base_url.strip()
+        if not (base_url.startswith("http://") or base_url.startswith("https://")):
+            raise HTTPException(400, "base_url must start with http:// or https://")
+
+def _map_github_error(e: Exception) -> HTTPException:
+    if isinstance(e, requests.HTTPError) and e.response is not None:
+        resp = e.response
+        status = resp.status_code
+        try:
+            data = resp.json()
+            gh_msg = data.get("message")
+        except Exception:
+            gh_msg = resp.text or ""
+        # Rate limit
+        if status == 403 and resp.headers.get("x-ratelimit-remaining") == "0":
+            return HTTPException(429, "GitHub rate limit exceeded (unauthenticated). Add a PAT or wait and retry.")
+        if status in (401,):
+            return HTTPException(401, "GitHub rejected the request (unauthorized). Provide a valid PAT.")
+        if status in (403,):
+            return HTTPException(403, "Forbidden by GitHub: token lacks required scope or no access to repo.")
+        if status in (404,):
+            return HTTPException(404, "Repo not found or no access (private repo?).")
+        return HTTPException(502, f"GitHub error {status}: {gh_msg or 'Unknown error'}")
+    # Fallback
+    return HTTPException(400, f"Validation failed: {e}")
 
 # ----- models -----
 class ConfigLegacyIn(BaseModel):
@@ -84,15 +149,35 @@ class PullRequestIn(BaseModel):
 class ConnectionIn(BaseModel):
     id: str
     repo_url: str
-    default_branch: Optional[str] = "main"
+    default_branch: Optional[str] = None
     base_url: Optional[str] = "https://api.github.com"
     name: Optional[str] = None
+    token: Optional[str] = None
+
+class ConnectionTestIn(BaseModel):
+    repo_url: str
+    base_url: Optional[str] = "https://api.github.com"
     token: Optional[str] = None
 
 # ----- basic -----
 @app.get("/")
 def root():
     return RedirectResponse(url="/ui/")
+
+@app.get("/.well-known/module.json")
+def module_manifest_root():
+    return JSONResponse({
+        "id": "github",
+        "name": "GitHub Hub",
+        "version": app.version if hasattr(app, "version") else "0.4.2",
+        "ui": "/ui/",
+        "api_base": "/api",
+        "health": "/api/health"
+    })
+
+@app.get("/api/.well-known/module.json")
+def module_manifest_api():
+    return module_manifest_root()
 
 @app.get("/api/health")
 def health():
@@ -105,25 +190,43 @@ def api_list_conns():
     st = load_all()
     return {"default_id": st.get("default_id"), "connections": list_connections(redact=True)}
 
+@app.post("/api/connections/validate")
+def api_validate_conn(body: ConnectionTestIn):
+    _validate_connection_inputs(body.repo_url, body.base_url)
+    client = _client_for_input(body.token, body.base_url)
+    try:
+        owner, repo = GHClient.parse_repo(body.repo_url)
+        branches = client.get_branches(owner, repo)
+        return {"ok": True, "branches": branches, "default_branch": _default_branch_from(branches)}
+    except Exception as e:
+        logger.exception("Connection validation failed")
+        raise _map_github_error(e)
+
 @app.post("/api/connections")
 def api_upsert_conn(body: ConnectionIn):
+    _validate_connection_inputs(body.repo_url, body.base_url)
     try:
-        c = upsert_connection(body.model_dump(exclude_unset=True))
-        gh = _client_for_conn(c)
-        owner, repo = _owner_repo(c)
-        branches = gh.get_branches(owner, repo)
-        # persist branches back
+        client = _client_for_input(body.token, body.base_url)
+        owner, repo = GHClient.parse_repo(body.repo_url)
+        branches = client.get_branches(owner, repo)
+    except Exception as e:
+        logger.exception("connection validation failed")
+        raise _map_github_error(e)
+
+    try:
+        upsert_payload = body.model_dump(exclude_unset=True)
+        if not upsert_payload.get("default_branch"):
+            upsert_payload["default_branch"] = _default_branch_from(branches)
+        c = upsert_connection(upsert_payload)
         st = load_all()
         for cc in st["connections"]:
             if cc["id"] == c["id"]:
                 cc["branches"] = branches
-                if body.default_branch:
-                    cc["default_branch"] = body.default_branch
         save_all(st)
-        return {"ok": True, "id": c["id"], "branches": branches}
+        return {"ok": True, "id": c["id"], "branches": branches, "default_branch": upsert_payload["default_branch"]}
     except Exception as e:
-        logger.exception("connection upsert/validate failed")
-        raise HTTPException(400, f"Connection saved but validation failed: {e}")
+        logger.exception("failed to save connection")
+        raise HTTPException(500, f"Failed to save connection: {e}")
 
 @app.delete("/api/connections/{conn_id}")
 def api_delete_conn(conn_id: str):
@@ -146,32 +249,46 @@ def api_conn_health(conn_id: str):
     owner, repo = _owner_repo(conn)
     try:
         branches = gh.get_branches(owner, repo)
+        st = load_all()
+        for cc in st.get("connections", []):
+            if cc.get("id") == conn_id:
+                cc["branches"] = branches
+        save_all(st)
         return {"ok": True, "branches": branches}
     except Exception as e:
-        raise HTTPException(502, f"GitHub failed: {e}")
+        raise _map_github_error(e)
 
 # ----- legacy “config” view (now shows multi-conn) -----
 @app.get("/api/config")
 def get_cfg():
     st = load_all()
-    return {"default_id": st.get("default_id"), "connections": list_connections(redact=True)}
+    default_id = st.get("default_id")
+    conns = list_connections(redact=True)
+    default_conn = next((c for c in conns if c.get("id") == default_id), conns[0] if conns else None)
+    return {
+        "default_id": default_id,
+        "connections": conns,
+        "repo_url": (default_conn or {}).get("repo_url"),
+        "base_url": (default_conn or {}).get("base_url") or "https://api.github.com",
+    }
 
 @app.post("/api/config")
 def legacy_set_cfg(body: ConfigLegacyIn):
-    # Upsert a “default” connection and set it default
+    _validate_connection_inputs(body.repo_url, body.base_url)
+    client = _client_for_input(body.token, body.base_url)
+    owner, repo = GHClient.parse_repo(body.repo_url)
+    branches = client.get_branches(owner, repo)
+
     data = {
         "id": "default",
         "repo_url": body.repo_url,
-        "default_branch": body.default_branch,
+        "default_branch": body.default_branch or _default_branch_from(branches),
         "base_url": body.base_url,
     }
     if body.token:
         data["token"] = body.token
-    c = upsert_connection(data)
+    upsert_connection(data)
     set_default("default")
-    # Validate + persist branches
-    gh = _client_for_conn(c); owner, repo = _owner_repo(c)
-    branches = gh.get_branches(owner, repo)
     st = load_all()
     for cc in st["connections"]:
         if cc["id"] == "default":
@@ -279,7 +396,6 @@ def create_pr(
         logger.exception("Failed to create PR")
         raise HTTPException(400, f"PR creation failed: {e}")
 
-# ---- Nice-to-have “git basics” via GitHub API ----
 @app.get("/api/compare")
 def compare(
     base: str, head: str,

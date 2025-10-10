@@ -138,11 +138,16 @@
             <div class="wf-row">
               <div>
                 <label>GitHub Connection</label>
-                <select id="repoOpsConnId"></select>
+                <div class="horz">
+                  <select id="repoOpsConnId" style="flex:1"></select>
+                  <button class="ghost" id="refreshConnBtn" title="Refresh connections & branches">↻</button>
+                  <button class="ghost" id="testConnBtn" title="Test connection">🔗</button>
+                </div>
               </div>
               <div>
                 <label>Base Branch</label>
-                <input id="repoOpsBaseBranch" value="main" placeholder="main" />
+                <!-- CHANGED: now a real select -->
+                <select id="repoOpsBaseBranch"></select>
               </div>
             </div>
 
@@ -152,7 +157,7 @@
                 <input id="repoOpsHeadBranch" placeholder="feature/{{feature_name}}" />
               </div>
               <div>
-                <label>Language Hints</label>
+                <label>Language Hints <small>(comma-separated)</small></label>
                 <input id="repoOpsLanguageHints" placeholder="ts,tsx,js" />
               </div>
             </div>
@@ -201,7 +206,7 @@
                 </label>
 
                 <div id="repoOpsTestSettings" style="margin-top: 8px; display:none">
-                  <label>Runner</label>
+                  <label>Runner <span id="runnerStatusBadge" class="badge" style="margin-left:8px"></span></label>
                   <select id="repoOpsTestRunner"></select>
                   
                   <label>Test Commands (one per line)</label>
@@ -255,267 +260,6 @@
             <div id="repoOpsTestOutput" style="margin-top: 12px"></div>
           </div>
 
-          <script>
-          // RepoOps UI Integration (self-contained; exposes RepoOpsUI)
-          (function() {
-            let githubConnections = [];
-            let runners = [];
-
-            async function loadGitHubConnections() {
-              try {
-                const GITHUB_HUB_BASE = '/github-hub-module:3002';
-                const resp = await fetch(`${GITHUB_HUB_BASE}/api/connections`, {
-                  headers: authHeaders()
-                });
-                const data = await resp.json();
-                githubConnections = data.connections || [];
-                populateConnectionsDropdown();
-              } catch (e) {
-                console.warn('Failed to load GitHub connections:', e);
-                githubConnections = [];
-                populateConnectionsDropdown();
-              }
-            }
-
-            function populateConnectionsDropdown() {
-              const sel = document.getElementById('repoOpsConnId');
-              if (!sel) return;
-              sel.innerHTML = '';
-              if (!githubConnections.length) {
-                const opt = document.createElement('option');
-                opt.value = '';
-                opt.textContent = '-- No connections available --';
-                sel.appendChild(opt);
-                return;
-              }
-              for (const conn of githubConnections) {
-                const opt = document.createElement('option');
-                opt.value = conn.id;
-                opt.textContent = `${conn.name || conn.id} (${conn.repo_url || 'unknown'})`;
-                sel.appendChild(opt);
-              }
-            }
-
-            async function loadRunners() {
-              try {
-                const resp = await fetch('./api/runners', { headers: authHeaders() });
-                const data = await resp.json();
-                runners = data.runners || [];
-              } catch (e) {
-                console.warn('Failed to load runners:', e);
-                runners = [];
-              }
-              populateRunnersDropdown();
-            }
-
-            function populateRunnersDropdown() {
-              const sel = document.getElementById('repoOpsTestRunner');
-              if (!sel) return;
-              sel.innerHTML = '';
-              for (const r of runners) {
-                const opt = document.createElement('option');
-                opt.value = r.name;
-                opt.textContent = `${r.name} ${r.url ? `(${r.url})` : ''}`;
-                sel.appendChild(opt);
-              }
-            }
-
-            document.getElementById('repoOpsTestEnabled')?.addEventListener('change', (e) => {
-              const settings = document.getElementById('repoOpsTestSettings');
-              if (settings) settings.style.display = e.target.checked ? '' : 'none';
-            });
-
-            function collectRepoOpsConfig() {
-              const allowPaths = (document.getElementById('repoOpsAllowPaths')?.value || '')
-                .split('\n').map(s => s.trim()).filter(Boolean);
-              const denyPaths = (document.getElementById('repoOpsDenyPaths')?.value || '')
-                .split('\n').map(s => s.trim()).filter(Boolean);
-              const languageHints = (document.getElementById('repoOpsLanguageHints')?.value || '')
-                .split(',').map(s => s.trim()).filter(Boolean);
-              const testCommands = (document.getElementById('repoOpsTestCommands')?.value || '')
-                .split('\n').map(s => s.trim()).filter(Boolean);
-
-              return {
-                kind: 'repoops',
-                conn_id: document.getElementById('repoOpsConnId')?.value || '',
-                base_branch: document.getElementById('repoOpsBaseBranch')?.value || 'main',
-                head_branch: document.getElementById('repoOpsHeadBranch')?.value || '',
-                change_request: document.getElementById('repoOpsChangeRequest')?.value || '',
-                allow_paths: allowPaths.length ? allowPaths : undefined,
-                deny_paths: denyPaths.length ? denyPaths : undefined,
-                language_hints: languageHints.length ? languageHints : undefined,
-                llm_model: document.getElementById('repoOpsModel')?.value || 'gpt-4o-mini',
-                temperature: parseFloat(document.getElementById('repoOpsTemperature')?.value || '0.2'),
-                test: {
-                  enabled: document.getElementById('repoOpsTestEnabled')?.checked || false,
-                  runner: document.getElementById('repoOpsTestRunner')?.value || '',
-                  commands: testCommands,
-                  timeoutMs: parseInt(document.getElementById('repoOpsTestTimeout')?.value || '900000')
-                },
-                open_pr: document.getElementById('repoOpsOpenPR')?.checked || false,
-                pr_draft: document.getElementById('repoOpsPRDraft')?.checked || false,
-                require_approval: document.getElementById('repoOpsRequireApproval')?.checked || false,
-                export_pr_url_as: document.getElementById('repoOpsExportPRAs')?.value || '',
-                export_head_branch_as: document.getElementById('repoOpsExportBranchAs')?.value || ''
-              };
-            }
-
-            document.getElementById('repoOpsPlanBtn')?.addEventListener('click', async () => {
-              const config = collectRepoOpsConfig();
-              const vars = parseJson(document.getElementById('varsInput')?.value || '{}', {});
-              const output = document.getElementById('repoOpsTestOutput');
-              output.innerHTML = '<p class="muted">Planning...</p>';
-              try {
-                const resp = await fetch('./api/repoops/plan', {
-                  method: 'POST',
-                  headers: authHeaders({ 'Content-Type': 'application/json' }),
-                  body: JSON.stringify({
-                    conn_id: config.conn_id,
-                    base_branch: config.base_branch,
-                    change_request: renderTemplateClient(config.change_request, vars),
-                    allow_paths: config.allow_paths,
-                    deny_paths: config.deny_paths,
-                    language_hints: config.language_hints,
-                    llm_model: config.llm_model,
-                    temperature: config.temperature
-                  })
-                });
-                const data = await resp.json();
-                if (!resp.ok) {
-                  output.innerHTML = `<div class="error">Plan failed: ${data.error || 'Unknown error'}</div>`;
-                  return;
-                }
-                output.innerHTML = `
-                  <div class="card">
-                    <h4>✅ Plan Generated</h4>
-                    <p><strong>Files selected:</strong> ${data.discovery?.files?.length || 0}</p>
-                    <p><strong>Changes proposed:</strong> ${data.proposed?.changes?.length || 0}</p>
-                    <details>
-                      <summary>Discovery</summary>
-                      <pre class="code">${escapeHtml(JSON.stringify(data.discovery, null, 2))}</pre>
-                    </details>
-                    <details>
-                      <summary>Proposed Changes</summary>
-                      <pre class="code">${escapeHtml(JSON.stringify(data.proposed, null, 2))}</pre>
-                    </details>
-                  </div>
-                `;
-              } catch (e) {
-                output.innerHTML = `<div class="error">Plan failed: ${e.message}</div>`;
-              }
-            });
-
-            document.getElementById('repoOpsTestStepBtn')?.addEventListener('click', async () => {
-              const config = collectRepoOpsConfig();
-              const vars = parseJson(document.getElementById('varsInput')?.value || '{}', {});
-              const output = document.getElementById('repoOpsTestOutput');
-              output.innerHTML = '<p class="muted">Running full RepoOps flow...</p>';
-              try {
-                const headBranch = config.head_branch || `test/${Date.now()}`;
-                const resp = await fetch('./api/repoops/run', {
-                  method: 'POST',
-                  headers: authHeaders({ 'Content-Type': 'application/json' }),
-                  body: JSON.stringify({
-                    conn_id: config.conn_id,
-                    base_branch: config.base_branch,
-                    head_branch: headBranch,
-                    change_request: renderTemplateClient(config.change_request, vars),
-                    allow_paths: config.allow_paths,
-                    deny_paths: config.deny_paths,
-                    language_hints: config.language_hints,
-                    llm_model: config.llm_model,
-                    temperature: config.temperature,
-                    test: config.test,
-                    open_pr: config.open_pr,
-                    pr_draft: config.pr_draft,
-                    require_approval: false
-                  })
-                });
-                const data = await resp.json();
-                if (!resp.ok) {
-                  output.innerHTML = `<div class="error">Run failed: ${data.error || 'Unknown error'}</div>`;
-                  return;
-                }
-                const phases = data.phases || {};
-                output.innerHTML = `
-                  <div class="card">
-                    <h4>${data.status === 'completed' ? '✅' : '⚠️'} ${data.status}</h4>
-                    ${phases.plan ? `<p><strong>Plan:</strong> ${phases.plan.proposed?.changes?.length || 0} changes</p>` : ''}
-                    ${phases.apply ? `<p><strong>Applied:</strong> ${phases.apply.applied} files (commit: ${phases.apply.commit_sha?.slice(0, 8)})</p>` : ''}
-                    ${phases.test ? `<p><strong>Tests:</strong> ${phases.test.ok ? '✅ Passed' : '❌ Failed'}</p>` : ''}
-                    ${phases.pr ? `<p><strong>PR:</strong> <a href="${phases.pr.url}" target="_blank">#${phases.pr.number}</a></p>` : ''}
-                    <details>
-                      <summary>Full Results</summary>
-                      <pre class="code">${escapeHtml(JSON.stringify(data, null, 2))}</pre>
-                    </details>
-                  </div>
-                `;
-              } catch (e) {
-                output.innerHTML = `<div class="error">Run failed: ${e.message}</div>`;
-              }
-            });
-
-            function renderTemplateClient(tpl, vars) {
-              return (tpl || '').replace(/\{\{\s*([\w.\-]+)\s*\}\}/g, (_m, k) => {
-                const parts = k.split('.');
-                let cur = vars;
-                for (const p of parts) {
-                  if (cur && typeof cur === 'object' && p in cur) cur = cur[p];
-                  else return '';
-                }
-                return (cur === undefined || cur === null) ? '' : String(cur);
-              });
-            }
-
-            if (document.readyState === 'loading') {
-              document.addEventListener('DOMContentLoaded', () => {
-                loadGitHubConnections();
-                loadRunners();
-              });
-            } else {
-              loadGitHubConnections();
-              loadRunners();
-            }
-
-            window.RepoOpsUI = {
-              loadConnections: loadGitHubConnections,
-              loadRunners,
-              collectConfig: collectRepoOpsConfig
-            };
-          })();
-          </script>
-
-          <style>
-          /* RepoOps-specific styles */
-          #repoOpsEditor details {
-            background: #1a1a1a;
-            border: 1px solid #3e3e42;
-            border-radius: 6px;
-            padding: 8px;
-          }
-          #repoOpsEditor details summary {
-            cursor: pointer;
-            font-weight: 600;
-            padding: 4px;
-          }
-          #repoOpsEditor details[open] summary {
-            border-bottom: 1px solid #3e3e42;
-            margin-bottom: 8px;
-            padding-bottom: 8px;
-          }
-          #repoOpsTestOutput .card {
-            background: #1a1a1a;
-            margin-top: 8px;
-          }
-          #repoOpsTestOutput .error {
-            background: #3a1a1a;
-            border: 1px solid #a1260d;
-            border-radius: 6px;
-            padding: 8px;
-            color: #f48771;
-          }
-          </style>
-
           <div class="wf-row">
             <div>
               <label>Export path</label>
@@ -560,7 +304,7 @@
                 <div id="sModelInfo" class="muted small"></div>
               </div>
               <div>
-                <label>Runner Target</label>
+                <label>Runner Target <span id="stepRunnerBadge" class="badge" style="margin-left:8px"></span></label>
                 <div class="horz">
                   <select id="sTarget" style="flex:1"></select>
                   <button class="ghost" id="refreshRunnersBtn">↻</button>
@@ -631,8 +375,44 @@
     </div>
   </section>
 
+  <style>
+  /* RepoOps-specific styles */
+  #repoOpsEditor details {
+    background: #1a1a1a;
+    border: 1px solid #3e3e42;
+    border-radius: 6px;
+    padding: 8px;
+  }
+  #repoOpsEditor details summary {
+    cursor: pointer;
+    font-weight: 600;
+    padding: 4px;
+  }
+  #repoOpsEditor details[open] summary {
+    border-bottom: 1px solid #3e3e42;
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+  }
+  #repoOpsTestOutput .card {
+    background: #1a1a1a;
+    margin-top: 8px;
+  }
+  #repoOpsTestOutput .error {
+    background: #3a1a1a;
+    border: 1px solid #a1260d;
+    border-radius: 6px;
+    padding: 8px;
+    color: #f48771;
+  }
+  .badge.healthy { background: #2d7d46; }
+  .badge.unhealthy { background: #a1260d; }
+  .badge.unknown { background: #5a5a5a; }
+  </style>
+
   <script>
-// Core app state
+/* =========================
+   Core app state & helpers
+   ========================= */
 const state = {
   workflows: [],
   current: null,
@@ -642,6 +422,8 @@ const state = {
   templates: [],
   runners: []
 };
+
+const REPOOPS_BASE = '/api/repoops';
 
 const INTERNAL_TOKEN_KEY = 'internal_api_token';
 function authHeaders(h = {}) {
@@ -672,7 +454,7 @@ function promptSetToken() {
   const next = prompt('Enter INTERNAL_API_TOKEN:', cur);
   if (next != null) {
     if (next.trim()) localStorage.setItem(INTERNAL_TOKEN_KEY, next.trim());
-    else localStorage.removeItem(INTERNAL_API_TOKEN);
+    else localStorage.removeItem(INTERNAL_TOKEN_KEY);
   }
   updateTokenUi();
 }
@@ -702,7 +484,9 @@ function buildSystemGuard(schema) {
   ].join('\n');
 }
 
-// Gateway models
+/* =========================
+   Gateway models
+   ========================= */
 async function fetchGatewayModels() {
   try {
     const r = await fetch('./api/llm-models', { credentials: 'include' });
@@ -781,37 +565,106 @@ function onModelSelectChanged(isStep = false) {
   if (infoEl) infoEl.textContent = val ? `${prov} · ${base}` : '';
 }
 
-// Runners
+/* =========================
+   Runners
+   ========================= */
 async function fetchRunners() {
   try {
     const r = await fetch('./api/runners', { headers: authHeaders() });
     const data = await r.json();
     state.runners = data.runners || [];
+    
+    // Health check runners
+    for (const runner of state.runners) {
+      try {
+        const base = (runner && runner.url) ? runner.url : '';
+        if (!base) throw new Error('No runner URL');
+        const absBase = base.startsWith('http')
+          ? base
+          : `${window.location.origin}${base.startsWith('/') ? '' : '/'}${base}`;
+        const healthUrl = `${absBase.replace(/\/$/, '')}/health`;
+        const health = await fetch(healthUrl, { 
+          signal: AbortSignal.timeout(5000) 
+        });
+        runner.healthy = health.ok;
+      } catch {
+        runner.healthy = false;
+      }
+    }
   } catch {
     state.runners = [];
   }
   populateRunnersSelect();
+  updateRunnerBadges();
 }
 
 function populateRunnersSelect() {
   const sel = $('sTarget');
+  const testSel = $('repoOpsTestRunner');
+  
   if (!sel) return;
+  
   const val = state.current?.steps?.[state.currentStepIdx]?.target || '';
+  
   sel.innerHTML = '';
+  if (testSel) testSel.innerHTML = '';
+  
   const none = document.createElement('option');
   none.value = '';
   none.textContent = '— local —';
   sel.appendChild(none);
+  
+  if (testSel) {
+    const testNone = document.createElement('option');
+    testNone.value = '';
+    testNone.textContent = '— Select runner —';
+    testSel.appendChild(testNone);
+  }
+  
   for (const r of state.runners) {
+    const status = r.healthy ? '✓' : '✗';
     const opt = document.createElement('option');
     opt.value = r.name;
-    opt.textContent = `${r.name} (${r.url || 'controller'})`;
+    opt.textContent = `${status} ${r.name} (${r.url || 'controller'})`;
     sel.appendChild(opt);
+    
+    if (testSel) {
+      const testOpt = document.createElement('option');
+      testOpt.value = r.name;
+      testOpt.textContent = `${status} ${r.name} (${r.url || 'controller'})`;
+      testSel.appendChild(testOpt);
+    }
   }
+  
   sel.value = val || '';
 }
 
-// Templates
+function updateRunnerBadges() {
+  const selectedRunner = $('sTarget')?.value;
+  const testRunner = $('repoOpsTestRunner')?.value;
+  
+  if (selectedRunner) {
+    const runner = state.runners.find(r => r.name === selectedRunner);
+    const badge = $('stepRunnerBadge');
+    if (badge && runner) {
+      badge.textContent = runner.healthy ? '✓ healthy' : '✗ down';
+      badge.className = `badge ${runner.healthy ? 'healthy' : 'unhealthy'}`;
+    }
+  }
+  
+  if (testRunner) {
+    const runner = state.runners.find(r => r.name === testRunner);
+    const badge = $('runnerStatusBadge');
+    if (badge && runner) {
+      badge.textContent = runner.healthy ? '✓ healthy' : '✗ down';
+      badge.className = `badge ${runner.healthy ? 'healthy' : 'unhealthy'}`;
+    }
+  }
+}
+
+/* =========================
+   Templates
+   ========================= */
 async function fetchGatewayTemplates() {
   try {
     const r = await fetch('./api/llm-templates', { headers: authHeaders() });
@@ -867,7 +720,9 @@ function renderTemplates() {
   });
 }
 
-// Telemetry
+/* =========================
+   Telemetry & Cost
+   ========================= */
 async function fetchGatewayTelemetry() {
   try {
     const r = await fetch('./api/gateway/telemetry?limit=50', { headers: authHeaders() });
@@ -914,7 +769,6 @@ function renderTelemetry(items) {
   }
 }
 
-// Cost Analysis
 function populateCostWorkflowSelect() {
   const sel = $('costWorkflowSelect');
   if (!sel) return;
@@ -967,7 +821,424 @@ async function loadWorkflowCost() {
   }
 }
 
-// Workflows
+/* =========================
+   RepoOps UI Integration
+   ========================= */
+(function() {
+  let githubConnections = [];
+  const GITHUB_HUB_BASE = '/api/v1/github'; // proxied path
+
+  async function loadGitHubConnections() {
+    try {
+      const resp = await fetch(`${GITHUB_HUB_BASE}/api/connections`, {
+        headers: authHeaders()
+      });
+      const data = await resp.json();
+      githubConnections = data.connections || [];
+      populateConnectionsDropdown();
+    } catch (e) {
+      console.warn('Failed to load GitHub connections:', e);
+      githubConnections = [];
+      populateConnectionsDropdown();
+    }
+  }
+
+  function populateConnectionsDropdown() {
+    const sel = $('repoOpsConnId');
+    if (!sel) return;
+    const prev = getCurrentStep()?.repoOps?.conn_id || '';
+    sel.innerHTML = '';
+    
+    if (!githubConnections.length) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = '-- No connections available --';
+      sel.appendChild(opt);
+      return;
+    }
+    
+    const emptyOpt = document.createElement('option');
+    emptyOpt.value = '';
+    emptyOpt.textContent = '-- Select connection --';
+    sel.appendChild(emptyOpt);
+    
+    for (const conn of githubConnections) {
+      const opt = document.createElement('option');
+      opt.value = conn.id;
+      opt.textContent = `${conn.name || conn.id} (${conn.repo_url || 'unknown'})`;
+      opt.dataset.branches = JSON.stringify(conn.branches || []);
+      opt.dataset.defaultBranch = conn.default_branch || 'main';
+      sel.appendChild(opt);
+    }
+
+    // restore selection if present
+    sel.value = prev || '';
+  }
+
+  function populateBranchesForConnection() {
+    const connSel = $('repoOpsConnId');
+    const branchSel = $('repoOpsBaseBranch');
+    const step = getCurrentStep();
+
+    if (!connSel || !branchSel) return;
+    
+    const selectedOpt = connSel.selectedOptions?.[0];
+    branchSel.innerHTML = '';
+
+    if (!selectedOpt || !selectedOpt.value) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = '-- Select a connection first --';
+      branchSel.appendChild(opt);
+      return;
+    }
+    
+    const branches = JSON.parse(selectedOpt.dataset.branches || '[]');
+    const defaultBranch = selectedOpt.dataset.defaultBranch || 'main';
+
+    // Build options
+    if (!branches.length) {
+      const opt = document.createElement('option');
+      opt.value = defaultBranch;
+      opt.textContent = defaultBranch;
+      branchSel.appendChild(opt);
+      branchSel.value = defaultBranch;
+      return;
+    }
+
+    for (const b of branches) {
+      const opt = document.createElement('option');
+      opt.value = b;
+      opt.textContent = b;
+      branchSel.appendChild(opt);
+    }
+
+    // Restore saved value or default
+    const saved = step?.repoOps?.base_branch || '';
+    branchSel.value = branches.includes(saved) ? saved : defaultBranch;
+  }
+
+  async function refreshBranches(connId) {
+    if (!connId) return;
+    try {
+      const resp = await fetch(`${GITHUB_HUB_BASE}/api/connections/${encodeURIComponent(connId)}/health`, {
+        headers: authHeaders()
+      });
+      const data = await resp.json();
+      
+      if (data.ok && data.branches) {
+        const conn = githubConnections.find(c => c.id === connId);
+        if (conn) {
+          conn.branches = data.branches;
+          // Repaint dropdowns & keep selection
+          populateConnectionsDropdown();
+          const sel = $('repoOpsConnId');
+          if (sel) sel.value = connId;
+          populateBranchesForConnection();
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to refresh branches:', e);
+    }
+  }
+
+  async function testConnection() {
+    const connId = $('repoOpsConnId')?.value;
+    if (!connId) {
+      alert('Please select a connection first');
+      return;
+    }
+
+    const btn = $('testConnBtn');
+    const output = $('repoOpsTestOutput');
+    
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = '⏳';
+    }
+    
+    output.innerHTML = '<p class="muted">Testing connection...</p>';
+
+    try {
+      const resp = await fetch(
+        `${GITHUB_HUB_BASE}/api/connections/${encodeURIComponent(connId)}/health`,
+        { headers: authHeaders() }
+      );
+      const data = await resp.json();
+
+      if (!resp.ok || !data.ok) {
+        output.innerHTML = `
+          <div class="error">
+            ❌ Connection failed: ${data.error || 'Unknown error'}
+          </div>
+        `;
+        return;
+      }
+
+      output.innerHTML = `
+        <div class="card">
+          <h4>✅ Connection successful</h4>
+          <p><strong>Branches found:</strong> ${data.branches?.length || 0}</p>
+          <details>
+            <summary>Available branches</summary>
+            <ul>
+              ${(data.branches || []).map(b => `<li>${escapeHtml(b)}</li>`).join('')}
+            </ul>
+          </details>
+        </div>
+      `;
+
+      await loadGitHubConnections();
+      populateBranchesForConnection();
+    } catch (e) {
+      output.innerHTML = `
+        <div class="error">
+          ❌ Test failed: ${escapeHtml(e.message)}
+        </div>
+      `;
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = '🔗';
+      }
+    }
+  }
+
+  // Wire RepoOps UI events
+  $('repoOpsConnId')?.addEventListener('change', async (e) => {
+    populateBranchesForConnection();
+    if (e.target.value) {
+      await refreshBranches(e.target.value);
+    }
+    // persist immediately in step state
+    collectWorkflowFromForm();
+  });
+
+  $('repoOpsBaseBranch')?.addEventListener('change', () => {
+    collectWorkflowFromForm();
+  });
+
+  $('refreshConnBtn')?.addEventListener('click', async () => {
+    const btn = $('refreshConnBtn');
+    const connId = $('repoOpsConnId')?.value;
+    
+    btn.disabled = true;
+    btn.textContent = '⏳';
+    
+    try {
+      await loadGitHubConnections();
+      if (connId) {
+        await refreshBranches(connId);
+      }
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '↻';
+    }
+  });
+
+  $('testConnBtn')?.addEventListener('click', testConnection);
+
+  $('repoOpsTestEnabled')?.addEventListener('change', (e) => {
+    const settings = $('repoOpsTestSettings');
+    if (settings) settings.style.display = e.target.checked ? '' : 'none';
+    collectWorkflowFromForm();
+  });
+
+  $('repoOpsTestRunner')?.addEventListener('change', () => {
+    updateRunnerBadges();
+    collectWorkflowFromForm();
+  });
+
+  function splitLines(val) {
+    return (val || '').split('\n').map(s => s.trim()).filter(Boolean);
+  }
+  function splitComma(val) {
+    return (val || '').split(',').map(s => s.trim()).filter(Boolean);
+  }
+
+// replace BOTH existing listeners for repoOpsPlanBtn and repoOpsTestStepBtn with this:
+
+function showRepoOpsLoading(btn, msg = 'Working…') {
+  const out = $('repoOpsTestOutput');
+  if (btn) { btn.disabled = true; btn.dataset._label = btn.textContent; btn.textContent = '⏳'; }
+  if (out) out.innerHTML = `<p class="muted">${escapeHtml(msg)}</p>`;
+}
+function resetRepoOpsLoading(btn) {
+  if (btn) { btn.disabled = false; btn.textContent = btn.dataset._label || btn.textContent; }
+}
+function renderRepoOpsError(err) {
+  const out = $('repoOpsTestOutput');
+  if (!out) return;
+  out.innerHTML = `<div class="error">❌ ${escapeHtml(err || 'Unknown error')}</div>`;
+}
+function getActiveVars() {
+  return parseJson($('varsInput')?.value || '{}', {});
+}
+function ensureRepoOpsReady(cfg) {
+  if (!cfg.conn_id) throw new Error('Select a GitHub connection first.');
+  if (!cfg.base_branch) throw new Error('Select a base branch.');
+  return cfg;
+}
+
+$('repoOpsPlanBtn')?.addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  try {
+    // Always collect fresh config from the form
+    const cfg = ensureRepoOpsReady(window.RepoOpsUI?.collectConfig?.());
+    const vars = getActiveVars();
+    const body = {
+      conn_id: cfg.conn_id,
+      base_branch: cfg.base_branch,
+      change_request: renderTemplate(cfg.change_request, vars),
+      allow_paths: cfg.allow_paths?.length ? cfg.allow_paths : undefined,
+      deny_paths: cfg.deny_paths?.length ? cfg.deny_paths : undefined,
+      language_hints: cfg.language_hints?.length ? cfg.language_hints : undefined,
+      llm_model: cfg.llm_model,
+      temperature: cfg.temperature
+    };
+
+    showRepoOpsLoading(btn, 'Planning…');
+    const resp = await fetch(`${REPOOPS_BASE}/plan`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(body)
+    });
+
+    const text = await resp.text();
+    let data;
+    try { data = JSON.parse(text); } catch { data = { error: text || 'Non-JSON response' }; }
+
+    if (!resp.ok) throw new Error(data.error || resp.statusText);
+
+    $('repoOpsTestOutput').innerHTML = `
+      <div class="card">
+        <h4>✅ Plan Generated</h4>
+        <p><strong>Files selected:</strong> ${data.discovery?.files?.length || 0}</p>
+        <p><strong>Changes proposed:</strong> ${data.proposed?.changes?.length || 0}</p>
+        <details>
+          <summary>Discovery</summary>
+          <pre class="code">${escapeHtml(JSON.stringify(data.discovery, null, 2))}</pre>
+        </details>
+        <details>
+          <summary>Proposed Changes</summary>
+          <pre class="code">${escapeHtml(JSON.stringify(data.proposed, null, 2))}</pre>
+        </details>
+      </div>
+    `;
+  } catch (err) {
+    renderRepoOpsError(err.message || String(err));
+  } finally {
+    resetRepoOpsLoading(btn);
+  }
+});
+
+$('repoOpsTestStepBtn')?.addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  try {
+    const cfg = ensureRepoOpsReady(window.RepoOpsUI?.collectConfig?.());
+    const vars = getActiveVars();
+
+    // default a head branch if the user didn’t set one
+    const headBranch = cfg.head_branch || `test/${Date.now()}`;
+
+    const body = {
+      conn_id: cfg.conn_id,
+      base_branch: cfg.base_branch,
+      head_branch: headBranch,
+      change_request: renderTemplate(cfg.change_request, vars),
+      allow_paths: cfg.allow_paths?.length ? cfg.allow_paths : undefined,
+      deny_paths: cfg.deny_paths?.length ? cfg.deny_paths : undefined,
+      language_hints: cfg.language_hints?.length ? cfg.language_hints : undefined,
+      llm_model: cfg.llm_model,
+      temperature: cfg.temperature,
+      test: cfg.test,
+      open_pr: cfg.open_pr,
+      pr_draft: cfg.pr_draft,
+      require_approval: false // keep interactive approval out of the test path
+    };
+
+    showRepoOpsLoading(btn, 'Running full RepoOps flow…');
+    const resp = await fetch(`${REPOOPS_BASE}/run`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(body)
+    });
+
+    const text = await resp.text();
+    let data;
+    try { data = JSON.parse(text); } catch { data = { error: text || 'Non-JSON response' }; }
+
+    if (!resp.ok) throw new Error(data.error || resp.statusText);
+
+    const phases = data.phases || {};
+    $('repoOpsTestOutput').innerHTML = `
+      <div class="card">
+        <h4>${data.status === 'completed' ? '✅' : '⚠️'} ${escapeHtml(data.status || '')}</h4>
+        ${phases.plan ? `<p><strong>Plan:</strong> ${phases.plan.proposed?.changes?.length || 0} changes</p>` : ''}
+        ${phases.apply ? `<p><strong>Applied:</strong> ${phases.apply.applied} files (commit: ${escapeHtml(phases.apply.commit_sha || '').slice(0,8)})</p>` : ''}
+        ${phases.test ? `<p><strong>Tests:</strong> ${phases.test.ok ? '✅ Passed' : '❌ Failed'}</p>` : ''}
+        ${phases.pr ? `<p><strong>PR:</strong> <a href="${escapeHtml(phases.pr.url)}" target="_blank">#${phases.pr.number}</a></p>` : ''}
+        <details>
+          <summary>Full Results</summary>
+          <pre class="code">${escapeHtml(JSON.stringify(data, null, 2))}</pre>
+        </details>
+      </div>
+    `;
+  } catch (err) {
+    renderRepoOpsError(err.message || String(err));
+  } finally {
+    resetRepoOpsLoading(btn);
+  }
+});
+
+
+  function collectRepoOpsConfig() {
+    return {
+      kind: 'repoops',
+      conn_id: $('repoOpsConnId')?.value || '',
+      base_branch: $('repoOpsBaseBranch')?.value || 'main',
+      head_branch: $('repoOpsHeadBranch')?.value || '',
+      change_request: $('repoOpsChangeRequest')?.value || '',
+      allow_paths: splitLines($('repoOpsAllowPaths')?.value),
+      deny_paths: splitLines($('repoOpsDenyPaths')?.value),
+      language_hints: splitComma($('repoOpsLanguageHints')?.value),
+      llm_model: $('repoOpsModel')?.value || 'gpt-4o-mini',
+      temperature: parseFloat($('repoOpsTemperature')?.value || '0.2'),
+      test: {
+        enabled: $('repoOpsTestEnabled')?.checked || false,
+        runner: $('repoOpsTestRunner')?.value || '',
+        commands: splitLines($('repoOpsTestCommands')?.value),
+        timeoutMs: parseInt($('repoOpsTestTimeout')?.value || '900000')
+      },
+      open_pr: $('repoOpsOpenPR')?.checked || false,
+      pr_draft: $('repoOpsPRDraft')?.checked || false,
+      require_approval: $('repoOpsRequireApproval')?.checked || false,
+      export_pr_url_as: $('repoOpsExportPRAs')?.value || '',
+      export_head_branch_as: $('repoOpsExportBranchAs')?.value || ''
+    };
+  }
+
+  // Expose helpers
+  window.RepoOpsUI = {
+    loadConnections: loadGitHubConnections,
+    refreshBranches,
+    testConnection,
+    collectConfig: collectRepoOpsConfig,
+    populateBranchesForConnection,
+    getConnections: () => githubConnections
+  };
+
+  // Initial load
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', loadGitHubConnections);
+  } else {
+    loadGitHubConnections();
+  }
+})();
+
+/* =========================
+   Workflows
+   ========================= */
 function newWorkflow() {
   return {
     id: null,
@@ -1025,7 +1296,25 @@ function newStep() {
     model: currentModel,
     temperature: '',
     target: '',
-    repoOps: null
+    // persist RepoOps block entirely here
+    repoOps: {
+      kind: 'repoops',
+      conn_id: '',
+      base_branch: 'main',
+      head_branch: '',
+      change_request: '',
+      allow_paths: [],
+      deny_paths: [],
+      language_hints: [],
+      llm_model: currentModel || 'gpt-4o-mini',
+      temperature: 0.2,
+      test: { enabled: false, runner: '', commands: [], timeoutMs: 900000 },
+      open_pr: false,
+      pr_draft: false,
+      require_approval: false,
+      export_pr_url_as: '',
+      export_head_branch_as: ''
+    }
   };
 }
 
@@ -1196,6 +1485,10 @@ async function dryRunStep() {
   }
 }
 
+function getCurrentStep() {
+  return state.current?.steps?.[state.currentStepIdx] || null;
+}
+
 function collectWorkflowFromForm() {
   if (!state.current) state.current = newWorkflow();
 
@@ -1229,9 +1522,12 @@ function collectWorkflowFromForm() {
       s.systemGuard = !$('stepNoGuard').checked;
       s.schema = parseJson($('stepSchema').value || '', s.schema);
       s.stopOnFailure = !$('stepDontStop').checked;
-      s.repoOps = null;
+      s.repoOps = s.repoOps || null;
     } else if (s.type === 'repoops') {
-      s.repoOps = window.RepoOpsUI?.collectConfig?.() || null;
+      // Pull full config from UI
+      const conf = window.RepoOpsUI?.collectConfig?.() || s.repoOps || {};
+      // persist
+      s.repoOps = conf;
     }
   }
   return state.current;
@@ -1331,7 +1627,10 @@ function toggleStepTypeUi(type) {
   if (repo) repo.style.display = type === 'repoops' ? '' : 'none';
 }
 
-function renderStepEditor() {
+/* ============
+   CRITICAL: renderStepEditor restores RepoOps state & branches
+   ============ */
+async function renderStepEditor() {
   const steps = state.current?.steps || [];
   const s = steps[state.currentStepIdx];
   const noStep = !s;
@@ -1339,17 +1638,18 @@ function renderStepEditor() {
   $('noStepHint').style.display = noStep ? '' : 'none';
   if (noStep) return;
 
+  // Common fields
   $('stepName').value = s.name || '';
   $('stepType').value = s.type || 'llm';
   toggleStepTypeUi(s.type || 'llm');
 
-  // LLM-only
+  // LLM
   $('stepPrompt').value = s.prompt || '';
   $('stepSchema').value = typeof s.schema === 'string' ? s.schema : fmtJson(s.schema || {});
   $('stepNoGuard').checked = !s.systemGuard;
   $('stepDontStop').checked = !s.stopOnFailure;
 
-  // exports and overrides
+  // Exports & overrides
   $('stepExportPath').value = s.exportPath || '';
   $('stepExportAs').value = s.exportAs || '';
   $('sProvider').value = s.provider || '';
@@ -1360,6 +1660,56 @@ function renderStepEditor() {
 
   populateRunnersSelect();
   populateModelSelect($('sModelSelect'), $('sModelInfo'), s.model || '');
+  updateRunnerBadges();
+
+  // ---- RepoOps restore & UI wiring ----
+  if (s.type === 'repoops') {
+    // Ensure repoOps object exists
+    if (!s.repoOps) s.repoOps = { kind: 'repoops', conn_id: '', base_branch: 'main' };
+
+    // 1) Ensure connections loaded (async), then select saved connection
+    await window.RepoOpsUI?.loadConnections?.();
+    const connSel = $('repoOpsConnId');
+    if (connSel) {
+      connSel.value = s.repoOps.conn_id || '';
+    }
+
+    // 2) Populate branches for that connection, then set saved base branch
+    window.RepoOpsUI?.populateBranchesForConnection?.();
+    const branchSel = $('repoOpsBaseBranch');
+    if (branchSel) {
+      // If saved branch isn't in the list (first render), set after a microtask,
+      // but try synchronously first:
+      const want = s.repoOps.base_branch || 'main';
+      if (Array.from(branchSel.options).some(o => o.value === want)) {
+        branchSel.value = want;
+      } else {
+        queueMicrotask(() => { branchSel.value = want; });
+      }
+    }
+
+    // 3) Restore rest of RepoOps fields
+    $('repoOpsHeadBranch').value = s.repoOps.head_branch || '';
+    $('repoOpsLanguageHints').value = (s.repoOps.language_hints || []).join(',');
+    $('repoOpsChangeRequest').value = s.repoOps.change_request || '';
+    $('repoOpsAllowPaths').value = (s.repoOps.allow_paths || []).join('\n');
+    $('repoOpsDenyPaths').value = (s.repoOps.deny_paths || []).join('\n');
+    $('repoOpsModel').value = s.repoOps.llm_model || (state.current?.chat?.model || 'gpt-4o-mini');
+    $('repoOpsTemperature').value = s.repoOps.temperature ?? 0.2;
+
+    $('repoOpsTestEnabled').checked = !!s.repoOps?.test?.enabled;
+    const testSettings = $('repoOpsTestSettings');
+    if (testSettings) testSettings.style.display = s.repoOps?.test?.enabled ? '' : 'none';
+    $('repoOpsTestRunner').value = s.repoOps?.test?.runner || '';
+    $('repoOpsTestCommands').value = (s.repoOps?.test?.commands || []).join('\n');
+    $('repoOpsTestTimeout').value = s.repoOps?.test?.timeoutMs ?? 900000;
+
+    $('repoOpsOpenPR').checked = !!s.repoOps.open_pr;
+    $('repoOpsPRDraft').checked = !!s.repoOps.pr_draft;
+    $('repoOpsRequireApproval').checked = !!s.repoOps.require_approval;
+    $('repoOpsExportPRAs').value = s.repoOps.export_pr_url_as || '';
+    $('repoOpsExportBranchAs').value = s.repoOps.export_head_branch_as || '';
+  }
 }
 
 function removeStep(idx) {
@@ -1514,7 +1864,9 @@ function capitalize(s) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-// Event handlers
+/* =========================
+   Event handlers
+   ========================= */
 document.addEventListener('DOMContentLoaded', async () => {
   $('tabBtnBuilder').addEventListener('click', () => activateTab('builder'));
   $('tabBtnRuns').addEventListener('click', () => activateTab('runs'));
@@ -1539,6 +1891,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('refreshModelsBtn')?.addEventListener('click', fetchGatewayModels);
   $('refreshModelsBtn2')?.addEventListener('click', fetchGatewayModels);
   $('refreshRunnersBtn')?.addEventListener('click', fetchRunners);
+  $('sTarget')?.addEventListener('change', updateRunnerBadges);
 
   $('refreshTelemetryBtn')?.addEventListener('click', fetchGatewayTelemetry);
   $('refreshTemplatesBtn')?.addEventListener('click', fetchGatewayTemplates);
@@ -1547,18 +1900,30 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('stepType')?.addEventListener('change', (e) => {
     toggleStepTypeUi(e.target.value);
     collectWorkflowFromForm();
+    // Repaint RepoOps bits when switching into it
+    if (e.target.value === 'repoops') {
+      renderStepEditor();
+    }
   });
   
   const autoIds = [
     'wfName','wfDesc','provider','baseUrl','apiKey','model','temperature','max_tokens','defaults',
     'stepName','stepPrompt','stepSchema','stepNoGuard','stepDontStop','stepExportPath','stepExportAs',
-    'sProvider','sBaseUrl','sApiKey','sModel','sTemp','sTarget'
+    'sProvider','sBaseUrl','sApiKey','sModel','sTemp','sTarget',
+    // RepoOps live fields that shouldn't wait for explicit clicks
+    'repoOpsHeadBranch','repoOpsLanguageHints','repoOpsChangeRequest',
+    'repoOpsAllowPaths','repoOpsDenyPaths','repoOpsModel','repoOpsTemperature',
+    'repoOpsTestCommands','repoOpsTestTimeout','repoOpsOpenPR','repoOpsPRDraft',
+    'repoOpsRequireApproval','repoOpsExportPRAs','repoOpsExportBranchAs'
   ];
   autoIds.forEach(id => {
     const el = $(id);
     if (el) {
       el.addEventListener('change', collectWorkflowFromForm);
       if (el.tagName === 'TEXTAREA') el.addEventListener('input', collectWorkflowFromForm);
+      if (el.tagName === 'INPUT' && (el.type === 'text' || el.type === 'number')) {
+        el.addEventListener('input', collectWorkflowFromForm);
+      }
     }
   });
 

@@ -12,3 +12,5 @@
 /modules/llm-gateway/pgdata/
 *.bak
 *.bak.*
+*/github-hub/data/connections.json
+modular-framework/modules/github-hub/data/connections.json

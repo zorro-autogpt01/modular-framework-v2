@@ -1,0 +1,578 @@
+Below is a self-contained, implementation-ready design you can hand to a developer. It builds on your current modules (llm-workflows, llm-runner-controller, GitHub Hub, LLM Gateway) and adds a new “RepoOps” capability to plan, apply, test, and PR code changes via an LLM with strict JSON contracts.
+
+High-level concept
+
+- Keep the runner minimal (exec only). All GitHub operations and LLM prompting live in the workflows server.
+- Implement a two-pass LLM flow:
+  1) File discovery and scoping (relevant_files.v1)
+  2) Proposed changes (code_changes.v1)
+- Apply changes via GitHub Hub, run tests on a runner (clone the PR branch), then open a PR.
+
+Core components to add
+
+A) RepoOps module in llm-workflows server
+
+Purpose:
+- Orchestrate GitHub Hub calls, LLM rounds, guardrails, and tests.
+- Provide HTTP endpoints for manual use and be callable as a workflow step.
+
+New server environment variables:
+- GITHUB_HUB_BASE (e.g., http://github-hub:3002): base URL of GitHub Hub.
+- DEFAULT_GH_CONN_ID (fallback connection id when not provided by client/workflow).
+- REPOOPS_MAX_INPUT_TOKENS (default 48000) and REPOOPS_ESTIMATE_MODEL (model key used by /api/tokens).
+- REPOOPS_MAX_FILES (e.g., 20), REPOOPS_MAX_FILE_KB (e.g., 64), REPOOPS_MAX_TOTAL_KB (e.g., 512).
+- REPOOPS_TEST_TIMEOUT_MS (e.g., 900000) for long installs/tests on runner.
+- GITHUB_CLONE_TOKEN (optional; PAT for runner cloning; if omitted, cloning must be public or achieved another way).
+- REPOOPS_REQUIRE_APPROVAL (true/false) to gate apply before commit/PR.
+
+New endpoints (workflows server)
+
+1) POST /api/repoops/plan
+- Description: Runs Phase 1 (discovery) and Phase 2 (proposed changes). Does not write to GitHub.
+- Input:
+  {
+    "conn_id": "core-repo",
+    "base_branch": "main",
+    "head_branch": "feature/add-x",    // optional, can be created by apply
+    "change_request": "Add an API endpoint /healthz with tests ...",
+    "allow_paths": ["src/**","tests/**"], // glob-like patterns
+    "deny_paths": ["**/*.png","dist/**"],
+    "max_files": 12,
+    "max_file_kb": 64,
+    "language_hints": ["ts","tsx","js"],
+    "llm_model": "gpt-4o-mini",
+    "temperature": 0.2
+  }
+- Output:
+  {
+    "ok": true,
+    "discovery": { ...relevant_files.v1... },
+    "proposed": { ...code_changes.v1... },
+    "budget": { "input_tokens": 12345, "files_included": 10, "skipped": 2, "notes": "..." },
+    "artifacts": [
+      { "type": "plan.discovery", "content": "<json>" },
+      { "type": "plan.proposal", "content": "<json>" }
+    ]
+  }
+- Behavior:
+  - Calls GitHub Hub:
+    - GET /api/connections to resolve repo_url, default_branch
+    - GET /api/tree?recursive=true&branch=base_branch&conn_id=...
+    - GET /api/file for a small subset (README, package manifests) to give context
+  - LLM round 1 with schema relevant_files.v1, validate with Ajv, retry up to 2 with errors included in prompt.
+  - Fetch contents of selected files; enforce size caps; compute token budget via LLM Gateway /api/tokens.
+  - LLM round 2 with schema code_changes.v1 (full-file replacements), validate, retry up to 2.
+  - Return both JSONs and budget metadata without any changes committed.
+
+2) POST /api/repoops/apply
+- Description: Applies a validated code_changes.v1 plan into head_branch and returns diff summary.
+- Input:
+  {
+    "conn_id": "core-repo",
+    "base_branch": "main",
+    "head_branch": "feature/add-x",      // if not exists, create from base
+    "plan": { ...code_changes.v1... },
+    "guardrails": {
+      "allow_paths": ["src/**", "tests/**"],
+      "max_changed_files": 20,
+      "max_total_kb": 512
+    }
+  }
+- Output:
+  {
+    "ok": true,
+    "commit_sha": "<sha>",
+    "compare": { ...GitHub compare response... },
+    "applied": [{ "path": "...", "operation": "create|update|delete", "size": 123 }],
+    "skipped": [{ "path": "...", "reason": "not-allowed|too-large" }],
+    "artifacts": [{ "type":"diff.summary", "content":"..." }]
+  }
+- Behavior:
+  - Create branch if missing: POST /api/branch?new=head&from=base
+  - Map updates and creates to POST /api/batch/commit (content raw; server base64-encodes).
+  - For deletes: perform GET /api/file (to fetch sha) then DELETE /api/file?path=...&sha=... (repeat for each).
+  - Compare: GET /api/compare?base=base_branch&head=head_branch
+  - Enforce guardrails; skip any out-of-policy changes and report them.
+
+3) POST /api/repoops/test
+- Description: Clones the head_branch on a runner and executes test commands.
+- Input:
+  {
+    "conn_id": "core-repo",
+    "head_branch": "feature/add-x",
+    "runner": "lab",                    // target name registered in controller
+    "commands": ["npm ci", "npm test"], // or ["pytest -q"]
+    "timeoutMs": 900000
+  }
+- Output:
+  {
+    "ok": true,
+    "results": [
+      { "cmd": "npm ci", "exitCode": 0, "stdout": "...", "stderr": "..." },
+      { "cmd": "npm test", "exitCode": 0, "stdout": "...", "stderr": "..." }
+    ],
+    "artifacts": [{ "type":"test.log", "content":"..." }]
+  }
+- Behavior:
+  - Resolve repo_url via GitHub Hub /api/connections.
+  - Build a command sequence:
+    - mkdir -p /workspace/<runId> && cd /workspace/<runId>
+    - git init && git config advice.detachedHead false
+    - git remote add origin https://<token>@github.com/org/repo.git
+    - git fetch --depth 1 origin <head_branch>
+    - git checkout -b <head_branch> FETCH_HEAD
+    - Then run each command with generous timeout (default REPOOPS_TEST_TIMEOUT_MS).
+  - Use execRemote via controller (/api/llm-runner/agents/:id/exec).
+  - Pass secrets (token) via env (e.g., GITHUB_TOKEN) and do not echo it; ensure redaction in logs.
+
+4) POST /api/repoops/pr
+- Description: Opens a PR from head_branch to base_branch.
+- Input:
+  {
+    "conn_id": "core-repo",
+    "base_branch": "main",
+    "head_branch": "feature/add-x",
+    "title": "feat(api): add /healthz endpoint",
+    "body": "Summary...\nDiff summary...\nTest results...",
+    "draft": false
+  }
+- Output:
+  {
+    "ok": true,
+    "pr": { "number": 42, "url": "https://github.com/org/repo/pull/42" }
+  }
+- Behavior:
+  - POST /api/pr with PullRequestIn format.
+
+Optional endpoint for convenience:
+5) POST /api/repoops/run
+- Orchestrates plan -> apply -> test -> pr in one request with flags to stop between phases or require approval.
+
+B) LLM JSON contracts (schemas)
+
+Schema: relevant_files.v1
+- Purpose: LLM round 1 returns a scoped list of files to consider.
+- Strict: force minimal, reasoned selection.
+
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "relevant_files.v1",
+  "type": "object",
+  "required": ["files"],
+  "additionalProperties": false,
+  "properties": {
+    "files": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "required": ["path"],
+        "additionalProperties": false,
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "created_files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "reason": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "excluded_files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "reason": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "notes": { "type": "string" },
+    "limits": {
+      "type": "object",
+      "properties": {
+        "max_total_kb": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    }
+  }
+}
+
+Schema: code_changes.v1
+- Purpose: LLM round 2 returns full-file replacements for create/update and a list of deletes.
+- We enforce full-file content to avoid patch-diff ambiguity.
+
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "code_changes.v1",
+  "type": "object",
+  "required": ["changes", "commit_message"],
+  "additionalProperties": false,
+  "properties": {
+    "commit_message": { "type": "string", "minLength": 5 },
+    "changes": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "required": ["path", "operation"],
+        "additionalProperties": false,
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "operation": { "type": "string", "enum": ["create","update","delete"] },
+          "content": { "type": "string" },
+          "rationale": { "type": "string" }
+        },
+        "allOf": [
+          { "if": { "properties": { "operation": { "const": "delete" } } }, "then": { "required": ["path"], "not": { "required": ["content"] } } },
+          { "if": { "properties": { "operation": { "enum": ["create","update"] } } }, "then": { "required": ["content"] } }
+        ]
+      }
+    },
+    "tests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "content"],
+        "additionalProperties": false,
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "content": { "type": "string" },
+          "rationale": { "type": "string" }
+        }
+      }
+    },
+    "notes": { "type": "string" }
+  }
+}
+
+C) Prompt templates (non-streaming for determinism, with strict guardrails)
+
+Round 1 (discovery) system message
+- You are a code analysis assistant that MUST return exactly one JSON object conforming to the given JSON Schema. Do not include explanations, markdown, or code fences.
+- Goal: Identify the minimal set of repository files relevant to implement the request.
+- Rules:
+  - Only include files likely to be read or changed.
+  - Propose new files in created_files only if clearly required (e.g., tests).
+  - Exclude binaries and build artifacts.
+  - Respect allow/deny path rules if provided.
+- JSON Schema:
+  <embed relevant_files.v1 schema JSON text>
+
+Round 1 user message
+- Change request:
+  <verbatim change_request>
+- Repository:
+  - Connection: <conn_id>, Base branch: <base_branch>, Language hints: <hints>
+  - Tree (truncated to top N items by heuristics):
+    <list of candidate paths with brief sizes, e.g., 200–400 lines total>
+  - Key files content (selected small files only):
+    ---- FILE: README.md ----
+    <content trimmed to max_file_kb>
+    ---- FILE: package.json ----
+    <content trimmed>
+- Constraints:
+  - Max total content budget: <REPOOPS_MAX_TOTAL_KB> KB
+  - Max files to consider: <REPOOPS_MAX_FILES>
+- Output required:
+  - relevant_files.v1 JSON
+
+Round 2 (proposal) system message
+- You are a code editing assistant that MUST return exactly one JSON object conforming to the given JSON Schema. Do not include explanations, markdown, or code fences.
+- Produce full-file contents for each create/update. Do not provide partial patches.
+- Keep unrelated formatting unchanged where possible.
+- Add or update tests if appropriate.
+- JSON Schema:
+  <embed code_changes.v1 schema JSON text>
+
+Round 2 user message
+- Change request:
+  <verbatim change_request>
+- Files to modify or reference:
+  <bullet list of paths from round 1>
+- File contents:
+  ---- FILE: path1 ----
+  <full content trimmed to max_file_kb>
+  ---- FILE: path2 ----
+  <full content trimmed>
+- Constraints:
+  - Allowed paths: <allow_paths>, Deny paths: <deny_paths>
+  - Max changed files: <max_files>, Max total size: <max_total_kb> KB
+- Output required:
+  - code_changes.v1 JSON
+
+D) Guardrails and token budgeting (server-side)
+
+Selection heuristics:
+- From /api/tree, prefer:
+  - files under src/, lib/, app/, server/, tests/, __tests__, integration/
+  - language_hints extensions (.ts,.tsx,.js,.py,.go,…)
+  - ignore build outputs: dist/, build/, node_modules/, .venv/, .git/
+  - skip binaries by extension and by null size semantics
+- Fetch file content only when size <= REPOOPS_MAX_FILE_KB (reject otherwise with explanation to LLM).
+- Use LLM Gateway /api/tokens to estimate message token counts; trim or split when exceeding REPOOPS_MAX_INPUT_TOKENS.
+- Enforce policy before apply:
+  - allow_paths and deny_paths
+  - max_changed_files, max_total_kb
+  - delete operations restricted by policy
+
+Validation and retry:
+- Validate LLM responses using Ajv against the schemas.
+- If invalid, re-prompt once or twice with:
+  - “Your last output failed validation. Errors: <ajv.errors>. Return a JSON that satisfies the schema.”
+
+E) Mapping to GitHub Hub APIs
+
+Discovery:
+- GET /api/connections to resolve default_id and find the desired connection by id; pull repo_url, default_branch, branches.
+- GET /api/tree?recursive=true&branch=<base>&conn_id=<id>
+- GET /api/file?path=...&branch=<base>&conn_id=<id> for key small files.
+
+Branch management:
+- POST /api/branch?new=<head>&from=<base>&conn_id=<id>
+  - If 400/404/409-like error because it exists, treat as already created.
+
+Apply:
+- POST /api/batch/commit with { branch: head, message, changes: [{ path, content, mode? }] }
+  - code_changes.v1 items with operation create/update map to BatchChange items.
+  - For deletes: for each delete path, GET /api/file to obtain sha, then DELETE /api/file with path, sha, message, and branch.
+- GET /api/compare?base=<base>&head=<head>&conn_id=<id> to return summary.
+
+PR:
+- POST /api/pr with PullRequestIn: { title, head: head_branch, base: base_branch, body, draft }
+
+F) Runner usage (tests only)
+
+- The runner clones the repo’s head branch and runs provided commands.
+- Use runner controller via execRemote (already implemented) to avoid storing runner tokens in workflows.
+- Secrets:
+  - Pass GITHUB_CLONE_TOKEN via env to runner; commands must avoid echoing it.
+  - Ensure logging redaction is enabled (already redacts env in controller DB).
+
+Suggested clone command sequence per test step:
+- Workdir: /workspace/<runId>
+- Commands:
+  - rm -rf . && mkdir -p . && git init
+  - git config advice.detachedHead false
+  - git remote add origin https://$GITHUB_CLONE_TOKEN@github.com/<org>/<repo>.git
+  - git fetch --depth 1 origin <head_branch>
+  - git checkout -b <head_branch> FETCH_HEAD
+  - then user commands (install, test)
+
+G) Integration with workflows (as step type)
+
+Add a new step type: repoops
+- Fields:
+  - conn_id (string)
+  - base_branch (string)
+  - head_branch (string; optional; auto-create if missing)
+  - change_request (string; support templating from workflow vars)
+  - allow_paths, deny_paths (array of strings)
+  - llm_model (string), temperature (number)
+  - test:
+    - enabled: boolean
+    - runner: target name
+    - commands: array of strings
+  - open_pr: boolean
+  - require_approval: boolean (if true, pause after plan, return proposal for manual approval in UI)
+
+Execution behavior in /api/workflows/:id/run:
+- If step.kind === 'repoops':
+  1) Call /api/repoops/plan with step params.
+  2) If require_approval, stop here and record artifacts (discovery and proposal) in run; set run status “pending-approval”.
+  3) Otherwise call /api/repoops/apply with plan.
+  4) If test.enabled: call /api/repoops/test; on failure, mark step failed and stop if stopOnFailure.
+  5) If open_pr: call /api/repoops/pr and record PR URL in artifacts.
+
+UI additions (workflows/public/index.html)
+- Step editor for repoops:
+  - Dropdown to select GitHub Hub connection (fetch via GITHUB_HUB_BASE/api/connections)
+  - Inputs for base/head branches
+  - Textarea for change_request
+  - Inputs for allow/deny paths, max_files, max_kb
+  - Test controls (runner select, commands)
+  - Checkbox for open PR and require approval
+- Artifact viewer sections to show:
+  - Discovery JSON
+  - Proposal JSON
+  - Diff summary
+  - Test logs
+  - PR URL
+
+H) Error handling and retries
+
+- Plan phase:
+  - LLM invalid JSON -> retry with schema errors included (max 2).
+  - Token overflow -> trim file list and re-run round 2 with fewer files.
+- Apply phase:
+  - Branch already exists -> continue.
+  - Batch commit size too large -> split into multiple commits.
+  - Delete needs sha -> fetch sha per file; if not found, skip with reason.
+- Test phase:
+  - Timeouts -> surface partial logs; allow retry with extended timeout.
+  - Non-zero exit -> fail step or loop to re-plan with errors (future enhancement).
+- PR phase:
+  - If PR already exists (head vs base), return existing PR link.
+
+I) Security and governance
+
+- Never pass GitHub PAT into LLM prompts or logs; only to runner env when needed.
+- Enforce allow/deny paths before commit; reject content that touches disallowed paths.
+- Cap max changed files and total content KB.
+- Consider adding secret scanners on the content before commit (future enhancement).
+- Always work on head_branch, never push to base_branch.
+
+J) Observability and artifacts
+
+- Store artifacts in run.artifacts as you do today:
+  - plan.discovery (JSON)
+  - plan.proposal (JSON)
+  - diff.summary (text)
+  - test.log (text)
+  - pr.link (text with URL)
+- Add timing per phase in run.logs (info-level).
+
+K) Known gaps in current code to address
+
+- llm-runner-controller: services/artifacts.js writes to an “artifacts” table, but schema.sql doesn’t define it. Fix by adding a table or remove that write.
+  - Suggested schema (DDL for the controller DB):
+    CREATE TABLE IF NOT EXISTS artifacts (
+      id TEXT PRIMARY KEY,
+      run_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      mime TEXT,
+      size INTEGER,
+      sha256 TEXT,
+      store_url TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+  - And an index on (run_id).
+- llm-workflows currently executes runner via execRemote non-streaming. For better UX in long tests, consider adding a streaming variant or just keep non-stream with higher timeout (REPOOPS_TEST_TIMEOUT_MS).
+
+L) Milestones and acceptance criteria
+
+Milestone 1: Planning and Applying (no tests, optional PR)
+- RepoOps endpoints: /api/repoops/plan, /api/repoops/apply, /api/repoops/pr
+- Strict Ajv validation for relevant_files.v1 and code_changes.v1
+- Guardrails (allow/deny paths, max files, size caps)
+- UI: new step type repoops with repo/branch fields and change_request
+- Manual approval mode supported (require_approval) to review plan before apply
+- Acceptance: Developer can point at a public repo, generate a plan for a small change, apply a commit to a feature branch, and open a PR.
+
+Milestone 2: Tests on runner
+- Endpoint: /api/repoops/test
+- Runner clone and test execution with configurable timeout
+- UI: runner selection and test commands; display logs
+- Acceptance: After applying changes, runner installs dependencies and runs tests; success opens PR; failure surfaces logs and marks step failed.
+
+Milestone 3: Repair loop and polish (optional)
+- On test failure, loop back to plan with build/test errors included in the prompt
+- Diff viewer in UI; chunking improvements; caching on runner workspaces
+- Cost telemetry and token budgeting visible in UI
+
+Technical notes and examples
+
+Example code_changes.v1 to batch commit mapping:
+- For each change with operation in ["create","update"]: add to batch changes
+  { path: change.path, content: change.content, mode: "100644" }
+- For each delete:
+  - sha = GET /api/file?path=... to find sha on head_branch (or base if pre-commit)
+  - DELETE /api/file?path=...&sha=...&message="chore: remove ..."&branch=head_branch
+
+Example test commands (Node):
+- ["corepack enable && pnpm i --frozen-lockfile", "pnpm -s test"]
+
+Example overall orchestration (synchronous API client flow):
+- plan = POST /api/repoops/plan
+- if require_approval -> return artifacts and await UI approval
+- apply = POST /api/repoops/apply with plan.proposed
+- test = POST /api/repoops/test
+- if tests ok -> pr = POST /api/repoops/pr
+- return artifacts and links
+
+Schema validation retry policy:
+- maxRetries = 2
+- If ajv.valid == false: append error messages to a new user message:
+  “Your last output did not validate: <errors>. Return only a valid JSON per the schema.”
+
+Token budgeting policy:
+- Use LLM Gateway /api/tokens with the target model to estimate total tokens
+- If input exceeds REPOOPS_MAX_INPUT_TOKENS:
+  - Reduce files by priority ranking (name heuristics + size)
+  - Retry with smaller set
+- Cap file content size per file to REPOOPS_MAX_FILE_KB
+- Cap total serialized content to REPOOPS_MAX_TOTAL_KB
+
+UI checklist (workflows/public)
+- Step type selector includes “RepoOps”.
+- For RepoOps steps:
+  - conn_id dropdown (fetch from GITHUB_HUB_BASE/api/connections)
+  - base_branch and head_branch inputs
+  - change_request textarea (template-enabled)
+  - allow_paths / deny_paths textareas
+  - model picker and temperature
+  - Test controls: enabled, runner select, commands textarea
+  - open_pr, require_approval checkboxes
+- Run details show the new artifacts and PR link
+
+Security checklist
+- Do not log change_request if it contains sensitive info (rare but possible), or redact as needed.
+- Do not include tokens or headers in any template or prompt.
+- Redact env and Authorization (logger already redacts; keep it).
+- Keep runner network egress minimal if possible; only needed for git clone and package installs.
+
+Dependencies and where to wire them
+
+- Workflows server:
+  - Add a “RepoOps” service file (e.g., server/repoops.js) to encapsulate:
+    - GitHub Hub client wrapper (axios-based)
+    - LLM calls (reuse callgateway function)
+    - Ajv validators for the two schemas
+    - Guardrails and chunking helpers
+    - Test runner invocations (reuse execRemote)
+  - Add routes in server/app.js under /api/repoops/*
+  - Extend the workflow engine in /api/workflows/:id/run to handle step.kind === 'repoops'
+
+- Runner controller:
+  - Optional: implement streaming exec for better UX in long tests (you already have exec_stream.js; you can expose via a new controller endpoint and then wrap it in workflows server). Not required for MVP.
+
+- GitHub Hub:
+  - No changes required. You will use:
+    - /api/connections (GET, POST to pre-configure)
+    - /api/tree
+    - /api/file (GET/PUT/DELETE)
+    - /api/batch/commit
+    - /api/branch
+    - /api/compare
+    - /api/pr
+
+- LLM Gateway:
+  - No changes required. Use /api/compat/llm-workflows for chat and /api/tokens for estimation.
+  - Consider registering a specific model key for planning (cheaper model for round 1; higher-capacity model for round 2).
+
+Common pitfalls and how this design avoids them
+
+- Hallucinated or missing files: Round 1 returns reasons and paths; server cross-checks existence against /api/tree and prunes invalid paths before fetching.
+- Partial diffs causing corrupt state: The contract mandates full-file content for create/update; server applies atomically with batch commit.
+- Oversized prompts: Server enforces input token budget and content size caps, trimming file sets and retrying.
+- Delete operations: Use /api/file DELETE with sha per file; this is explicit and auditable.
+- Leaking tokens in logs: Tokens only passed to runner via env; server logs redact env. Prompts never include secrets.
+
+With this document, a developer should be able to:
+- Add the RepoOps module and endpoints in llm-workflows.
+- Wire it as a step type into the workflow engine and UI.
+- Use the existing GitHub Hub and LLM Gateway APIs as specified.
+- Safely apply, test, and PR changes with clear JSON contracts and guardrails.
+
+If you want, I can also provide a checklist of unit/integration tests to validate each phase (discovery, proposal validation, apply with deletes, test runs, PR creation) and a suggested set of fixtures for a sample repo.
