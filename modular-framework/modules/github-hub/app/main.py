@@ -5,7 +5,7 @@ from fastapi import FastAPI, HTTPException, Query, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse, JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from loguru import logger
 from pathlib import Path
 import requests
@@ -159,6 +159,10 @@ class ConnectionTestIn(BaseModel):
     base_url: Optional[str] = "https://api.github.com"
     token: Optional[str] = None
 
+class BranchCreateIn(BaseModel):
+    new: str
+    from_branch: Optional[str] = Field(default=None, alias="from")
+
 # ----- basic -----
 @app.get("/")
 def root():
@@ -309,14 +313,29 @@ def branches(
 
 @app.post("/api/branch")
 def create_branch(
-    new: str = Query(..., alias="new"),
-    base: str = Query(..., alias="from"),
+    # allow either query or JSON body; JSON wins if provided
+    body: Optional[BranchCreateIn] = None,
+    new_q: Optional[str] = Query(None, alias="new"),
+    from_q: Optional[str] = Query(None, alias="from"),
     conn_id: Optional[str] = Query(None),
     x_conn: Optional[str] = Header(None, alias="X-GH-Conn"),
 ):
+    # resolve inputs
+    new = (body.new if body and body.new else new_q)
+    base = (body.from_branch if body and body.from_branch else from_q)
+    if not new or not base:
+        raise HTTPException(400, "Both 'new' and 'from' are required (query or JSON body).")
+
+    # resolve connection
     conn = _resolve_conn(conn_id, x_conn)
-    gh = _client_for_conn(conn); owner, repo = _owner_repo(conn)
-    return gh.create_branch(owner, repo, new, base)
+    gh = _client_for_conn(conn)
+    owner, repo = _owner_repo(conn)
+
+    try:
+        return gh.create_branch(owner, repo, new, base)
+    except Exception as e:
+        # turn GitHub errors into proper 4xx/5xx
+        raise _map_github_error(e)
 
 @app.get("/api/tree")
 def tree(
@@ -415,3 +434,22 @@ def list_commits(
     conn = _resolve_conn(conn_id, x_conn)
     gh = _client_for_conn(conn); owner, repo = _owner_repo(conn)
     return gh.list_commits(owner, repo, sha=sha, path=path, per_page=per_page)
+
+
+@app.get("/api/connections/{conn_id}")
+def api_get_connection(conn_id: str):
+    c = get_connection(conn_id)
+    if not c:
+        raise HTTPException(404, "Connection not found")
+    # redact secrets before returning
+    c.pop("token", None)
+    c.pop("token_enc", None)
+    c.pop("token_plain", None)
+    return c
+
+@app.head("/api/connections/{conn_id}")
+def api_head_connection(conn_id: str):
+    c = get_connection(conn_id)
+    if not c:
+        raise HTTPException(404, "Connection not found")
+    return {"ok": True}

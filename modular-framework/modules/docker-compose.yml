@@ -278,7 +278,7 @@ services:
       - NODE_ENV=production
       - LOG_TO_CONSOLE=false
       - PORT=3010
-      - BASE_PATH=/llm-gateway
+      #- BASE_PATH=/llm-gateway
       - PGHOST=postgres
       - PGPORT=5432
       - PGUSER=postgres
