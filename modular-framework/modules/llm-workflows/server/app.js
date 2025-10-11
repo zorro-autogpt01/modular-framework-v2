@@ -112,6 +112,10 @@ app.use(express.static(pub));
 app.use('/api', logsRouter);
 app.use('/api', loggingRouter);
 
+const repoopsRouter = require('./routes/repoops');
+app.use('/api/repoops', repoopsRouter);
+
+
 if (BASE_PATH) {
   app.use(BASE_PATH, express.static(pub));
   app.use(`${BASE_PATH}/api`, logsRouter);

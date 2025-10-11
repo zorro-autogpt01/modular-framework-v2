@@ -2,7 +2,7 @@
 
 const axios = require('axios');
 const Ajv = require('ajv');
-const minimatch = require('minimatch');
+const micromatch = require('micromatch');
 const { RELEVANT_FILES_V1, CODE_CHANGES_V1 } = require('../schemas/repoops');
 const { logDebug, logInfo, logWarn, logError } = require('../logger');
 const { execRemote } = require('../runnerClient');
@@ -253,7 +253,7 @@ async function callLLMWithRetry({ model, temperature, messages, schema, corr, ma
  */
 function matchesGlobs(path, globs) {
   if (!globs || !globs.length) return true;
-  return globs.some(g => minimatch(path, g, { dot: true }));
+  return globs.some(g => micromatch.isMatch(path, g, { dot: true }));
 }
 
 function shouldIncludeFile(item, { allowPaths, denyPaths, languageHints }) {

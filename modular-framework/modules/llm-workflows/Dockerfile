@@ -3,6 +3,7 @@ WORKDIR /app
 
 COPY package.json ./
 RUN npm install --production
+RUN npm install && npm install micromatch
 
 COPY . .
 
@@ -20,3 +21,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD wget -qO- http://localhost:$PORT/health || exit 1
 
 CMD ["node", "server/index.js"]
+#CMD ["tail","-f","/dev/null"]

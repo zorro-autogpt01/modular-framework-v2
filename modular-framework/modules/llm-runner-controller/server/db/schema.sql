@@ -76,6 +76,8 @@ CREATE TABLE IF NOT EXISTS api_keys (
   created_at TEXT DEFAULT (datetime('now'))
 );
 
+
+
 CREATE INDEX IF NOT EXISTS idx_agents_status ON agents(status);
 CREATE INDEX IF NOT EXISTS idx_runs_agent ON runs(agent_id);
 CREATE INDEX IF NOT EXISTS idx_configs_scope_ref ON configs(scope, ref_id);
@@ -84,3 +86,24 @@ CREATE INDEX IF NOT EXISTS idx_configs_scope_ref ON configs(scope, ref_id);
 INSERT INTO configs (id, scope, ref_id, version, name, data)
 SELECT 'cfg_global_v1', 'global', '*', 1, 'default', '{"runner":{"allowEnv":"HTTP_PROXY,HTTPS_PROXY"}}'
 WHERE NOT EXISTS (SELECT 1 FROM configs WHERE scope='global');
+
+
+
+CREATE TABLE IF NOT EXISTS artifacts (
+  id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  mime TEXT DEFAULT 'application/octet-stream',
+  size INTEGER NOT NULL,
+  sha256 TEXT NOT NULL,
+  store_url TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now')),
+  meta TEXT,
+  FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_artifacts_run_id ON artifacts(run_id);
+CREATE INDEX IF NOT EXISTS idx_artifacts_created ON artifacts(created_at);
+
+-- Add host column to runs table for SSH execution tracking
+ALTER TABLE runs ADD COLUMN host TEXT;
