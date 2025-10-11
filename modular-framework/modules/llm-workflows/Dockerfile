@@ -4,6 +4,7 @@ WORKDIR /app
 COPY package.json ./
 RUN npm install --production
 RUN npm install && npm install micromatch
+RUN apk add --no-cache python3 make g++
 
 COPY . .
 

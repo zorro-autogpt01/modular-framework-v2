@@ -39,6 +39,33 @@ const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 const WF_FILE = path.join(DATA_DIR, 'workflows.json');
 const RUNNERS_FILE = path.join(DATA_DIR, 'runners.json');
 
+const rateLimit = require('express-rate-limit');
+const { 
+  saveRun, 
+  saveRunLog, 
+  saveRunArtifact, 
+  getRunHistory, 
+  getRunById,
+  cleanupOldRuns 
+} = require('./db');
+const { router: metricsRouter } = require('./routes/metrics');
+const notifications = require('./notifications');
+const { router: debugRouter } = require('./routes/debug');
+// Replace in-memory runs with database queries
+// DELETE: const runs = [];
+// DELETE: function addRun(r) { ... }
+
+// Add rate limiting
+const workflowRunLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: 'Too many workflow runs. Please try again later.',
+  keyGenerator: (req) => req.body?.workflowId || req.params.id
+});
+
+// Mount metrics router
+
+
 ensureDir(DATA_DIR);
 ensureFile(WF_FILE, JSON.stringify({ workflows: [] }, null, 2));
 ensureFile(RUNNERS_FILE, JSON.stringify({ runners: [] }, null, 2));
@@ -174,11 +201,7 @@ function uuid() {
 
 // In-memory run history
 const RUN_MAX = Number(process.env.RUN_MAX || 100);
-const runs = [];
-function addRun(r) {
-  runs.push(r);
-  while (runs.length > RUN_MAX) runs.shift();
-}
+
 
 // Template helpers
 function renderTemplate(tpl, vars) {
@@ -296,18 +319,17 @@ function firstDefined(...vals) {
 function pickContentFromGateway(data) {
   if (typeof data === 'string') return data;
 
+  // Try direct content
   let content = firstDefined(
     data?.content,
     data?.message?.content,
     data?.text
   );
 
+  // Try chat completions format
   if (!content) content = data?.choices?.[0]?.message?.content;
 
-  if (!content && Array.isArray(data?.output_text) && data.output_text[0]?.content) {
-    content = data.output_text[0].content;
-  }
-
+  // Try Responses API format (GPT-5)
   if (!content && Array.isArray(data?.output)) {
     const msg = data.output.find(p => p?.type === 'message');
     const parts = msg?.content;
@@ -317,6 +339,19 @@ function pickContentFromGateway(data) {
       else if (typeof parts[0]?.text === 'string') content = parts[0].text;
       else if (typeof parts[0]?.content === 'string') content = parts[0].content;
     }
+  }
+
+  // Try output_text array
+  if (!content && Array.isArray(data?.output_text)) {
+    content = data.output_text
+      .map(item => {
+        if (typeof item === 'string') return item;
+        if (typeof item?.text === 'string') return item.text;
+        if (typeof item?.content === 'string') return item.content;
+        return '';
+      })
+      .filter(Boolean)
+      .join('\n');
   }
 
   if (!content && data && typeof data === 'object' && data.raw) {
@@ -361,14 +396,39 @@ async function callgateway({ model, temperature, max_tokens, messages, corr, ctx
     messagesCount: Array.isArray(messages) ? messages.length : 0,
     hasMetadata: !!metadata
   });
+  
+  logDebug('WF -> GW request_body', {
+    ctx,
+    corr,
+    body: JSON.stringify(body).slice(0, 1000)
+  });
 
   try {
     const resp = await axios.post(url, body, { timeout: 60_000 });
     const rawData = resp?.data;
+    
+    logDebug('WF <- GW raw_response', {
+      ctx,
+      corr,
+      status: resp.status,
+      dataType: typeof rawData,
+      dataKeys: rawData ? Object.keys(rawData) : [],
+      rawData: JSON.stringify(rawData).slice(0, 2000)
+    });
+    
     let content = pickContentFromGateway(rawData) ?? '';
 
     if (!content && rawData && typeof rawData === 'object') {
       try { content = JSON.stringify(rawData); } catch {}
+    }
+
+    if (!content) {
+      logError('WF <- GW empty_content', {
+        ctx,
+        corr,
+        model,
+        responsePreview: JSON.stringify(rawData).slice(0, 2000)
+      });
     }
 
     logInfo('WF <- GW response', {
@@ -382,10 +442,157 @@ async function callgateway({ model, temperature, max_tokens, messages, corr, ctx
   } catch (e) {
     const status = e?.response?.status;
     const dataText = typeof e?.response?.data === 'string' ? e.response.data : JSON.stringify(e?.response?.data);
-    logError('WF <- GW error', { ctx, corr, status, message: e.message, dataHead: (dataText || '').slice(0, 1000) });
+    logError('WF <- GW error', { 
+      ctx, 
+      corr, 
+      status, 
+      message: e.message, 
+      dataHead: (dataText || '').slice(0, 1000) 
+    });
     throw e;
   }
 }
+
+app.use('/api', debugRouter);
+if (BASE_PATH) app.use(`${BASE_PATH}/api`, debugRouter);
+
+app.use('/api', metricsRouter);
+if (BASE_PATH) app.use(`${BASE_PATH}/api`, metricsRouter);
+
+// Add workflow validation endpoint
+app.post('/api/workflows/validate', (req, res) => {
+  const { workflow } = req.body || {};
+  const errors = [];
+  const warnings = [];
+  
+  if (!workflow) {
+    return res.status(400).json({ error: 'workflow required' });
+  }
+  
+  if (!workflow.name) errors.push('Workflow name is required');
+  if (!workflow.chat?.model) errors.push('Model configuration is required');
+  if (!workflow.steps?.length) errors.push('At least one step is required');
+  
+  workflow.steps?.forEach((step, idx) => {
+    if (!step.prompt && step.type === 'llm') {
+      errors.push(`Step ${idx + 1}: prompt is required`);
+    }
+    
+    if (step.exportPath && !step.exportAs) {
+      warnings.push(`Step ${idx + 1}: exportPath set but exportAs is missing`);
+    }
+    
+    if (step.failOnRegex) {
+      const patterns = Array.isArray(step.failOnRegex) ? step.failOnRegex : [step.failOnRegex];
+      patterns.forEach(pattern => {
+        try {
+          new RegExp(pattern);
+        } catch (e) {
+          errors.push(`Step ${idx + 1}: invalid regex pattern: ${pattern}`);
+        }
+      });
+    }
+  });
+  
+  res.json({
+    valid: errors.length === 0,
+    errors,
+    warnings
+  });
+});
+if (BASE_PATH) app.post(`${BASE_PATH}/api/workflows/validate`, (req, res) => {
+  req.url = '/api/workflows/validate';
+  app._router.handle(req, res);
+});
+
+// Add import/export endpoints
+app.get('/api/workflows/:id/export', (req, res) => {
+  const { id } = req.params;
+  const { workflows } = readStore();
+  const wf = workflows.find(w => w.id === id);
+  
+  if (!wf) return res.status(404).json({ error: 'Not found' });
+  
+  const history = getRunHistory(id, 10);
+  
+  const exported = {
+    version: '1.0',
+    exported_at: new Date().toISOString(),
+    workflow: wf,
+    metadata: {
+      total_runs: history.length,
+      last_run: history[0]?.startedAt
+    }
+  };
+  
+  res.setHeader('Content-Disposition', `attachment; filename="${wf.name.replace(/[^a-z0-9]/gi, '_')}.workflow.json"`);
+  res.json(exported);
+});
+if (BASE_PATH) app.get(`${BASE_PATH}/api/workflows/:id/export`, (req, res) => {
+  req.url = `/api/workflows/${req.params.id}/export`;
+  app._router.handle(req, res);
+});
+
+app.post('/api/workflows/import', (req, res) => {
+  const { workflow, overwrite = false } = req.body || {};
+  
+  if (!workflow) return res.status(400).json({ error: 'workflow required' });
+  
+  const store = readStore();
+  const existing = store.workflows.find(w => w.id === workflow.id);
+  
+  if (existing && !overwrite) {
+    return res.status(409).json({ 
+      error: 'Workflow already exists. Set overwrite=true to replace.',
+      existing: existing.id 
+    });
+  }
+  
+  const imported = {
+    ...workflow,
+    id: overwrite ? workflow.id : uuid(),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  
+  if (overwrite && existing) {
+    const idx = store.workflows.findIndex(w => w.id === workflow.id);
+    store.workflows[idx] = imported;
+  } else {
+    store.workflows.push(imported);
+  }
+  
+  writeStore(store);
+  res.json({ ok: true, workflow: imported, imported: true });
+});
+if (BASE_PATH) app.post(`${BASE_PATH}/api/workflows/import`, (req, res) => {
+  req.url = '/api/workflows/import';
+  app._router.handle(req, res);
+});
+
+// Update /api/runs to use database
+app.get('/api/runs', (_req, res) => {
+  const history = getRunHistory(null, 100);
+  res.json({ runs: history });
+});
+if (BASE_PATH) app.get(`${BASE_PATH}/api/runs`, (_req, res) => {
+  const history = getRunHistory(null, 100);
+  res.json({ runs: history });
+});
+
+app.get('/api/runs/:id', (req, res) => {
+  const run = getRunById(req.params.id);
+  if (!run) return res.status(404).json({ error: 'Run not found' });
+  res.json({ run });
+});
+if (BASE_PATH) app.get(`${BASE_PATH}/api/runs/:id`, (req, res) => {
+  const run = getRunById(req.params.id);
+  if (!run) return res.status(404).json({ error: 'Run not found' });
+  res.json({ run });
+});
+
+
+
 
 // **ENHANCED**: Run step with conversation tracking
 async function runStep({ chatConfig, step, vars, ctx = 'runStep', corr, conversationId, workflowId, stepIndex }) {
@@ -1035,7 +1242,7 @@ if (BASE_PATH) app.post(`${BASE_PATH}/api/testStep`, (req, res) => {
 });
 
 // **ENHANCED**: Run workflow with full gateway integration
-app.post('/api/workflows/:id/run', requireInternalAuth, async (req, res) => {
+app.post('/api/workflows/:id/run', requireInternalAuth, workflowRunLimiter, async (req, res) => {
   const { id } = req.params;
   const inputs = req.body?.vars || {};
   const store = readStore();
@@ -1053,13 +1260,19 @@ app.post('/api/workflows/:id/run', requireInternalAuth, async (req, res) => {
     status: 'running',
     logs: [],
     artifacts: [],
-    outputByStep: {}
+    outputByStep: {},
+    inputVars: inputs
   };
-  addRun(run);
+  
+  // Save to database instead of memory
+  saveRun(run);
 
   function runLog(level, msg, meta) { 
-    run.logs.push({ ts: new Date().toISOString(), level, msg, meta }); 
+    const log = { ts: new Date().toISOString(), level, msg, meta };
+    run.logs.push(log);
+    saveRunLog(run.id, log);
   }
+
 
   logInfo('WF RUN start', { 
     corr: run.id, 
@@ -1242,6 +1455,13 @@ app.post('/api/workflows/:id/run', requireInternalAuth, async (req, res) => {
 
     run.status = 'ok';
     run.finishedAt = new Date().toISOString();
+    saveRun(run);
+    await notifications.send({
+      type: 'workflow.completed',
+      workflow: wf,
+      run,
+      message: run.status === 'ok' ? 'Workflow completed successfully' : 'Workflow failed'
+    });
     logInfo('WF RUN ok', { 
       corr: run.id, 
       conversationId: run.conversationId 
@@ -1258,6 +1478,7 @@ app.post('/api/workflows/:id/run', requireInternalAuth, async (req, res) => {
     });
     res.status(500).json(run);
   }
+
 });
 if (BASE_PATH) app.post(`${BASE_PATH}/api/workflows/:id/run`, (req, res) => {
   req.url = `/api/workflows/${req.params.id}/run`;
@@ -1357,5 +1578,18 @@ app.use((err, _req, res, _next) => {
   } catch {}
   res.status(500).json({ error: 'Internal Server Error' });
 });
+
+// Add cleanup job (run on startup and daily)
+function scheduleCleanup() {
+  const cleanup = () => {
+    const daysToKeep = Number(process.env.RUN_HISTORY_DAYS || 90);
+    cleanupOldRuns(daysToKeep);
+  };
+  
+  cleanup(); // Run on startup
+  setInterval(cleanup, 24 * 60 * 60 * 1000); // Run daily
+}
+
+scheduleCleanup();
 
 module.exports = app;
