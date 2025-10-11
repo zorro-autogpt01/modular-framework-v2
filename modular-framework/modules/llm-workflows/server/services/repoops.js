@@ -170,9 +170,15 @@ async function callLLM({ model, temperature, messages, schema, corr }) {
 function extractContentFromResponse(data, isGpt5 = false) {
   if (!data) return '';
   
-  // Format 1: Direct content field
-  if (typeof data.content === 'string') {
+  // Format 1: Direct content field (but only if not empty)
+  if (typeof data.content === 'string' && data.content) {
     return data.content;
+  }
+
+  // Check raw object if content was empty
+  if (!data.content && data.raw) {
+    const fromRaw = extractContentFromResponse(data.raw, isGpt5);
+    if (fromRaw) return fromRaw;
   }
   
   // Format 2: Standard Chat Completions format
