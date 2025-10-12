@@ -319,39 +319,45 @@ function firstDefined(...vals) {
 function pickContentFromGateway(data) {
   if (typeof data === 'string') return data;
 
-  // Try direct content
   let content = firstDefined(
     data?.content,
     data?.message?.content,
     data?.text
   );
 
-  // Try chat completions format
   if (!content) content = data?.choices?.[0]?.message?.content;
 
-  // Try Responses API format (GPT-5)
-  if (!content && Array.isArray(data?.output)) {
-    const msg = data.output.find(p => p?.type === 'message');
-    const parts = msg?.content;
-    if (Array.isArray(parts)) {
-      const ot = parts.find(p => p?.type === 'output_text' && typeof p?.text === 'string');
-      if (ot?.text) content = ot.text;
-      else if (typeof parts[0]?.text === 'string') content = parts[0].text;
-      else if (typeof parts[0]?.content === 'string') content = parts[0].content;
+  // Handle /v1/responses format (GPT-5 models)
+  if (!content && Array.isArray(data?.output_text)) {
+    // Simple array of strings
+    if (data.output_text.length > 0 && typeof data.output_text[0] === 'string') {
+      content = data.output_text.join('');
+    }
+    // Array with content objects
+    else if (data.output_text[0]?.content) {
+      content = data.output_text[0].content;
     }
   }
 
-  // Try output_text array
-  if (!content && Array.isArray(data?.output_text)) {
-    content = data.output_text
-      .map(item => {
-        if (typeof item === 'string') return item;
-        if (typeof item?.text === 'string') return item.text;
-        if (typeof item?.content === 'string') return item.content;
-        return '';
-      })
-      .filter(Boolean)
-      .join('\n');
+  // Handle nested output structure (GPT-5 responses)
+  if (!content && Array.isArray(data?.output)) {
+    const msg = data.output.find(p => p?.type === 'message');
+    if (msg) {
+      const parts = msg?.content;
+      if (Array.isArray(parts)) {
+        const ot = parts.find(p => p?.type === 'text' && typeof p?.text === 'string');
+        if (ot?.text) content = ot.text;
+        else if (typeof parts[0]?.text === 'string') content = parts[0].text;
+        else if (typeof parts[0]?.content === 'string') content = parts[0].content;
+      } else if (typeof msg.content === 'string') {
+        content = msg.content;
+      }
+    }
+  }
+
+  // Additional GPT-5 response format handling
+  if (!content && data?.output?.[0]?.content?.[0]?.text) {
+    content = data.output[0].content[0].text;
   }
 
   if (!content && data && typeof data === 'object' && data.raw) {
@@ -365,6 +371,11 @@ function pickContentFromGateway(data) {
       data?.data?.message?.content
     );
     if (maybe) content = maybe;
+  }
+
+  // Log if we still can't find content (for debugging)
+  if (!content && data) {
+    console.warn('Unable to extract content from response:', JSON.stringify(data).slice(0, 500));
   }
 
   return typeof content === 'string' ? content : '';

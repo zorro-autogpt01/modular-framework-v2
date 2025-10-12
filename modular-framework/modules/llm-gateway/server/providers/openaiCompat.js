@@ -65,6 +65,56 @@ function redactHeaders(h = {}) {
   return out;
 }
 
+/**
+ * Robust extractor for non-stream Responses API payloads (gpt-5/o* models).
+ * Handles:
+ * - output_text: [ "..." ]
+ * - output: [ { content: [ { type:'output_text', text:'...' }, ... ] }, ... ]
+ * - legacy .message.content / .content
+ * - as well as a deep walk fallback
+ */
+function extractTextFromResponses(data) {
+  if (!data) return '';
+  if (typeof data === 'string') return data;
+
+  // Quick common fields
+  const direct =
+    data?.output_text?.join?.('') ||
+    data?.message?.content ||
+    data?.content;
+  if (direct) return String(direct);
+
+  // Canonical Responses API structure
+  if (Array.isArray(data.output)) {
+    const parts = [];
+    for (const item of data.output) {
+      const contentArr = item?.content;
+      if (Array.isArray(contentArr)) {
+        for (const c of contentArr) {
+          if (typeof c?.text === 'string') parts.push(c.text);
+          else if (typeof c?.content === 'string') parts.push(c.content);
+        }
+      }
+    }
+    if (parts.length) return parts.join('');
+  }
+
+  // Deep walk fallback
+  const acc = [];
+  const walk = (v) => {
+    if (!v) return;
+    if (typeof v === 'string') { acc.push(v); return; }
+    if (Array.isArray(v)) { v.forEach(walk); return; }
+    if (typeof v === 'object') {
+      if (typeof v.text === 'string') acc.push(v.text);
+      if (typeof v.content === 'string') acc.push(v.content);
+      for (const k of Object.keys(v)) walk(v[k]);
+    }
+  };
+  walk(data);
+  return acc.join('');
+}
+
 async function callOpenAICompat({
   baseUrl, apiKey, model, messages, temperature,
   max_tokens, useResponses, reasoning, stream, onDelta, onDone, onError, rid
@@ -99,10 +149,7 @@ async function callOpenAICompat({
         dataHead: JSON.stringify(resp.data)?.slice(0, 1000)
       });
       const data = resp.data;
-      const content =
-        data?.output_text?.join?.('') ||
-        data?.message?.content ||
-        data?.content || '';
+      const content = extractTextFromResponses(data);
       return { content, raw: data };
     }
   }

@@ -46,7 +46,9 @@ router.post('/plan', async (req, res) => {
     max_file_kb,
     language_hints,
     llm_model = 'gpt-4o-mini',
-    temperature = 0.2
+    temperature = 0.2,
+    use_async = false,        // NEW
+    async_webhook = null      // NEW
   } = req.body || {};
 
   if (!conn_id || !change_request) {
@@ -62,7 +64,8 @@ router.post('/plan', async (req, res) => {
       conn_id, 
       base_branch, 
       model: llm_model,
-      changeRequestLen: change_request.length 
+      changeRequestLen: change_request.length,
+      useAsync: use_async 
     });
 
     // Phase 1: Discovery
@@ -75,7 +78,9 @@ router.post('/plan', async (req, res) => {
       languageHints: language_hints,
       model: llm_model,
       temperature,
-      corr
+      corr,
+      useAsync: use_async,
+      asyncWebhook: async_webhook
     });
 
     // Phase 2: Proposal
@@ -88,12 +93,15 @@ router.post('/plan', async (req, res) => {
       denyPaths: deny_paths,
       model: llm_model,
       temperature,
-      corr
+      corr,
+      useAsync: use_async,
+      asyncWebhook: async_webhook
     });
 
     const response = {
       ok: true,
       correlation_id: corr,
+      async_mode: use_async,
       discovery: discoveryResult.discovery,
       proposed: proposalResult.proposed,
       budget: {
@@ -119,7 +127,8 @@ router.post('/plan', async (req, res) => {
     logInfo('repoops_plan_success', { 
       corr, 
       filesSelected: discoveryResult.discovery.files?.length || 0,
-      changesProposed: proposalResult.proposed.changes?.length || 0
+      changesProposed: proposalResult.proposed.changes?.length || 0,
+      asyncMode: use_async
     });
 
     res.json(response);
@@ -132,6 +141,7 @@ router.post('/plan', async (req, res) => {
     });
   }
 });
+
 
 /**
  * POST /api/repoops/apply
@@ -652,7 +662,6 @@ router.get('/status/:job_id', async (req, res) => {
  */
 router.post('/run', async (req, res) => {
   const corr = `run_${uuid()}`;
-  const { async = false } = req.body || {};
   const {
     conn_id,
     base_branch = 'main',
@@ -667,7 +676,9 @@ router.post('/run', async (req, res) => {
     test = {},
     open_pr = true,
     pr_draft = false,
-    require_approval = false
+    require_approval = false,
+    use_async = false,        // NEW
+    async_webhook = null      // NEW
   } = req.body || {};
 
   if (!conn_id || !change_request) {
@@ -679,66 +690,6 @@ router.post('/run', async (req, res) => {
 
   const effectiveHeadBranch = head_branch || `repoops/${Date.now()}`;
 
-  // ASYNC MODE: Return immediately with job ID
-  if (async) {
-    const jobId = corr;
-    
-    // Initialize job status
-    updateJobStatus(jobId, {
-      status: 'queued',
-      phase: 'initializing',
-      progress: 0,
-      conn_id,
-      base_branch,
-      head_branch: effectiveHeadBranch,
-      change_request: change_request.substring(0, 200) + (change_request.length > 200 ? '...' : ''),
-      model: llm_model,
-      created_at: new Date().toISOString()
-    });
-
-    // Execute in background (don't await)
-    setImmediate(() => {
-      executeWorkflowAsync(jobId, {
-        conn_id,
-        base_branch,
-        change_request,
-        allow_paths,
-        deny_paths,
-        language_hints,
-        llm_model,
-        temperature,
-        guardrails,
-        test,
-        open_pr,
-        pr_draft,
-        require_approval,
-        effectiveHeadBranch,
-        corr
-      }).catch(e => {
-        logError('repoops_async_background_error', { 
-          jobId, 
-          error: e.message 
-        });
-      });
-    });
-
-    logInfo('repoops_async_queued', { 
-      corr: jobId,
-      conn_id,
-      model: llm_model
-    });
-
-    return res.json({
-      ok: true,
-      async: true,
-      job_id: jobId,
-      status_url: `/api/repoops/status/${jobId}`,
-      message: 'Workflow queued. Poll status_url for progress.',
-      estimated_duration_seconds: 60
-    });
-  }
-
-  // SYNCHRONOUS MODE: Execute and wait
   try {
     logInfo('repoops_run_request', { 
       corr, 
@@ -747,13 +698,13 @@ router.post('/run', async (req, res) => {
       head_branch: effectiveHeadBranch,
       model: llm_model,
       require_approval,
-      async: false
+      useAsync: use_async
     });
 
     const artifacts = [];
     const phases = {};
 
-    // Phase 1 & 2: Plan
+    // Phase 1 & 2: Plan (with async support)
     const planResult = await runDiscovery({
       connId: conn_id,
       baseBranch: base_branch,
@@ -763,7 +714,9 @@ router.post('/run', async (req, res) => {
       languageHints: language_hints,
       model: llm_model,
       temperature,
-      corr
+      corr,
+      useAsync: use_async,
+      asyncWebhook: async_webhook
     });
 
     const proposalResult = await runProposal({
@@ -775,13 +728,16 @@ router.post('/run', async (req, res) => {
       denyPaths: deny_paths,
       model: llm_model,
       temperature,
-      corr
+      corr,
+      useAsync: use_async,
+      asyncWebhook: async_webhook
     });
 
     phases.plan = {
       ok: true,
       discovery: planResult.discovery,
-      proposed: proposalResult.proposed
+      proposed: proposalResult.proposed,
+      async_mode: use_async
     };
 
     artifacts.push({
@@ -792,6 +748,7 @@ router.post('/run', async (req, res) => {
       type: 'plan.proposal',
       content: JSON.stringify(proposalResult.proposed, null, 2)
     });
+
 
     if (require_approval) {
       logInfo('repoops_approval_required', { corr });
@@ -916,7 +873,8 @@ router.post('/run', async (req, res) => {
 
     logInfo('repoops_run_success', { 
       corr,
-      pr_created: !!prResult
+      pr_created: !!prResult,
+      asyncMode: use_async
     });
 
     res.json({
@@ -924,6 +882,7 @@ router.post('/run', async (req, res) => {
       correlation_id: corr,
       status: 'completed',
       head_branch: effectiveHeadBranch,
+      async_mode: use_async,
       phases,
       artifacts
     });

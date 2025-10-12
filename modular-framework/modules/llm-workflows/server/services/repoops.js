@@ -1,5 +1,3 @@
-// modular-framework/modules/llm-workflows/server/services/repoops.js
-
 const axios = require('axios');
 const Ajv = require('ajv');
 const micromatch = require('micromatch');
@@ -94,6 +92,86 @@ class GitHubHubClient {
 }
 
 /**
+ * Robust extractor for gateway responses (covers Responses API and Chat).
+ */
+function extractContentFromGatewayResponse(data) {
+  if (!data) return '';
+  if (typeof data === 'string') return data;
+
+  // direct fields
+  let content =
+    data?.content ||
+    data?.message?.content ||
+    data?.choices?.[0]?.message?.content ||
+    '';
+
+  if (content) return String(content);
+
+  // Responses API variants
+  if (Array.isArray(data.output_text)) {
+    const joined = data.output_text.join('');
+    if (joined) return joined;
+  }
+
+  if (Array.isArray(data.output)) {
+    const parts = [];
+    for (const item of data.output) {
+      const arr = item?.content;
+      if (Array.isArray(arr)) {
+        for (const p of arr) {
+          if (typeof p?.text === 'string') parts.push(p.text);
+          else if (typeof p?.content === 'string') parts.push(p.content);
+        }
+      }
+    }
+    if (parts.length) return parts.join('');
+  }
+
+  // If gateway wrapped original in { raw }
+  if (data.raw) {
+    const r = data.raw;
+    const rawDirect =
+      r?.content ||
+      r?.message?.content ||
+      r?.choices?.[0]?.message?.content ||
+      '';
+    if (rawDirect) return rawDirect;
+    if (Array.isArray(r.output_text)) {
+      const j = r.output_text.join('');
+      if (j) return j;
+    }
+    if (Array.isArray(r.output)) {
+      const parts = [];
+      for (const item of r.output) {
+        const arr = item?.content;
+        if (Array.isArray(arr)) {
+          for (const p of arr) {
+            if (typeof p?.text === 'string') parts.push(p.text);
+            else if (typeof p?.content === 'string') parts.push(p.content);
+          }
+        }
+      }
+      if (parts.length) return parts.join('');
+    }
+  }
+
+  // Deep walk fallback
+  const acc = [];
+  const walk = (v) => {
+    if (!v) return;
+    if (typeof v === 'string') { acc.push(v); return; }
+    if (Array.isArray(v)) { v.forEach(walk); return; }
+    if (typeof v === 'object') {
+      if (typeof v.text === 'string') acc.push(v.text);
+      if (typeof v.content === 'string') acc.push(v.content);
+      for (const k of Object.keys(v)) walk(v[k]);
+    }
+  };
+  walk(data);
+  return acc.join('');
+}
+
+/**
  * LLM interaction helpers
  */
 async function callLLM({ model, temperature, messages, schema, corr }) {
@@ -114,136 +192,19 @@ async function callLLM({ model, temperature, messages, schema, corr }) {
 
   logInfo('repoops_llm_call', { corr, model, messageCount: fullMessages.length });
 
-  // Check if model is GPT-5/o5 variant
-  const isGpt5 = /^(gpt-5|o5)/i.test(model || '');
-  
-  const body = {
+  const resp = await axios.post(LLM_GATEWAY_CHAT, {
     model,
+    temperature: temperature ?? 0.2,
     messages: fullMessages,
     stream: false,
     metadata: { correlation_id: corr, repoops: true }
-  };
-  
-  // Only set temperature for non-GPT-5 models
-  if (!isGpt5 && typeof temperature === 'number') {
-    body.temperature = temperature;
-  }
+  }, { timeout: 90000 });
 
-  logDebug('repoops_llm_request_body', { corr, body: JSON.stringify(body).slice(0, 1000) });
+  // Hardened extraction (supports gpt-5 Responses API payloads)
+  const content = extractContentFromGatewayResponse(resp.data);
 
-  const resp = await axios.post(LLM_GATEWAY_CHAT, body, { timeout: 90000 });
-
-  // Log the full response for debugging
-  logDebug('repoops_llm_raw_response', { 
-    corr, 
-    status: resp.status,
-    headers: resp.headers,
-    dataType: typeof resp.data,
-    dataKeys: resp.data ? Object.keys(resp.data) : [],
-    rawData: JSON.stringify(resp.data).slice(0, 2000)
-  });
-
-  let content = extractContentFromResponse(resp.data, isGpt5);
-
-  if (!content) {
-    logError('repoops_llm_empty_content', { 
-      corr, 
-      model,
-      isGpt5,
-      responsePreview: JSON.stringify(resp.data).slice(0, 2000)
-    });
-    throw new Error('LLM returned empty content. Check logs for full response.');
-  }
-
-  logDebug('repoops_llm_response', { 
-    corr, 
-    contentLen: content.length, 
-    preview: content.slice(0, 300) 
-  });
-  
+  logDebug('repoops_llm_response', { corr, contentLen: (content || '').length, preview: String(content || '').slice(0, 300) });
   return content;
-}
-
-/**
- * Enhanced content extraction that handles multiple response formats
- */
-function extractContentFromResponse(data, isGpt5 = false) {
-  if (!data) return '';
-  
-  // Format 1: Direct content field (but only if not empty)
-  if (typeof data.content === 'string' && data.content) {
-    return data.content;
-  }
-
-  // Check raw object if content was empty
-  if (!data.content && data.raw) {
-    const fromRaw = extractContentFromResponse(data.raw, isGpt5);
-    if (fromRaw) return fromRaw;
-  }
-  
-  // Format 2: Standard Chat Completions format
-  if (data.choices?.[0]?.message?.content) {
-    return data.choices[0].message.content;
-  }
-  
-  // Format 3: Responses API format (GPT-5)
-  if (Array.isArray(data.output)) {
-    const messageBlock = data.output.find(block => block.type === 'message');
-    if (messageBlock?.content) {
-      // content is an array of parts
-      const parts = Array.isArray(messageBlock.content) ? messageBlock.content : [messageBlock.content];
-      
-      // Find output_text parts
-      for (const part of parts) {
-        if (part.type === 'output_text' && typeof part.text === 'string') {
-          return part.text;
-        }
-      }
-      
-      // Fallback: concatenate all text
-      return parts
-        .filter(p => typeof p.text === 'string' || typeof p.content === 'string')
-        .map(p => p.text || p.content)
-        .join('');
-    }
-  }
-  
-  // Format 4: Alternative output_text array format
-  if (Array.isArray(data.output_text)) {
-    const texts = data.output_text
-      .map(item => {
-        if (typeof item === 'string') return item;
-        if (typeof item?.text === 'string') return item.text;
-        if (typeof item?.content === 'string') return item.content;
-        return '';
-      })
-      .filter(Boolean);
-    
-    if (texts.length > 0) {
-      return texts.join('\n');
-    }
-  }
-  
-  // Format 5: Nested message format
-  if (data.message?.content) {
-    if (typeof data.message.content === 'string') {
-      return data.message.content;
-    }
-    
-    if (Array.isArray(data.message.content)) {
-      return data.message.content
-        .filter(p => typeof p?.text === 'string')
-        .map(p => p.text)
-        .join('');
-    }
-  }
-  
-  // Format 6: Simple text field
-  if (typeof data.text === 'string') {
-    return data.text;
-  }
-  
-  return '';
 }
 
 function parseJSON(text) {
@@ -308,77 +269,58 @@ function parseJSON(text) {
   return null;
 }
 
-async function callLLMWithRetry({ model, temperature, messages, schema, corr, maxRetries = 3 }) {
+async function callLLMWithRetry({ model, temperature, messages, schema, corr, maxRetries = 2 }) {
   const validate = ajv.compile(schema);
-  let lastError;
+  let attempt = 0;
 
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      const raw = await callLLM({ model, temperature, messages, schema, corr });
-      const parsed = parseJSON(raw);
+  while (attempt <= maxRetries) {
+    const raw = await callLLM({ model, temperature, messages, schema, corr });
+    const parsed = parseJSON(raw);
 
-      if (!parsed) {
-        logWarn('repoops_json_parse_failed', { corr, attempt, rawPreview: raw.slice(0, 500) });
-        if (attempt < maxRetries - 1) {
-          // Exponential backoff
-          const backoff = Math.min(1000 * Math.pow(2, attempt), 10000);
-          logInfo('repoops_retry_backoff', { corr, attempt, backoff });
-          await new Promise(r => setTimeout(r, backoff));
-          
-          messages.push({
-            role: 'assistant',
-            content: raw
-          });
-          messages.push({
-            role: 'user',
-            content: 'Your output was not valid JSON. Return only a JSON object matching the schema. No markdown, no explanations.'
-          });
-          continue;
-        }
-        throw new Error('LLM returned invalid JSON after retries');
-      }
-
-      const valid = validate(parsed);
-      if (valid) {
-        logInfo('repoops_validation_passed', { corr, attempt });
-        return { json: parsed, raw };
-      }
-
-      const errors = (validate.errors || []).map(e => 
-        `${e.instancePath || 'root'}: ${e.message || 'error'}`
-      ).join('; ');
-
-      logWarn('repoops_validation_failed', { corr, attempt, errors });
-
-      if (attempt < maxRetries - 1) {
-        const backoff = Math.min(1000 * Math.pow(2, attempt), 10000);
-        await new Promise(r => setTimeout(r, backoff));
-        
+    if (!parsed) {
+      logWarn('repoops_json_parse_failed', { corr, attempt, rawPreview: raw.slice(0, 500) });
+      if (attempt < maxRetries) {
         messages.push({
           role: 'assistant',
           content: raw
         });
         messages.push({
           role: 'user',
-          content: `Your output failed schema validation. Errors: ${errors}\n\nReturn a corrected JSON object that passes validation.`
+          content: 'Your output was not valid JSON. Return only a JSON object matching the schema. No markdown, no explanations.'
         });
+        attempt++;
         continue;
       }
-
-      throw new Error(`Schema validation failed after ${maxRetries} retries: ${errors}`);
-    } catch (err) {
-      lastError = err;
-      if (attempt < maxRetries - 1 && (err.code === 'ECONNREFUSED' || err.code === 'ETIMEDOUT')) {
-        const backoff = Math.min(1000 * Math.pow(2, attempt), 10000);
-        logWarn('repoops_llm_retry', { corr, attempt, backoff, error: err.message });
-        await new Promise(r => setTimeout(r, backoff));
-        continue;
-      }
-      throw err;
+      throw new Error('LLM returned invalid JSON after retries');
     }
+
+    const valid = validate(parsed);
+    if (valid) {
+      logInfo('repoops_validation_passed', { corr, attempt });
+      return { json: parsed, raw };
+    }
+
+    const errors = (validate.errors || []).map(e => 
+      `${e.instancePath || 'root'}: ${e.message || 'error'}`
+    ).join('; ');
+
+    logWarn('repoops_validation_failed', { corr, attempt, errors });
+
+    if (attempt < maxRetries) {
+      messages.push({
+        role: 'assistant',
+        content: raw
+      });
+      messages.push({
+        role: 'user',
+        content: `Your output failed schema validation. Errors: ${errors}\n\nReturn a corrected JSON object that passes validation.`
+      });
+      attempt++;
+      continue;
+    }
+
+    throw new Error(`Schema validation failed after ${maxRetries} retries: ${errors}`);
   }
-  
-  throw lastError;
 }
 
 /**
@@ -436,128 +378,6 @@ function shouldIncludeFile(item, { allowPaths, denyPaths, languageHints }) {
   }
 
   return { include: true, reason: 'default_include' };
-}
-
-/**
- * Generate unified diff preview
- */
-function generateUnifiedDiff(before, after, filename) {
-  const beforeLines = (before || '').split('\n');
-  const afterLines = (after || '').split('\n');
-  
-  const diff = [`--- a/${filename}`, `+++ b/${filename}`, '@@ -1,1 +1,1 @@'];
-  const maxLen = Math.max(beforeLines.length, afterLines.length);
-  
-  let changeCount = 0;
-  for (let i = 0; i < maxLen; i++) {
-    const bLine = beforeLines[i];
-    const aLine = afterLines[i];
-    
-    if (bLine !== aLine) {
-      if (bLine !== undefined) diff.push(`-${bLine}`);
-      if (aLine !== undefined) diff.push(`+${aLine}`);
-      changeCount++;
-    }
-    
-    // Limit diff size
-    if (changeCount > 100) {
-      diff.push('... (diff truncated)');
-      break;
-    }
-  }
-  
-  return diff.join('\n');
-}
-
-/**
- * Generate diff preview before applying changes
- */
-async function generateDiffPreview({ connId, baseBranch, plan, corr }) {
-  logInfo('repoops_diff_preview_start', { corr, changesCount: plan.changes?.length || 0 });
-  
-  const client = new GitHubHubClient(connId);
-  const diffs = [];
-  let totalAdditions = 0;
-  let totalDeletions = 0;
-  
-  for (const change of plan.changes || []) {
-    const { path, operation, content } = change;
-    
-    try {
-      if (operation === 'delete') {
-        const current = await client.getFile(path, baseBranch);
-        const lines = (current.decoded_content || '').split('\n').length;
-        diffs.push({
-          path,
-          operation: 'delete',
-          before: current.decoded_content,
-          after: null,
-          deletions: lines
-        });
-        totalDeletions += lines;
-      } else if (operation === 'create') {
-        const lines = (content || '').split('\n').length;
-        diffs.push({
-          path,
-          operation: 'create',
-          before: null,
-          after: content,
-          additions: lines
-        });
-        totalAdditions += lines;
-      } else if (operation === 'update') {
-        const current = await client.getFile(path, baseBranch);
-        const beforeLines = (current.decoded_content || '').split('\n');
-        const afterLines = (content || '').split('\n');
-        
-        let additions = 0;
-        let deletions = 0;
-        const maxLen = Math.max(beforeLines.length, afterLines.length);
-        
-        for (let i = 0; i < maxLen; i++) {
-          if (beforeLines[i] !== afterLines[i]) {
-            if (beforeLines[i] !== undefined) deletions++;
-            if (afterLines[i] !== undefined) additions++;
-          }
-        }
-        
-        diffs.push({
-          path,
-          operation: 'update',
-          before: current.decoded_content,
-          after: content,
-          diff: generateUnifiedDiff(current.decoded_content, content, path),
-          additions,
-          deletions
-        });
-        
-        totalAdditions += additions;
-        totalDeletions += deletions;
-      }
-    } catch (e) {
-      logWarn('repoops_diff_preview_file_failed', { corr, path, error: e.message });
-      diffs.push({
-        path,
-        operation,
-        error: e.message
-      });
-    }
-  }
-  
-  const summary = {
-    files_changed: diffs.length,
-    additions: totalAdditions,
-    deletions: totalDeletions,
-    operations: {
-      create: diffs.filter(d => d.operation === 'create').length,
-      update: diffs.filter(d => d.operation === 'update').length,
-      delete: diffs.filter(d => d.operation === 'delete').length
-    }
-  };
-  
-  logInfo('repoops_diff_preview_done', { corr, ...summary });
-  
-  return { diffs, summary };
 }
 
 /**
@@ -999,6 +819,5 @@ module.exports = {
   runProposal,
   applyChanges,
   runTests,
-  createPR,
-  generateDiffPreview
+  createPR
 };
