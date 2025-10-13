@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.venv/
+.env
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+
+# Build
+build/
+dist/
+.eggs/
+.coverage
+htmlcov/
+
+# Cache
+.cache/
+.pytest_cache/
+
+# Data
+/data/
+frontend/node_modules/
+frontend/dist/

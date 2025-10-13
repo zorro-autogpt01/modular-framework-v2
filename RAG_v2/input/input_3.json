@@ -1,0 +1,293 @@
+{
+  "version": "1.0",
+  "project_root": "codecontext-rag",
+  "backup": true,
+  "changes": [
+    {
+      "op": "write_file",
+      "id": "frontend-package-json",
+      "description": "Add a minimal React + Vite frontend to interact with the backend API",
+      "path": "frontend/package.json",
+      "mode": "overwrite",
+      "content": "{\n  \"name\": \"codecontext-rag-web\",\n  \"version\": \"0.1.0\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"scripts\": {\n    \"dev\": \"vite\",\n    \"build\": \"vite build\",\n    \"preview\": \"vite preview --port 4173 --strictPort\"\n  },\n  \"dependencies\": {\n    \"react\": \"^18.2.0\",\n    \"react-dom\": \"^18.2.0\",\n    \"react-router-dom\": \"^6.22.3\"\n  },\n  \"devDependencies\": {\n    \"@types/react\": \"^18.2.33\",\n    \"@types/react-dom\": \"^18.2.14\",\n    \"@vitejs/plugin-react\": \"^4.2.0\",\n    \"typescript\": \"^5.3.3\",\n    \"vite\": \"^5.1.0\"\n  }\n}\n"
+    },
+    {
+      "op": "write_file",
+      "id": "frontend-tsconfig",
+      "description": "TypeScript config for frontend",
+      "path": "frontend/tsconfig.json",
+      "mode": "overwrite",
+      "content": "{\n  \"compilerOptions\": {\n    \"target\": \"ES2020\",\n    \"useDefineForClassFields\": true,\n    \"lib\": [\"ES2020\", \"DOM\", \"DOM.Iterable\"],\n    \"module\": \"ESNext\",\n    \"skipLibCheck\": true,\n    \"moduleResolution\": \"bundler\",\n    \"resolveJsonModule\": true,\n    \"isolatedModules\": true,\n    \"noEmit\": true,\n    \"jsx\": \"react-jsx\",\n    \"strict\": true,\n    \"baseUrl\": \".\"\n  },\n  \"include\": [\"src\"]\n}\n"
+    },
+    {
+      "op": "write_file",
+      "id": "frontend-vite-config",
+      "description": "Vite config with React plugin",
+      "path": "frontend/vite.config.ts",
+      "mode": "overwrite",
+      "content": "import { defineConfig } from 'vite'\nimport react from '@vitejs/plugin-react'\n\nexport default defineConfig({\n  plugins: [react()],\n  server: {\n    host: true,\n    port: 5173\n  }\n})\n"
+    },
+    {
+      "op": "write_file",
+      "id": "frontend-env-example",
+      "description": "Frontend environment variables example",
+      "path": "frontend/.env.example",
+      "mode": "overwrite",
+      "content": "# Frontend config\nVITE_API_BASE=http://localhost:8000\nVITE_API_KEY=\n"
+    },
+    {
+      "op": "write_file",
+      "id": "frontend-index-html",
+      "description": "Frontend HTML entry",
+      "path": "frontend/index.html",
+      "mode": "overwrite",
+      "content": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"UTF-8\" />\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n    <title>CodeContext RAG</title>\n  </head>\n  <body>\n    <div id=\"root\"></div>\n    <script type=\"module\" src=\"/src/main.tsx\"></script>\n  </body>\n</html>\n"
+    },
+    {
+      "op": "write_file",
+      "id": "frontend-main",
+      "description": "Frontend entry mounting React app",
+      "path": "frontend/src/main.tsx",
+      "mode": "overwrite",
+      "content": "import React from 'react'\nimport ReactDOM from 'react-dom/client'\nimport { BrowserRouter } from 'react-router-dom'\nimport App from './App'\n\nReactDOM.createRoot(document.getElementById('root')!).render(\n  <React.StrictMode>\n    <BrowserRouter>\n      <App />\n    </BrowserRouter>\n  </React.StrictMode>\n)\n"
+    },
+    {
+      "op": "write_file",
+      "id": "frontend-app",
+      "description": "Main app with navigation and routes",
+      "path": "frontend/src/App.tsx",
+      "mode": "overwrite",
+      "content": "import { Link, Route, Routes, Navigate } from 'react-router-dom'\nimport Repositories from './pages/Repositories'\nimport Recommendations from './pages/Recommendations'\nimport Dependencies from './pages/Dependencies'\nimport Impact from './pages/Impact'\nimport './styles.css'\n\nexport default function App() {\n  return (\n    <div className=\"container\">\n      <nav className=\"nav\">\n        <div className=\"brand\">CodeContext RAG</div>\n        <div className=\"links\">\n          <Link to=\"/repositories\">Repositories</Link>\n          <Link to=\"/recommendations\">Recommendations</Link>\n          <Link to=\"/dependencies\">Dependencies</Link>\n          <Link to=\"/impact\">Impact</Link>\n        </div>\n      </nav>\n      <main>\n        <Routes>\n          <Route path=\"/repositories\" element={<Repositories />} />\n          <Route path=\"/recommendations\" element={<Recommendations />} />\n          <Route path=\"/dependencies\" element={<Dependencies />} />\n          <Route path=\"/impact\" element={<Impact />} />\n          <Route path=\"*\" element={<Navigate to=\"/repositories\" replace />} />\n        </Routes>\n      </main>\n      <footer className=\"footer\">\n        <small>API: {import.meta.env.VITE_API_BASE || 'http://localhost:8000'}</small>\n      </footer>\n    </div>\n  )\n}\n"
+    },
+    {
+      "op": "write_file",
+      "id": "frontend-styles",
+      "description": "Minimal CSS styles",
+      "path": "frontend/src/styles.css",
+      "mode": "overwrite",
+      "content": "html,body,#root{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial}\n.container{display:flex;flex-direction:column;min-height:100%}\n.nav{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #eee;position:sticky;top:0;background:#fff;z-index:1}\n.nav .links a{margin-right:12px;text-decoration:none;color:#0b5ed7}\n.brand{font-weight:600}\nmain{flex:1;padding:16px}\n.card{border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-bottom:16px}\n.row{display:flex;gap:8px;flex-wrap:wrap}\n.input{padding:8px;border:1px solid #ccc;border-radius:6px}\n.button{padding:8px 12px;border:1px solid #0b5ed7;background:#0b5ed7;color:#fff;border-radius:6px;cursor:pointer}\n.table{width:100%;border-collapse:collapse}\n.table th,.table td{border:1px solid #eee;padding:8px;text-align:left}\n.footer{padding:8px 16px;border-top:1px solid #eee;color:#555}\npre{background:#f8f9fa;border:1px solid #eee;border-radius:6px;padding:8px;overflow:auto}\n"
+    },
+    {
+      "op": "write_file",
+      "id": "frontend-services-api",
+      "description": "API client helper for frontend",
+      "path": "frontend/src/services/api.ts",
+      "mode": "overwrite",
+      "content": "const BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000'\nconst API_KEY = import.meta.env.VITE_API_KEY\n\nasync function req(path: string, opts: RequestInit = {}) {\n  const headers: Record<string, string> = {\n    'Content-Type': 'application/json',\n    ...(opts.headers as Record<string, string> || {}),\n  }\n  if (API_KEY) headers['Authorization'] = `Bearer ${API_KEY}`\n  const res = await fetch(`${BASE}${path}`, { ...opts, headers })\n  if (!res.ok) {\n    const text = await res.text()\n    throw new Error(`HTTP ${res.status}: ${text}`)\n  }\n  return res.json()\n}\n\nexport const api = {\n  health: () => req('/health'),\n  listRepositories: (params?: { status?: string; page?: number; per_page?: number }) => {\n    const q = new URLSearchParams()\n    if (params?.status) q.set('status', params.status)\n    if (params?.page) q.set('page', String(params.page))\n    if (params?.per_page) q.set('per_page', String(params.per_page))\n    const qs = q.toString()\n    return req(`/repositories${qs ? `?${qs}` : ''}`)\n  },\n  registerRepository: (body: any) => req('/repositories', { method: 'POST', body: JSON.stringify(body) }),\n  getRepository: (id: string) => req(`/repositories/${id}`),\n  deleteRepository: (id: string) => req(`/repositories/${id}`, { method: 'DELETE' }),\n  indexRepository: (id: string, body: any) => req(`/repositories/${id}/index`, { method: 'POST', body: JSON.stringify(body) }),\n  indexStatus: (id: string) => req(`/repositories/${id}/index/status`),\n  recommendations: (body: any) => req('/recommendations', { method: 'POST', body: JSON.stringify(body) }),\n  feedback: (sessionId: string, body: any) => req(`/recommendations/${sessionId}/feedback`, { method: 'POST', body: JSON.stringify(body) }),\n  refine: (body: any) => req('/recommendations/refine', { method: 'POST', body: JSON.stringify(body) }),\n  dependencies: (filePath: string, repoId: string, depth = 2, direction = 'both', format = 'json') => {\n    const enc = encodeURIComponent(filePath)\n    const q = new URLSearchParams({ repository_id: repoId, depth: String(depth), direction, format })\n    return req(`/dependencies/${enc}?${q.toString()}`)\n  },\n  impact: (body: any) => req('/impact-analysis', { method: 'POST', body: JSON.stringify(body) }),\n  searchCode: (body: any) => req('/search/code', { method: 'POST', body: JSON.stringify(body) })\n}\n"
+    },
+    {
+      "op": "write_file",
+      "id": "frontend-types",
+      "description": "Shared TS types for responses used in UI",
+      "path": "frontend/src/types.ts",
+      "mode": "overwrite",
+      "content": "export type ApiEnvelope<T> = {\n  success: boolean\n  data: T\n  error?: any\n  metadata: { timestamp: string; request_id: string; version: string }\n}\n\nexport type Repository = {\n  id: string\n  name: string\n  source_type: string\n  status: string\n  created_at: string\n  last_indexed_at?: string | null\n}\n"
+    },
+    {
+      "op": "write_file",
+      "id": "frontend-page-repositories",
+      "description": "Repositories page: list, register, index, delete",
+      "path": "frontend/src/pages/Repositories.tsx",
+      "mode": "overwrite",
+      "content": "import { useEffect, useState } from 'react'\nimport { api } from '../services/api'\nimport type { Repository } from '../types'\n\nexport default function Repositories() {\n  const [repos, setRepos] = useState<Repository[]>([])\n  const [name, setName] = useState('')\n  const [sourceType, setSourceType] = useState('local')\n  const [loading, setLoading] = useState(false)\n  const [status, setStatus] = useState('all')\n\n  const load = async () => {\n    setLoading(true)\n    try {\n      const res = await api.listRepositories({ status })\n      setRepos(res.data.repositories)\n    } finally {\n      setLoading(false)\n    }\n  }\n\n  useEffect(() => { load() }, [status])\n\n  const registerRepo = async () => {\n    if (!name) return\n    await api.registerRepository({ name, source_type: sourceType })\n    setName('')\n    await load()\n  }\n\n  const indexRepo = async (id: string) => {\n    await api.indexRepository(id, { mode: 'incremental' })\n    await load()\n  }\n\n  const deleteRepo = async (id: string) => {\n    await api.deleteRepository(id)\n    await load()\n  }\n\n  return (\n    <div>\n      <div className=\"card\">\n        <h3>Register Repository</h3>\n        <div className=\"row\">\n          <input className=\"input\" placeholder=\"Repository name\" value={name} onChange={e => setName(e.target.value)} />\n          <select className=\"input\" value={sourceType} onChange={e => setSourceType(e.target.value)}>\n            <option value=\"local\">local</option>\n            <option value=\"git\">git</option>\n          </select>\n          <button className=\"button\" onClick={registerRepo}>Register</button>\n        </div>\n      </div>\n\n      <div className=\"row\" style={{ marginBottom: 12 }}>\n        <label>\n          Status:\n          <select className=\"input\" value={status} onChange={e => setStatus(e.target.value)}>\n            <option value=\"all\">all</option>\n            <option value=\"registered\">registered</option>\n            <option value=\"indexing\">indexing</option>\n            <option value=\"indexed\">indexed</option>\n            <option value=\"failed\">failed</option>\n          </select>\n        </label>\n        <button className=\"button\" onClick={load} disabled={loading}>{loading ? 'Loading...' : 'Refresh'}</button>\n      </div>\n\n      <table className=\"table\">\n        <thead>\n          <tr>\n            <th>ID</th><th>Name</th><th>Status</th><th>Created</th><th>Actions</th>\n          </tr>\n        </thead>\n        <tbody>\n          {repos.map(r => (\n            <tr key={r.id}>\n              <td>{r.id}</td>\n              <td>{r.name}</td>\n              <td>{r.status}</td>\n              <td>{new Date(r.created_at).toLocaleString()}</td>\n              <td className=\"row\">\n                <button className=\"button\" onClick={() => indexRepo(r.id)}>Index</button>\n                <button className=\"button\" onClick={() => deleteRepo(r.id)} style={{ background: '#e03131', borderColor: '#e03131' }}>Delete</button>\n              </td>\n            </tr>\n          ))}\n        </tbody>\n      </table>\n    </div>\n  )\n}\n"
+    },
+    {
+      "op": "write_file",
+      "id": "frontend-page-recommendations",
+      "description": "Recommendations page: compose a query and display results",
+      "path": "frontend/src/pages/Recommendations.tsx",
+      "mode": "overwrite",
+      "content": "import { useEffect, useState } from 'react'\nimport { api } from '../services/api'\n\nexport default function Recommendations() {\n  const [repos, setRepos] = useState<any[]>([])\n  const [repoId, setRepoId] = useState('')\n  const [query, setQuery] = useState('implement user authentication with email and password')\n  const [results, setResults] = useState<any | null>(null)\n  const [loading, setLoading] = useState(false)\n\n  useEffect(() => {\n    api.listRepositories({ status: 'all' }).then(r => setRepos(r.data.repositories))\n  }, [])\n\n  const recommend = async () => {\n    if (!repoId || !query) return\n    setLoading(true)\n    try {\n      const res = await api.recommendations({ repository_id: repoId, query, max_results: 10 })\n      setResults(res.data)\n    } finally { setLoading(false) }\n  }\n\n  return (\n    <div>\n      <div className=\"card\">\n        <h3>Get File Recommendations</h3>\n        <div className=\"row\">\n          <select className=\"input\" value={repoId} onChange={e => setRepoId(e.target.value)}>\n            <option value=\"\">Select repo</option>\n            {repos.map(r => <option key={r.id} value={r.id}>{r.name} ({r.id})</option>)}\n          </select>\n          <input className=\"input\" value={query} onChange={e => setQuery(e.target.value)} style={{ flex: 1 }} />\n          <button className=\"button\" onClick={recommend} disabled={loading}>{loading ? 'Loading...' : 'Recommend'}</button>\n        </div>\n      </div>\n      {results && (\n        <div className=\"card\">\n          <h4>Session: {results.session_id}</h4>\n          <p>Query: {results.query}</p>\n          <p>Summary: {results.summary?.total_files} files, avg confidence {results.summary?.avg_confidence?.toFixed?.(1)}</p>\n          <table className=\"table\">\n            <thead><tr><th>File</th><th>Confidence</th><th>Reasons</th></tr></thead>\n            <tbody>\n              {results.recommendations.map((r: any) => (\n                <tr key={r.file_path}>\n                  <td>{r.file_path}</td>\n                  <td>{r.confidence}</td>\n                  <td>\n                    <ul>\n                      {(r.reasons || []).map((rs: any, idx: number) => (\n                        <li key={idx}><b>{rs.type}</b> ({rs.score}): {rs.explanation}</li>\n                      ))}\n                    </ul>\n                  </td>\n                </tr>\n              ))}\n            </tbody>\n          </table>\n        </div>\n      )}\n    </div>\n  )\n}\n"
+    },
+    {
+      "op": "write_file",
+      "id": "frontend-page-dependencies",
+      "description": "Dependencies page: visualize imports/imported_by as JSON",
+      "path": "frontend/src/pages/Dependencies.tsx",
+      "mode": "overwrite",
+      "content": "import { useEffect, useState } from 'react'\nimport { api } from '../services/api'\n\nexport default function Dependencies() {\n  const [repos, setRepos] = useState<any[]>([])\n  const [repoId, setRepoId] = useState('')\n  const [filePath, setFilePath] = useState('src/auth/login.py')\n  const [depth, setDepth] = useState(2)\n  const [data, setData] = useState<any | null>(null)\n\n  useEffect(() => { api.listRepositories({}).then(r => setRepos(r.data.repositories)) }, [])\n\n  const run = async () => {\n    if (!repoId || !filePath) return\n    const res = await api.dependencies(filePath, repoId, depth)\n    setData(res.data)\n  }\n\n  return (\n    <div>\n      <div className=\"card\">\n        <h3>Get File Dependencies</h3>\n        <div className=\"row\">\n          <select className=\"input\" value={repoId} onChange={e => setRepoId(e.target.value)}>\n            <option value=\"\">Select repo</option>\n            {repos.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}\n          </select>\n          <input className=\"input\" placeholder=\"file path\" value={filePath} onChange={e => setFilePath(e.target.value)} style={{ flex: 1 }} />\n          <input className=\"input\" type=\"number\" min={1} max={5} value={depth} onChange={e => setDepth(Number(e.target.value))} />\n          <button className=\"button\" onClick={run}>Fetch</button>\n        </div>\n      </div>\n      {data && (\n        <div className=\"card\">\n          <h4>{data.file_path}</h4>\n          <pre>{JSON.stringify(data.graph, null, 2)}</pre>\n        </div>\n      )}\n    </div>\n  )\n}\n"
+    },
+    {
+      "op": "write_file",
+      "id": "frontend-page-impact",
+      "description": "Impact page: simple form to post modified files",
+      "path": "frontend/src/pages/Impact.tsx",
+      "mode": "overwrite",
+      "content": "import { useEffect, useState } from 'react'\nimport { api } from '../services/api'\n\nexport default function Impact() {\n  const [repos, setRepos] = useState<any[]>([])\n  const [repoId, setRepoId] = useState('')\n  const [filesText, setFilesText] = useState('src/models/user.py')\n  const [resp, setResp] = useState<any | null>(null)\n\n  useEffect(() => { api.listRepositories({}).then(r => setRepos(r.data.repositories)) }, [])\n\n  const run = async () => {\n    if (!repoId) return\n    const modified_files = filesText.split(/\\n|,/).map(s => s.trim()).filter(Boolean)\n    const res = await api.impact({ repository_id: repoId, modified_files, analysis_depth: 2 })\n    setResp(res.data)\n  }\n\n  return (\n    <div>\n      <div className=\"card\">\n        <h3>Change Impact Analysis</h3>\n        <div className=\"row\">\n          <select className=\"input\" value={repoId} onChange={e => setRepoId(e.target.value)}>\n            <option value=\"\">Select repo</option>\n            {repos.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}\n          </select>\n          <textarea className=\"input\" style={{ flex: 1, minHeight: 80 }} value={filesText} onChange={e => setFilesText(e.target.value)} />\n          <button className=\"button\" onClick={run}>Analyze</button>\n        </div>\n      </div>\n      {resp && (\n        <div className=\"card\">\n          <h4>Risk: {resp.impact?.risk_level}</h4>\n          <pre>{JSON.stringify(resp.impact, null, 2)}</pre>\n        </div>\n      )}\n    </div>\n  )}\n"
+    },
+    {
+      "op": "write_file",
+      "id": "frontend-dockerfile",
+      "description": "Dockerfile for building the frontend",
+      "path": "frontend/Dockerfile",
+      "mode": "overwrite",
+      "content": "FROM node:18-alpine AS deps\nWORKDIR /app\nCOPY package.json package-lock.json* ./\nRUN npm ci || npm i\n\nFROM deps AS build\nWORKDIR /app\nCOPY . .\nRUN npm run build\n\nFROM node:18-alpine\nWORKDIR /app\nCOPY --from=build /app/dist ./dist\nRUN npm i -g serve\nEXPOSE 4173\nCMD [\"npx\", \"serve\", \"-s\", \"dist\", \"-l\", \"4173\"]\n"
+    },
+    {
+      "op": "patch_text",
+      "id": "docker-compose-add-frontend",
+      "description": "Add frontend service to docker-compose for local development",
+      "path": "docker-compose.yml",
+      "patches": [
+        {
+          "type": "insert_after",
+          "anchor": "services:",
+          "replacement": "  web:\n    build: ./frontend\n    image: codecontext-rag-web:dev\n    environment:\n      - VITE_API_BASE=http://api:8000\n    ports:\n      - \"5173:4173\"\n    depends_on:\n      - api\n"
+        }
+      ]
+    },
+    {
+      "op": "patch_text",
+      "id": "readme-frontend-instructions",
+      "description": "Add frontend run instructions to README",
+      "path": "README.md",
+      "patches": [
+        {
+          "type": "insert_after",
+          "anchor": "### 5) Run tests",
+          "replacement": "\n## Frontend (optional UI)\n\nA minimal React + Vite UI is provided under `frontend/` to exercise the API.\n\n### Run locally\n\n- Install deps:\n```\ncd frontend && npm install\n```\n- Start dev server:\n```\nnpm run dev\n```\n- Open: http://localhost:5173\n\nSet API base via env:\n```\nVITE_API_BASE=http://localhost:8000 npm run dev\n```\n\n### Docker Compose\n\n```\ndocker compose up --build\n```\n- API: http://localhost:8000\n- Web: http://localhost:5173\n"
+        }
+      ]
+    },
+    {
+      "op": "patch_text",
+      "id": "gitignore-frontend-nodemodules",
+      "description": "Ignore frontend node_modules and build artifacts",
+      "path": ".gitignore",
+      "patches": [
+        {
+          "type": "ensure_line",
+          "match": "frontend/node_modules/",
+          "replacement": "frontend/node_modules/"
+        },
+        {
+          "type": "ensure_line",
+          "match": "frontend/dist/",
+          "replacement": "frontend/dist/"
+        }
+      ]
+    },
+    {
+      "op": "patch_text",
+      "id": "repos-list-param-and-status-codes",
+      "description": "Align repository routes with OpenAPI: rename status filter param and return 201/202 for create/index",
+      "path": "src/codecontext/api/routes/repositories.py",
+      "patches": [
+        {
+          "type": "replace_literal",
+          "match": "def list_repositories(request: Request, status_filter: str = \"all\", page: int = 1, per_page: int = 20):",
+          "replacement": "def list_repositories(request: Request, status: str = \"all\", page: int = 1, per_page: int = 20):"
+        },
+        {
+          "type": "replace_literal",
+          "match": "repos = request.app.state.repo_store.list(status_filter=status_filter)",
+          "replacement": "repos = request.app.state.repo_store.list(status_filter=status)"
+        },
+        {
+          "type": "replace_literal",
+          "match": "@router.post(\"\")",
+          "replacement": "@router.post(\"\", status_code=status.HTTP_201_CREATED)"
+        },
+        {
+          "type": "replace_literal",
+          "match": "@router.post(\"/{repo_id}/index\")",
+          "replacement": "@router.post(\"/{repo_id}/index\", status_code=status.HTTP_202_ACCEPTED)"
+        }
+      ]
+    },
+    {
+      "op": "patch_text",
+      "id": "impact-analysis-use-model",
+      "description": "Use ImpactAnalysisRequest pydantic model for validation",
+      "path": "src/codecontext/api/routes/impact_analysis.py",
+      "patches": [
+        {
+          "type": "insert_after",
+          "anchor": "from ...api.dependencies import authorize",
+          "replacement": "\nfrom ...api.schemas.request import ImpactAnalysisRequest\n"
+        },
+        {
+          "type": "replace_literal",
+          "match": "@router.post(\"/impact-analysis\")\ndef analyze_impact(request: Request, body: dict):\n    modified = body.get(\"modified_files\", [])",
+          "replacement": "@router.post(\"/impact-analysis\")\ndef analyze_impact(request: Request, body: ImpactAnalysisRequest):\n    modified = body.modified_files or []"
+        }
+      ]
+    },
+    {
+      "op": "patch_text",
+      "id": "main-include-search-router",
+      "description": "Include search router in FastAPI app",
+      "path": "src/codecontext/main.py",
+      "patches": [
+        {
+          "type": "replace_literal",
+          "match": "from .api.routes import health, repositories, recommendations, dependencies, impact_analysis",
+          "replacement": "from .api.routes import health, repositories, recommendations, dependencies, impact_analysis, search"
+        },
+        {
+          "type": "insert_after",
+          "anchor": "app.include_router(impact_analysis.router)",
+          "replacement": "\napp.include_router(search.router)"
+        }
+      ]
+    },
+    {
+      "op": "write_file",
+      "id": "add-search-route",
+      "description": "Add semantic/pattern/hybrid code search endpoint stub",
+      "path": "src/codecontext/api/routes/search.py",
+      "mode": "create_if_missing",
+      "content": "from fastapi import APIRouter, Depends, Request\nfrom ...api.dependencies import authorize\nfrom ...utils.responses import success_response\nfrom ...api.schemas.request import CodeSearchRequest\n\nrouter = APIRouter(prefix=\"\", tags=[\"Recommendations\"], dependencies=[Depends(authorize)])\n\n\n@router.post(\"/search/code\")\ndef search_code(request: Request, body: CodeSearchRequest):\n    # Stubbed results; replace with real vector + hybrid search\n    results = [\n        {\n            \"file_path\": \"src/utils/validators.py\",\n            \"entity_type\": \"function\",\n            \"entity_name\": \"validate_email\",\n            \"similarity_score\": 0.89,\n            \"code_snippet\": \"\"\"\ndef validate_email(email: str) -> bool:\n    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\\\.[a-zA-Z]{2,}$'\n    return re.match(pattern, email) is not None\n\"\"\".strip(),\n            \"line_number\": 45,\n        }\n    ][: body.max_results or 10]\n\n    data = {\n        \"query\": body.query,\n        \"results\": results,\n        \"total_results\": len(results),\n    }\n    return success_response(request, data)\n"
+    },
+    {
+      "op": "patch_text",
+      "id": "add-codesearchrequest-model",
+      "description": "Add CodeSearchRequest request schema",
+      "path": "src/codecontext/api/schemas/request.py",
+      "patches": [
+        {
+          "type": "insert_after",
+          "anchor": "class ImpactAnalysisRequest(BaseModel):",
+          "replacement": "\n\nclass CodeSearchRequest(BaseModel):\n    repository_id: str\n    query: str\n    search_type: Optional[str] = \"semantic\"\n    max_results: Optional[int] = 10\n    filters: Optional[Dict] = None\n"
+        }
+      ]
+    },
+    {
+      "op": "patch_text",
+      "id": "tests-register-201",
+      "description": "Update test to expect 201 Created for repository registration",
+      "path": "tests/integration/test_repositories.py",
+      "patches": [
+        {
+          "type": "replace_literal",
+          "match": "assert r.status_code == 200",
+          "replacement": "assert r.status_code == 201"
+        }
+      ]
+    },
+    {
+      "op": "write_file",
+      "id": "add-test-recommendations",
+      "description": "Integration test for recommendations endpoint",
+      "path": "tests/integration/test_recommendations.py",
+      "mode": "create_if_missing",
+      "content": "from fastapi.testclient import TestClient\nfrom src.codecontext.main import app\n\nclient = TestClient(app)\n\n\ndef test_recommendations_basic():\n    # Create a repo first\n    r = client.post(\"/repositories\", json={\"name\": \"proj\", \"source_type\": \"local\"})\n    assert r.status_code == 201\n    repo_id = r.json()[\"data\"][\"id\"]\n\n    # Ask for recommendations\n    body = {\n        \"repository_id\": repo_id,\n        \"query\": \"implement user authentication with email and password\",\n        \"max_results\": 2,\n    }\n    r = client.post(\"/recommendations\", json=body)\n    assert r.status_code == 200\n    data = r.json()[\"data\"]\n    assert \"session_id\" in data\n    assert len(data[\"recommendations\"]) >= 1\n    assert data[\"recommendations\"][0][\"confidence\"] >= 0\n"
+    },
+    {
+      "op": "write_file",
+      "id": "add-test-search",
+      "description": "Integration test for /search/code endpoint",
+      "path": "tests/integration/test_search.py",
+      "mode": "create_if_missing",
+      "content": "from fastapi.testclient import TestClient\nfrom src.codecontext.main import app\n\nclient = TestClient(app)\n\n\ndef test_search_code():\n    # Create a repo for context\n    r = client.post(\"/repositories\", json={\"name\": \"proj2\", \"source_type\": \"local\"})\n    assert r.status_code == 201\n    repo_id = r.json()[\"data\"][\"id\"]\n\n    body = {\"repository_id\": repo_id, \"query\": \"functions that validate email addresses\", \"search_type\": \"semantic\", \"max_results\": 1}\n    r = client.post(\"/search/code\", json=body)\n    assert r.status_code == 200\n    payload = r.json()[\"data\"]\n    assert payload[\"total_results\"] >= 0\n"
+    },
+    {
+      "op": "write_file",
+      "id": "frontend-readme-note",
+      "description": "Add FRONTEND README quick start",
+      "path": "frontend/README.md",
+      "mode": "overwrite",
+      "content": "# CodeContext RAG Web\n\nA minimal React + Vite UI to exercise the CodeContext RAG API.\n\n- Dev: `npm install && npm run dev`\n- Env: `VITE_API_BASE=http://localhost:8000` and optionally `VITE_API_KEY` for auth\n- Build: `npm run build` then `npm run preview`\n"
+    }
+  ]
+}

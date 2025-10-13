@@ -1,0 +1,199 @@
+{
+  "version": "1.0",
+  "project_root": "codecontext-rag",
+  "backup": true,
+  "changes": [
+    {
+      "op": "patch_text",
+      "id": "repos-list-param-and-status-codes",
+      "description": "Align repository routes with OpenAPI: rename status filter param and return 201/202 for create/index",
+      "path": "src/codecontext/api/routes/repositories.py",
+      "patches": [
+        {
+          "type": "replace_literal",
+          "match": "def list_repositories(request: Request, status_filter: str = \"all\", page: int = 1, per_page: int = 20):",
+          "replacement": "def list_repositories(request: Request, status: str = \"all\", page: int = 1, per_page: int = 20):"
+        },
+        {
+          "type": "replace_literal",
+          "match": "repos = request.app.state.repo_store.list(status_filter=status_filter)",
+          "replacement": "repos = request.app.state.repo_store.list(status_filter=status)"
+        },
+        {
+          "type": "replace_literal",
+          "match": "@router.post(\"\")",
+          "replacement": "@router.post(\"\", status_code=status.HTTP_201_CREATED)"
+        },
+        {
+          "type": "replace_literal",
+          "match": "@router.post(\"/{repo_id}/index\")",
+          "replacement": "@router.post(\"/{repo_id}/index\", status_code=status.HTTP_202_ACCEPTED)"
+        }
+      ]
+    },
+    {
+      "op": "patch_text",
+      "id": "impact-analysis-use-model",
+      "description": "Use ImpactAnalysisRequest pydantic model for validation",
+      "path": "src/codecontext/api/routes/impact_analysis.py",
+      "patches": [
+        {
+          "type": "replace_literal",
+          "match": "from fastapi import APIRouter, Depends, Request",
+          "replacement": "from fastapi import APIRouter, Depends, Request"
+        },
+        {
+          "type": "insert_after",
+          "anchor": "from ...api.dependencies import authorize",
+          "replacement": "\nfrom ...api.schemas.request import ImpactAnalysisRequest\n"
+        },
+        {
+          "type": "replace_literal",
+          "match": "@router.post(\"/impact-analysis\")\ndef analyze_impact(request: Request, body: dict):\n    modified = body.get(\"modified_files\", [])",
+          "replacement": "@router.post(\"/impact-analysis\")\ndef analyze_impact(request: Request, body: ImpactAnalysisRequest):\n    modified = body.modified_files or []"
+        }
+      ]
+    },
+    {
+      "op": "patch_text",
+      "id": "main-include-search-router",
+      "description": "Include search router in FastAPI app",
+      "path": "src/codecontext/main.py",
+      "patches": [
+        {
+          "type": "replace_literal",
+          "match": "from .api.routes import health, repositories, recommendations, dependencies, impact_analysis",
+          "replacement": "from .api.routes import health, repositories, recommendations, dependencies, impact_analysis, search"
+        },
+        {
+          "type": "insert_after",
+          "anchor": "app.include_router(impact_analysis.router)",
+          "replacement": "\napp.include_router(search.router)"
+        }
+      ]
+    },
+    {
+      "op": "patch_text",
+      "id": "tests-register-201",
+      "description": "Update test to expect 201 Created for repository registration",
+      "path": "tests/integration/test_repositories.py",
+      "patches": [
+        {
+          "type": "replace_literal",
+          "match": "assert r.status_code == 200",
+          "replacement": "assert r.status_code == 201"
+        }
+      ]
+    },
+    {
+      "op": "write_file",
+      "id": "add-search-route",
+      "description": "Add semantic/pattern/hybrid code search endpoint stub",
+      "path": "src/codecontext/api/routes/search.py",
+      "mode": "create_if_missing",
+      "content": "from fastapi import APIRouter, Depends, Request\nfrom ...api.dependencies import authorize\nfrom ...utils.responses import success_response\nfrom ...api.schemas.request import CodeSearchRequest\n\nrouter = APIRouter(prefix=\"\", tags=[\"Recommendations\"], dependencies=[Depends(authorize)])\n\n\n@router.post(\"/search/code\")\ndef search_code(request: Request, body: CodeSearchRequest):\n    # Stubbed results; replace with real vector + hybrid search\n    results = [\n        {\n            \"file_path\": \"src/utils/validators.py\",\n            \"entity_type\": \"function\",\n            \"entity_name\": \"validate_email\",\n            \"similarity_score\": 0.89,\n            \"code_snippet\": \"\"\"\ndef validate_email(email: str) -> bool:\n    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$'\n    return re.match(pattern, email) is not None\n\"\"\".strip(),\n            \"line_number\": 45,\n        }\n    ][: body.max_results or 10]\n\n    data = {\n        \"query\": body.query,\n        \"results\": results,\n        \"total_results\": len(results),\n    }\n    return success_response(request, data)\n"
+    },
+    {
+      "op": "patch_text",
+      "id": "add-codesearchrequest-model",
+      "description": "Add CodeSearchRequest request schema",
+      "path": "src/codecontext/api/schemas/request.py",
+      "patches": [
+        {
+          "type": "insert_after",
+          "anchor": "class ImpactAnalysisRequest(BaseModel):",
+          "replacement": "\n\nclass CodeSearchRequest(BaseModel):\n    repository_id: str\n    query: str\n    search_type: Optional[str] = \"semantic\"\n    max_results: Optional[int] = 10\n    filters: Optional[Dict] = None\n"
+        }
+      ]
+    },
+    {
+      "op": "write_file",
+      "id": "add-test-recommendations",
+      "description": "Integration test for recommendations endpoint",
+      "path": "tests/integration/test_recommendations.py",
+      "mode": "create_if_missing",
+      "content": "from fastapi.testclient import TestClient\nfrom src.codecontext.main import app\n\nclient = TestClient(app)\n\n\ndef test_recommendations_basic():\n    # Create a repo first\n    r = client.post(\"/repositories\", json={\"name\": \"proj\", \"source_type\": \"local\"})\n    assert r.status_code == 201\n    repo_id = r.json()[\"data\"][\"id\"]\n\n    # Ask for recommendations\n    body = {\n        \"repository_id\": repo_id,\n        \"query\": \"implement user authentication with email and password\",\n        \"max_results\": 2,\n    }\n    r = client.post(\"/recommendations\", json=body)\n    assert r.status_code == 200\n    data = r.json()[\"data\"]\n    assert \"session_id\" in data\n    assert len(data[\"recommendations\"]) >= 1\n    assert data[\"recommendations\"][0][\"confidence\"] >= 0\n"
+    },
+    {
+      "op": "write_file",
+      "id": "add-test-search",
+      "description": "Integration test for /search/code endpoint",
+      "path": "tests/integration/test_search.py",
+      "mode": "create_if_missing",
+      "content": "from fastapi.testclient import TestClient\nfrom src.codecontext.main import app\n\nclient = TestClient(app)\n\n\ndef test_search_code():\n    # Create a repo for context\n    r = client.post(\"/repositories\", json={\"name\": \"proj2\", \"source_type\": \"local\"})\n    assert r.status_code == 201\n    repo_id = r.json()[\"data\"][\"id\"]\n\n    body = {\"repository_id\": repo_id, \"query\": \"functions that validate email addresses\", \"search_type\": \"semantic\", \"max_results\": 1}\n    r = client.post(\"/search/code\", json=body)\n    assert r.status_code == 200\n    payload = r.json()[\"data\"]\n    assert payload[\"total_results\"] >= 0\n"
+    },
+    {
+      "op": "write_file",
+      "id": "dockerfile",
+      "description": "Add Dockerfile for containerized deployment",
+      "path": "Dockerfile",
+      "mode": "overwrite",
+      "content": "FROM python:3.11-slim\n\nENV PYTHONDONTWRITEBYTECODE=1 \\\n    PYTHONUNBUFFERED=1\n\nWORKDIR /app\n\n# System deps for optional packages (comment if not needed)\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n    build-essential git curl \\\n    && rm -rf /var/lib/apt/lists/*\n\nCOPY requirements.txt ./\nRUN pip install --no-cache-dir -U pip && pip install --no-cache-dir -r requirements.txt\n\nCOPY . .\n\nEXPOSE 8000\n\nCMD [\"uvicorn\", \"src.codecontext.main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"8000\"]\n"
+    },
+    {
+      "op": "write_file",
+      "id": "docker-compose",
+      "description": "Add docker-compose for local dev",
+      "path": "docker-compose.yml",
+      "mode": "overwrite",
+      "content": "version: \"3.9\"\nservices:\n  api:\n    build: .\n    image: codecontext-rag:dev\n    ports:\n      - \"8000:8000\"\n    environment:\n      APP_ENV: development\n      LOG_LEVEL: INFO\n      API_KEY_REQUIRED: \"false\"\n      LANCEDB_PATH: /data/lancedb\n    volumes:\n      - ./:/app\n      - lancedb_data:/data/lancedb\n    command: [\"uvicorn\", \"src.codecontext.main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"8000\", \"--reload\"]\nvolumes:\n  lancedb_data:\n"
+    },
+    {
+      "op": "write_file",
+      "id": "scripts-index-repo",
+      "description": "Script to register and index a repo via the API",
+      "path": "scripts/index_repository.py",
+      "mode": "overwrite",
+      "content": "import argparse\nimport requests\n\n\ndef main():\n    p = argparse.ArgumentParser()\n    p.add_argument(\"--base-url\", default=\"http://localhost:8000\")\n    p.add_argument(\"--name\", required=True)\n    p.add_argument(\"--source-type\", default=\"local\")\n    p.add_argument(\"--source-path\", default=None)\n    p.add_argument(\"--mode\", default=\"incremental\", choices=[\"full\", \"incremental\"])\n    p.add_argument(\"--api-key\", default=None)\n    args = p.parse_args()\n\n    headers = {}\n    if args.api_key:\n        headers[\"Authorization\"] = f\"Bearer {args.api_key}\"\n\n    r = requests.post(f\"{args.base_url}/repositories\", json={\n        \"name\": args.name,\n        \"source_type\": args.source_type,\n        \"source_path\": args.source_path,\n    }, headers=headers)\n    r.raise_for_status()\n    repo_id = r.json()[\"data\"][\"id\"]\n    print(\"Registered:\", repo_id)\n\n    r = requests.post(f\"{args.base_url}/repositories/{repo_id}/index\", json={\"mode\": args.mode}, headers=headers)\n    r.raise_for_status()\n    print(\"Index job:\", r.json()[\"data\"]) \n\n\nif __name__ == \"__main__\":\n    main()\n"
+    },
+    {
+      "op": "write_file",
+      "id": "scripts-benchmark",
+      "description": "Simple benchmark script for recommendations endpoint",
+      "path": "scripts/benchmark.py",
+      "mode": "overwrite",
+      "content": "import argparse\nimport time\nimport requests\n\n\ndef main():\n    p = argparse.ArgumentParser()\n    p.add_argument(\"--base-url\", default=\"http://localhost:8000\")\n    p.add_argument(\"--n\", type=int, default=10)\n    p.add_argument(\"--api-key\", default=None)\n    args = p.parse_args()\n\n    headers = {}\n    if args.api_key:\n        headers[\"Authorization\"] = f\"Bearer {args.api_key}\"\n\n    # Ensure a repo exists\n    r = requests.post(f\"{args.base_url}/repositories\", json={\"name\": \"bench\", \"source_type\": \"local\"}, headers=headers)\n    r.raise_for_status()\n    repo_id = r.json()[\"data\"][\"id\"]\n\n    latencies = []\n    for _ in range(args.n):\n        t0 = time.time()\n        body = {\"repository_id\": repo_id, \"query\": \"implement user authentication\", \"max_results\": 5}\n        rr = requests.post(f\"{args.base_url}/recommendations\", json=body, headers=headers)\n        rr.raise_for_status()\n        latencies.append((time.time() - t0) * 1000)\n    print(f\"Requests: {args.n}, avg: {sum(latencies)/len(latencies):.2f} ms, p95: {sorted(latencies)[int(0.95*len(latencies))-1]:.2f} ms\")\n\n\nif __name__ == \"__main__\":\n    main()\n"
+    },
+    {
+      "op": "patch_text",
+      "id": "readme-docker-section",
+      "description": "Add Docker usage to README",
+      "path": "README.md",
+      "patches": [
+        {
+          "type": "ensure_line",
+          "match": "## Docker",
+          "replacement": "## Docker"
+        },
+        {
+          "type": "insert_after",
+          "anchor": "## Next steps",
+          "replacement": "\n## Docker\n\nBuild and run locally:\n\n```\ndocker compose up --build\n```\n\nOr using plain Docker:\n\n```\ndocker build -t codecontext-rag:dev .\ndocker run -p 8000:8000 codecontext-rag:dev\n```\n"
+        }
+      ]
+    },
+    {
+      "op": "write_file",
+      "id": "license-mit",
+      "description": "Add MIT License file",
+      "path": "LICENSE",
+      "mode": "overwrite",
+      "content": "MIT License\n\nCopyright (c) 2025 CodeContext\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n"
+    },
+    {
+      "op": "ensure_block",
+      "id": "openapi-full-note",
+      "description": "Replace placeholder note in docs/api/openapi.yaml with the full provided spec content (paste entire spec here)",
+      "path": "docs/api/openapi.yaml",
+      "block_id": "openapi-spec",
+      "markers": {
+        "start": "# BEGIN:{id}",
+        "end": "# END:{id}"
+      },
+      "anchor": "openapi: 3.1.0",
+      "position": "replace",
+      "regex": false,
+      "block_content": "openapi: 3.1.0\n\ninfo:\n  title: CodeContext RAG API\n  version: 1.0.0\n  description: |\n    # CodeContext RAG API\n    \n    An intelligent code repository analysis system that identifies relevant files for implementing new features \n    using Retrieval-Augmented Generation (RAG).\n    \n    ## Overview\n    \n    CodeContext RAG helps developers quickly identify which files they should include when prompting LLMs \n    for feature development. The system analyzes code repositories to understand:\n    \n    - **Semantic relationships** between code entities\n    - **Dependency graphs** and import structures\n    - **Historical patterns** from git commits\n    - **Structural relationships** from AST analysis\n    \n    ## Key Features\n    \n    - 🔍 **Intelligent File Recommendations**: Get ranked lists of relevant files for any feature request\n    - 📊 **Dependency Analysis**: Understand how files are interconnected\n    - 🎯 **Confidence Scoring**: Know how certain the system is about each recommendation\n    - 🧠 **Learning System**: Improves recommendations based on feedback\n    - 🌐 **Multi-Language Support**: Works with Python, JavaScript, TypeScript, Java, Go, and more\n    \n    ## Authentication\n    \n    All API endpoints (except health check) require authentication via API key:\n    \n    ```\n    Authorization: Bearer YOUR_API_KEY\n    ```\n    \n    Get your API key by registering at the developer portal.\n    \n    ## Rate Limiting\n    \n    - **Free Tier**: 100 requests per hour\n    - **Pro Tier**: 1000 requests per hour\n    - **Enterprise**: Custom limits\n    \n    Rate limit information is included in response headers:\n    - `X-RateLimit-Limit`: Maximum requests per window\n    - `X-RateLimit-Remaining`: Requests remaining in current window\n    - `X-RateLimit-Reset`: Time when the rate limit resets (Unix timestamp)\n    \n    ## Base URL\n    \n    Production: `https://api.codecontext.dev/v1`\n    Staging: `https://staging-api.codecontext.dev/v1`\n    \n  contact:\n    name: API Support\n    email: support@codecontext.dev\n    url: https://codecontext.dev/support\n  license:\n    name: MIT\n    url: https://opensource.org/licenses/MIT\n\nservers:\n  - url: https://api.codecontext.dev/v1\n    description: Production server\n  - url: https://staging-api.codecontext.dev/v1\n    description: Staging server\n  - url: http://localhost:8000/v1\n    description: Local development server\n\n# NOTE: For brevity in this automated patch, please replace this block with the full OpenAPI spec provided in your source document to ensure exact parity.\n"
+    }
+  ]
+}

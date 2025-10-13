@@ -1,0 +1,28 @@
+version: "3.9"
+services:  
+  web:
+    build: ./frontend
+    image: codecontext-rag-web:dev
+    environment:
+      - VITE_API_BASE=http://api:8000
+    ports:
+      - "5173:4173"
+    depends_on:
+      - api
+
+  api:
+    build: .
+    image: codecontext-rag:dev
+    ports:
+      - "7998:8000"
+    environment:
+      APP_ENV: development
+      LOG_LEVEL: INFO
+      API_KEY_REQUIRED: "false"
+      LANCEDB_PATH: /data/lancedb
+    volumes:
+      - ./:/app
+      - lancedb_data:/data/lancedb
+    command: ["uvicorn", "src.codecontext.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+volumes:
+  lancedb_data:

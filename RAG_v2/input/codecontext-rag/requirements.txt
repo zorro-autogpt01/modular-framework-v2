@@ -1,0 +1,45 @@
+# Core
+fastapi
+uvicorn[standard]
+pydantic
+python-multipart
+
+# Code Analysis (optional for API skeleton)
+tree-sitter
+tree-sitter-python
+tree-sitter-javascript
+tree-sitter-typescript
+tree-sitter-java
+tree-sitter-go
+
+# Vector Search (optional for API skeleton)
+lancedb
+sentence-transformers
+openai
+
+# Graph Analysis
+networkx
+pygraphviz
+
+# Git
+gitpython==3.1.40
+
+# Caching (optional)
+redis
+hiredis
+
+# Database (optional)
+sqlalchemy
+psycopg2-binary
+
+# Testing
+pytest
+pytest-asyncio
+pytest-cov
+httpx
+
+# Development
+black
+ruff
+mypy
+pre-commit
