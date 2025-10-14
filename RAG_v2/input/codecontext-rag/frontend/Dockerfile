@@ -1,16 +1,26 @@
-FROM node:18-alpine AS deps
-WORKDIR /app
-COPY package.json package-lock.json* ./
-RUN npm ci || npm i
+FROM node:18-alpine as builder
 
-FROM deps AS build
 WORKDIR /app
+
+# Install dependencies
+COPY package*.json ./
+RUN npm install
+
+# Copy source
 COPY . .
+
+# Build
 RUN npm run build
 
-FROM node:18-alpine
-WORKDIR /app
-COPY --from=build /app/dist ./dist
-RUN npm i -g serve
-EXPOSE 4173
-CMD ["npx", "serve", "-s", "dist", "-l", "4173"]
+# Production image
+FROM nginx:alpine
+
+# Copy built files
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Copy nginx config
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
