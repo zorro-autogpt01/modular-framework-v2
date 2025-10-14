@@ -17,6 +17,7 @@ const { router: telemetryRouter } = require('./routes/telemetry');
 const { router: conversationsRouter } = require('./routes/conversations');
 const { router: templatesRouter } = require('./routes/templates');
 const { router: debugRouter } = require('./routes/debug');
+const { router: embeddingsRouter } = require('./routes/embeddings');
 
 const app = express();
 const BASE_PATH = (process.env.BASE_PATH || '/llm-gateway').replace(/\/$/, '');
@@ -55,6 +56,8 @@ app.use('/api', infoRouter);         // /api/info
 // Log buffer + logging config APIs
 app.use('/api', logsRouter);
 app.use('/api', loggingRouter);
+
+app.use('/api', embeddingsRouter);      
 
 // Admin API
 app.use('/api', adminRouter);        // /api/providers, /api/models
@@ -130,6 +133,7 @@ if (BASE_PATH) {
   app.use(`${BASE_PATH}/api`, conversationsRouter);
   app.use(`${BASE_PATH}/api`, templatesRouter);
   app.use(`${BASE_PATH}/api`, debugRouter);
+  app.use(`${BASE_PATH}/api`, embeddingsRouter);
 
   // Error handler for BASE_PATH-mounted routes as well
   app.use((err, req, res, _next) => {

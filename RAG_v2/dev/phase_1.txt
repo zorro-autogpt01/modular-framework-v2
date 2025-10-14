@@ -1,0 +1,156 @@
+Short answer: yes. The repo is set up to run API and a minimal web UI via docker-compose. The backend is functional as an MVP skeleton (stubbed indexing/search/ranking), and the frontend lets you exercise the endpoints. Below are exact steps and recommended next milestones to move from stubs to a full system.
+
+How to run with Docker Compose
+- Prereqs: Docker and Docker Compose v2 installed.
+
+- Start services
+  - From project root:
+    - docker compose up --build
+  - Services:
+    - api: FastAPI on http://localhost:8000
+    - web: React UI on http://localhost:5173
+  - Volumes:
+    - lancedb_data: mapped at /data/lancedb for future LanceDB persistence.
+
+- Verify the API
+  - Health:
+    - curl http://localhost:8000/health
+  - Register a repo:
+    - curl -X POST http://localhost:8000/repositories -H "Content-Type: application/json" -d '{"name":"demo","source_type":"local"}'
+  - Index (simulated job):
+    - curl -X POST http://localhost:8000/repositories/REPO_ID/index -H "Content-Type: application/json" -d '{"mode":"incremental"}'
+  - Get recommendations:
+    - curl -X POST http://localhost:8000/recommendations -H "Content-Type: application/json" -d '{"repository_id":"REPO_ID","query":"implement user authentication","max_results":5}'
+
+- Verify the UI
+  - Open http://localhost:5173
+  - Use pages:
+    - Repositories: register/index/delete
+    - Recommendations: run queries and view ranked files (stubbed)
+    - Dependencies: view sample graph (stubbed)
+    - Impact: run sample analysis (stubbed)
+
+- Authentication
+  - By default, API_KEY_REQUIRED=false in docker-compose for dev.
+  - To require API key, set in docker-compose.yml under api service:
+    - API_KEY_REQUIRED: "true"
+    - API_KEY: your-dev-key
+  - Then call endpoints with header:
+    - Authorization: Bearer your-dev-key
+  - For the web UI inside compose, set frontend env:
+    - VITE_API_BASE=http://api:8000
+    - VITE_API_KEY=your-dev-key
+
+- Notes
+  - The OpenAPI file docs/api/openapi.yaml has a placeholder note; paste the full spec you authored to keep docs in-sync.
+  - Optional deps like pygraphviz are included but not required for the MVP; if you hit build issues, comment it out in requirements.txt or add system libs as needed.
+  - The current “indexing” is simulated; no real AST/embeddings are built yet.
+
+What’s implemented now (MVP skeleton)
+- API endpoints per your spec with consistent response envelopes and X-Request-Id.
+- In-memory repo store and job store; indexing uses a background simulation.
+- Recommendations/Feedback/Refine/Dependencies/Impact/Search endpoints with stubbed logic.
+- Simple React UI to exercise the endpoints.
+- Dockerfile and docker-compose for local dev.
+
+Next steps to make it fully functional
+Phase A: Wire core engines
+- Parser (Tree-sitter)
+  - Implement CodeParser.parse_repository to:
+    - Walk repo with include/exclude patterns.
+    - Parse AST per language (start with Python, JS/TS).
+    - Extract entities (functions, classes, methods), imports, docstrings.
+    - Persist per-entity metadata (path, spans, language, symbols).
+- Embeddings
+  - Implement Embedder with sentence-transformers (or OpenAI if configured).
+  - Syntax-aware chunking: one vector per function/class; fallback to file-level.
+  - Persist vectors to LanceDB (schema: id, repo_id, file_path, entity_type, name, language, embedding, text_snippet, metadata).
+- Vector store
+  - Implement VectorStore.upsert/search using LanceDB; enable cosine similarity and metadata filters (language, directories, glob).
+  - Add a hybrid scorer: combine vector score with keyword match and simple BM25 or TF-IDF (can start with python whoosh or a lightweight scorer).
+- Dependency graph
+  - Build file-level import graph from parsed imports; store in memory plus on-disk cache (or simple SQLite/Postgres).
+  - Provide APIs to query N-hop dependencies, importers/imported_by, circular detection; expose DOT output optionally.
+- Git history
+  - Add GitPython-based analyzer:
+    - Co-modification matrix (files changed together).
+    - Recency and file churn.
+    - Tag certain commit messages to “features” to map patterns later.
+
+Phase B: Ranking and explainability
+- Implement RankingEngine.rank with your formula:
+  - confidence = 0.4*semantic + 0.3*dependency_centrality + 0.2*git_comod + 0.1*recency
+  - Normalize each component to [0,1]; convert to 0–100 confidence.
+  - Use NetworkX centrality (in-degree, PageRank) for dependency_centrality.
+- Implement Explainer to generate reason objects per component with short justifications.
+- Enforce filters (file patterns, directories, languages) and options (dependency depth, callers/callees, include_tests).
+- Cache frequent queries in Redis (hash of normalized query + repo_id) for 60–300s.
+
+Phase C: Background jobs and persistence
+- Replace InMemoryJobStore with real worker:
+  - Celery or RQ + Redis; tasks for full and incremental indexing.
+  - Report progress via job_meta in Redis (or Postgres).
+- Persistence:
+  - Keep LanceDB for vectors.
+  - Add Postgres for repository metadata, indexing history, feedback.
+- Incremental indexing:
+  - Detect changed files via git diff or mtime; re-embed only changed entities; update graph and LanceDB entries.
+
+Phase D: API hardening and platform features
+- Auth and rate limiting:
+  - Keep API key for now; add JWT if needed.
+  - Add rate limiting with slowapi or starlette-limiter (Redis backend).
+- Observability:
+  - Prometheus metrics (prometheus_fastapi_instrumentator).
+  - Structured logs (JSON) and request/latency histograms.
+- Testing:
+  - Unit tests for parser, embedder, ranking, graph, git analyzer.
+  - Integration tests for indexing pipeline end-to-end.
+  - Load tests (locust/k6) to meet <5s P95 for typical queries.
+- Docs:
+  - Replace docs/api/openapi.yaml with your full spec.
+  - Autogenerate schema docs from Pydantic/routers; host Swagger UI at /docs.
+
+Phase E: Productization
+- Performance profiling and batching (embed multiple functions per call).
+- Add multi-repo support in UI and API; cross-repo dep hints (config-based).
+- Implement feedback learning loop (store signals and adjust weights per repo).
+- Security and privacy knobs (e.g., “don’t store full code text”, only metadata and hashes).
+
+Compose tips for dev vs prod
+- Dev (current docker-compose.yml)
+  - Hot reload for API, externalized volume for LanceDB.
+- Prod (create docker-compose.prod.yml)
+  - Build with pinned versions, API_KEY_REQUIRED=true, add Redis/Postgres services, disable reload.
+  - Example override:
+    - docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+Example docker-compose.prod.yml snippet
+- version: "3.9"
+  services:
+    api:
+      environment:
+        APP_ENV: production
+        LOG_LEVEL: INFO
+        API_KEY_REQUIRED: "true"
+        API_KEY: change-me
+      command: ["uvicorn", "src.codecontext.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    redis:
+      image: redis:7-alpine
+      ports: ["6379:6379"]
+    db:
+      image: postgres:15-alpine
+      environment:
+        POSTGRES_DB: codecontext
+        POSTGRES_USER: codecontext
+        POSTGRES_PASSWORD: change-me
+      volumes:
+        - pgdata:/var/lib/postgresql/data
+  volumes:
+    pgdata:
+
+If you want, I can:
+- Replace the stubbed stores with Redis/Postgres wiring.
+- Implement Tree-sitter parsing for Python first, with entity extraction and import graph.
+- Add LanceDB integration and a basic ranking pass so recommendations are data-driven end-to-end.
+- Fill in the full OpenAPI file and wire automated generation to keep docs current.

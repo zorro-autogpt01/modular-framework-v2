@@ -3,6 +3,7 @@ fastapi
 uvicorn[standard]
 pydantic
 python-multipart
+httpx
 
 # Code Analysis (optional for API skeleton)
 tree-sitter

@@ -2,12 +2,21 @@ from pydantic import BaseModel, Field
 from typing import Optional, List, Dict
 
 
+# src/codecontext/api/schemas/request.py
+
 class RegisterRepositoryRequest(BaseModel):
     name: str
-    source_type: str
+    source_type: str  # "local", "git", "github_hub"
+    
+    # For local/git
     source_path: Optional[str] = None
     source_url: Optional[str] = None
     branch: Optional[str] = "main"
+    
+    # For GitHub Hub integration
+    github_conn_id: Optional[str] = None  # NEW
+    github_branch: Optional[str] = None   # NEW
+    
     languages: Optional[List[str]] = None
     config: Optional[Dict] = None
 

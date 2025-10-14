@@ -20,6 +20,7 @@ services:
       LOG_LEVEL: INFO
       API_KEY_REQUIRED: "false"
       LANCEDB_PATH: /data/lancedb
+      LLM_GATEWAY_URL: http://llm-gateway:3010
     volumes:
       - ./:/app
       - lancedb_data:/data/lancedb
