@@ -1,9 +1,12 @@
+# src/codecontext/storage/inmemory.py
 from __future__ import annotations
 from typing import Dict, List, Optional
 import secrets
 from datetime import datetime, timezone
 import time
 import threading
+import json
+from pathlib import Path
 
 
 def _now() -> str:
@@ -11,8 +14,29 @@ def _now() -> str:
 
 
 class InMemoryRepositoryStore:
-    def __init__(self) -> None:
+    def __init__(self, persist_path: str = "./data/repos.json") -> None:
         self._repos: Dict[str, dict] = {}
+        self._persist_path = Path(persist_path)
+        self._load()
+
+    def _load(self):
+        """Load repositories from disk"""
+        if self._persist_path.exists():
+            try:
+                with open(self._persist_path, 'r') as f:
+                    self._repos = json.load(f)
+            except Exception as e:
+                print(f"Failed to load repos: {e}")
+                self._repos = {}
+    
+    def _save(self):
+        """Save repositories to disk"""
+        try:
+            self._persist_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(self._persist_path, 'w') as f:
+                json.dump(self._repos, f, indent=2)
+        except Exception as e:
+            print(f"Failed to save repos: {e}")
 
     def create(self, body) -> dict:
         repo_id = f"repo_{secrets.token_hex(6)}"
@@ -28,7 +52,39 @@ class InMemoryRepositoryStore:
             "statistics": None,
         }
         self._repos[repo_id] = item
+        self._save()
         return item
+    
+    def add(self, repo_data: dict) -> dict:
+        """Add a repository directly from a dict"""
+        repo_id = repo_data.get("id")
+        if not repo_id:
+            raise ValueError("Repository must have an 'id'")
+        
+        if repo_id in self._repos:
+            raise ValueError(f"Repository {repo_id} already exists")
+        
+        item = {
+            **repo_data,
+            "created_at": repo_data.get("created_at") or _now()
+        }
+        self._repos[repo_id] = item
+        self._save()
+        return item
+    
+    def update(self, repo_id: str, updates: dict) -> Optional[dict]:
+        """Update a repository"""
+        if repo_id not in self._repos:
+            return None
+        
+        self._repos[repo_id].update(updates)
+        self._repos[repo_id]["updated_at"] = _now()
+        self._save()
+        return self._repos[repo_id]
+    
+    def exists(self, repo_id: str) -> bool:
+        """Check if repository exists"""
+        return repo_id in self._repos
 
     def list(self, status_filter: str = "all") -> List[dict]:
         items = list(self._repos.values())
@@ -40,14 +96,44 @@ class InMemoryRepositoryStore:
         return self._repos.get(repo_id)
 
     def delete(self, repo_id: str) -> bool:
-        return self._repos.pop(repo_id, None) is not None
+        result = self._repos.pop(repo_id, None) is not None
+        if result:
+            self._save()
+        return result
 
 
 class InMemoryJobStore:
-    def __init__(self, repo_store: InMemoryRepositoryStore) -> None:
+    def __init__(self, repo_store: InMemoryRepositoryStore, persist_path: str = "./data/jobs.json") -> None:
         self._jobs: Dict[str, dict] = {}
         self._repo_job: Dict[str, str] = {}
         self._repo_store = repo_store
+        self._persist_path = Path(persist_path)
+        self._load()
+
+    def _load(self):
+        """Load jobs from disk"""
+        if self._persist_path.exists():
+            try:
+                with open(self._persist_path, 'r') as f:
+                    data = json.load(f)
+                    self._jobs = data.get("jobs", {})
+                    self._repo_job = data.get("repo_job", {})
+            except Exception as e:
+                print(f"Failed to load jobs: {e}")
+                self._jobs = {}
+                self._repo_job = {}
+    
+    def _save(self):
+        """Save jobs to disk"""
+        try:
+            self._persist_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(self._persist_path, 'w') as f:
+                json.dump({
+                    "jobs": self._jobs,
+                    "repo_job": self._repo_job
+                }, f, indent=2)
+        except Exception as e:
+            print(f"Failed to save jobs: {e}")
 
     def enqueue(self, repo_id: str, mode: str, options: dict) -> dict:
         job_id = f"job_{secrets.token_hex(6)}"
@@ -59,10 +145,25 @@ class InMemoryJobStore:
             "started_at": None,
             "completed_at": None,
             "error": None,
+            "result": None,
         }
         self._jobs[job_id] = job
         self._repo_job[repo_id] = job_id
+        self._save()
         return job
+    
+    def update_job(self, job_id: str, updates: dict) -> Optional[dict]:
+        """Update a job"""
+        if job_id not in self._jobs:
+            return None
+        
+        self._jobs[job_id].update(updates)
+        self._save()
+        return self._jobs[job_id]
+    
+    def get_job(self, job_id: str) -> Optional[dict]:
+        """Get a job by ID"""
+        return self._jobs.get(job_id)
 
     def simulate(self, job_id: str) -> None:
         job = self._jobs.get(job_id)
@@ -70,13 +171,18 @@ class InMemoryJobStore:
             return
         job["status"] = "running"
         job["started_at"] = _now()
-        # simulate work in a background thread w/o blocking
+        self._save()
+        
         def _run():
             for i in range(1, 101):
                 time.sleep(0.02)
                 job["progress"] = {"current": i, "total": 100, "percentage": float(i)}
+                if i % 10 == 0:  # Save every 10%
+                    self._save()
             job["status"] = "completed"
             job["completed_at"] = _now()
+            self._save()
+        
         t = threading.Thread(target=_run, daemon=True)
         t.start()
 

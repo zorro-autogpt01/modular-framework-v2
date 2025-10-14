@@ -27,13 +27,47 @@ class VectorStore:
             ])
             self.db.create_table("code_entities", schema=schema)
     
-    def upsert(self, items: List[Dict]) -> None:
-        """Insert or update code entities"""
-        if not items:
+    def upsert(self, entities: List[Dict]):
+        """Upsert entities to vector store"""
+        if not entities:
             return
         
-        table = self.db.open_table("code_entities")
-        table.add(items)
+        # IMPORTANT: Validate all embeddings have the same dimension
+        first_dim = len(entities[0].get('embedding', []))
+        
+        valid_entities = []
+        for entity in entities:
+            embedding = entity.get('embedding')
+            
+            # Skip entities without embeddings
+            if not embedding or not isinstance(embedding, list):
+                print(f"Warning: Skipping entity {entity.get('id')} - no embedding")
+                continue
+            
+            # Skip entities with wrong dimension
+            if len(embedding) != first_dim:
+                print(f"Warning: Skipping entity {entity.get('id')} - wrong dimension: {len(embedding)} vs {first_dim}")
+                continue
+            
+            valid_entities.append(entity)
+        
+        if not valid_entities:
+            print("No valid entities to upsert")
+            return
+        
+        print(f"Upserting {len(valid_entities)} entities with {first_dim}-dim embeddings")
+        
+        # Convert to DataFrame
+        df = pd.DataFrame(valid_entities)
+        
+        # Get or create table
+        table_name = "code_entities"
+        try:
+            table = self.db.open_table(table_name)
+            table.add(df)
+        except Exception:
+            # Create new table with schema
+            table = self.db.create_table(table_name, df)
     
     def search(
         self, 

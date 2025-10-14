@@ -56,7 +56,8 @@ if settings.use_llm_gateway_embeddings:
     embedder = LLMGatewayEmbedder(
         gateway_url=settings.llm_gateway_url,
         model=settings.embedding_model,
-        dimensions=settings.embedding_dimensions
+        #dimensions=settings.embedding_dimensions
+        dimensions=1536
     )
 else:
     logger.info("Using local embeddings (fallback)")
@@ -64,7 +65,8 @@ else:
     embedder = LLMGatewayEmbedder(
         gateway_url=settings.llm_gateway_url,
         model=settings.embedding_model,
-        dimensions=settings.embedding_dimensions
+        #dimensions=settings.embedding_dimensions
+        dimensions=1536
     )
 
 ranker = RankingEngine()

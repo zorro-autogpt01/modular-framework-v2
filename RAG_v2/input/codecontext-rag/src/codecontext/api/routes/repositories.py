@@ -4,27 +4,24 @@ from pydantic import BaseModel
 from datetime import datetime
 import httpx
 import os
-import tempfile
-import zipfile
+import subprocess
 import shutil
 from typing import Optional
+from pathlib import Path
 
 from ...utils.logging import get_logger
 from ...config import settings
 from ...utils.responses import success_response
 from ...api.dependencies import authorize, get_repo_store, get_job_store
-from ...api.schemas.request import RegisterRepositoryRequest, IndexRequest
 
-router = APIRouter(prefix="/repositories", tags=["Repositories"], dependencies=[Depends(authorize)])
+router = APIRouter(prefix="/repositories", tags=["Repositories"])  # Removed auth for now
 logger = get_logger(__name__)
 
 
 class AddRepositoryRequest(BaseModel):
     """Request to add a repository"""
-    owner: str
-    name: str
-    connection_id: Optional[str] = None  # GitHub Hub connection ID
-    branch: str = "main"
+    connection_id: str  # Required - the GitHub Hub connection ID
+    branch: Optional[str] = None  # Optional - uses connection's default_branch if not specified
     auto_index: bool = True
 
 
@@ -42,6 +39,16 @@ class RepositoryResponse(BaseModel):
 def utc_now_iso() -> str:
     """Helper to get current UTC time as ISO string"""
     return datetime.utcnow().isoformat() + "Z"
+
+
+def parse_repo_url(repo_url: str) -> tuple[str, str]:
+    """Parse owner and repo from GitHub URL"""
+    import re
+    # Match: https://github.com/owner/repo or git@github.com:owner/repo
+    match = re.search(r'github\.com[:/]([^/]+)/([^/\.]+)', repo_url)
+    if match:
+        return match.groups()
+    raise ValueError(f"Could not parse owner/repo from: {repo_url}")
 
 
 @router.get("", response_model=list[RepositoryResponse])
@@ -71,124 +78,156 @@ async def add_repository(
     background_tasks: BackgroundTasks
 ):
     """
-    Add a repository from GitHub Hub and optionally start indexing
+    Add a repository from GitHub Hub connection and optionally start indexing
     
     This will:
-    1. Fetch repository metadata from GitHub Hub
-    2. Clone/download the repository
+    1. Fetch connection details from GitHub Hub
+    2. Clone the repository using git
     3. Start indexing in the background if auto_index=True
     """
     repo_store = request.app.state.repo_store
     indexer = request.app.state.indexer
     job_store = request.app.state.job_store
     
-    full_name = f"{repo_request.owner}/{repo_request.name}"
-    repo_id = full_name.replace("/", "_")
-    
-    # Check if already exists
-    existing = repo_store.get(repo_id)
-    if existing:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Repository {full_name} already exists. Use /{repo_id}/reindex to re-index."
-        )
+    connection_id = repo_request.connection_id
     
     try:
-        # Fetch repository from GitHub Hub
-        connection_id = repo_request.connection_id or settings.github_default_conn
-        if not connection_id:
-            raise HTTPException(
-                status_code=400, 
-                detail="No connection_id provided and GITHUB_DEFAULT_CONN not set"
-            )
+        logger.info(f"Fetching connection '{connection_id}' from GitHub Hub...")
         
-        logger.info(f"Fetching repository {full_name} from GitHub Hub...")
-        
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            # Get repository details from GitHub Hub
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            # Get connection details from GitHub Hub
             response = await client.get(
-                f"{settings.github_hub_url}/api/repositories/{repo_request.owner}/{repo_request.name}",
-                params={"connection_id": connection_id}
+                f"{settings.github_hub_url}/api/connections/{connection_id}"
             )
+            
+            if response.status_code == 404:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Connection '{connection_id}' not found in GitHub Hub"
+                )
+            
             response.raise_for_status()
-            github_repo = response.json()
+            connection = response.json()
             
-            # Download repository archive
-            logger.info(f"Downloading repository archive for {full_name}...")
-            archive_response = await client.get(
-                f"{settings.github_hub_url}/api/repositories/{repo_request.owner}/{repo_request.name}/archive",
-                params={
-                    "connection_id": connection_id,
-                    "ref": repo_request.branch
-                },
-                timeout=120.0  # Longer timeout for large repos
-            )
-            archive_response.raise_for_status()
+            logger.info(f"Connection found: {connection}")
             
-            # Save to persistent location (not temp)
+            # Extract repository information
+            repo_url = connection.get("repo_url")
+            if not repo_url:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Connection '{connection_id}' has no repo_url configured"
+                )
+            
+            # Parse owner/repo from URL
+            try:
+                owner, repo_name = parse_repo_url(repo_url)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+            
+            # Determine branch
+            branch = repo_request.branch or connection.get("default_branch") or "main"
+            
+            # Check if branch exists in connection
+            available_branches = connection.get("branches", [])
+            if available_branches and branch not in available_branches:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Branch '{branch}' not found. Available: {', '.join(available_branches)}"
+                )
+            
+            # Generate repo_id
+            full_name = f"{owner}/{repo_name}"
+            repo_id = f"{connection_id}_{owner}_{repo_name}".replace("/", "_").replace(" ", "_")
+            
+            # Check if already exists
+            existing = repo_store.get(repo_id)
+            if existing:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Repository {full_name} already exists with ID '{repo_id}'. Use /{repo_id}/reindex to re-index."
+                )
+            
+            # Create repo directory
             repos_base = os.getenv("REPOS_PATH", "./data/repos")
             os.makedirs(repos_base, exist_ok=True)
             
             repo_dir = os.path.join(repos_base, repo_id)
+            if os.path.exists(repo_dir):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Repository directory already exists: {repo_id}"
+                )
+            
             os.makedirs(repo_dir, exist_ok=True)
+            repo_path = os.path.join(repo_dir, "source")
             
-            archive_path = os.path.join(repo_dir, "repo.zip")
+            # Clone the repository
+            logger.info(f"Cloning repository: {repo_url} (branch: {branch}) -> {repo_path}")
             
-            with open(archive_path, "wb") as f:
-                f.write(archive_response.content)
-            
-            logger.info(f"Extracting repository {full_name}...")
-            
-            # Extract
-            extract_dir = os.path.join(repo_dir, "source")
-            with zipfile.ZipFile(archive_path, 'r') as zip_ref:
-                zip_ref.extractall(extract_dir)
-            
-            # Find the actual repo directory (GitHub archives have a wrapper folder)
-            extracted_contents = os.listdir(extract_dir)
-            if len(extracted_contents) == 1:
-                repo_path = os.path.join(extract_dir, extracted_contents[0])
-            else:
-                repo_path = extract_dir
-            
-            # Clean up archive
-            os.remove(archive_path)
+            try:
+                result = subprocess.run(
+                    [
+                        "git", "clone",
+                        "--depth", "1",  # Shallow clone for speed
+                        "--branch", branch,
+                        "--single-branch",
+                        repo_url,
+                        repo_path
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=300  # 5 minute timeout
+                )
+                
+                if result.returncode != 0:
+                    logger.error(f"Git clone failed: {result.stderr}")
+                    # Cleanup
+                    shutil.rmtree(repo_dir, ignore_errors=True)
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Git clone failed: {result.stderr}"
+                    )
+                
+                logger.info(f"Repository cloned successfully to {repo_path}")
+                
+            except subprocess.TimeoutExpired:
+                shutil.rmtree(repo_dir, ignore_errors=True)
+                raise HTTPException(
+                    status_code=500,
+                    detail="Git clone timeout (5 minutes exceeded)"
+                )
+            except Exception as e:
+                shutil.rmtree(repo_dir, ignore_errors=True)
+                raise HTTPException(status_code=500, detail=f"Clone failed: {str(e)}")
             
             # Create repository entry
             repo_data = {
                 "id": repo_id,
-                "owner": repo_request.owner,
-                "name": repo_request.name,
+                "owner": owner,
+                "name": repo_name,
                 "full_name": full_name,
-                "branch": repo_request.branch,
+                "branch": branch,
                 "status": "pending",
                 "connection_id": connection_id,
                 "local_path": repo_path,
-                "source_path": repo_path,  # For compatibility
-                "github_url": github_repo.get("html_url"),
-                "description": github_repo.get("description"),
-                "language": github_repo.get("language"),
-                "stars": github_repo.get("stargazers_count"),
-                "size": github_repo.get("size"),
+                "source_path": repo_path,
+                "github_url": repo_url.replace(".git", ""),
+                "description": connection.get("description"),
                 "created_at": utc_now_iso()
             }
             
             # Store in repo store
             repo_store.add(repo_data)
-            
-            logger.info(f"Repository {full_name} added successfully")
+            logger.info(f"Repository {full_name} added successfully with ID: {repo_id}")
             
             # Start indexing in background if requested
             if repo_request.auto_index:
                 logger.info(f"Starting background indexing for {full_name}")
                 
-                # Create job
                 job = job_store.enqueue(repo_id, "full", {})
-                
-                # Update repo status
                 repo_store.update(repo_id, {"status": "indexing"})
                 
-                # Start indexing task
                 background_tasks.add_task(
                     index_repository_task,
                     indexer=indexer,
@@ -201,32 +240,18 @@ async def add_repository(
             
             return RepositoryResponse(
                 id=repo_id,
-                owner=repo_request.owner,
-                name=repo_request.name,
+                owner=owner,
+                name=repo_name,
                 full_name=full_name,
-                branch=repo_request.branch,
+                branch=branch,
                 status="indexing" if repo_request.auto_index else "pending",
                 indexed_at=None
             )
     
-    except httpx.HTTPError as e:
-        logger.error(f"Failed to fetch repository from GitHub Hub: {e}")
-        raise HTTPException(
-            status_code=502,
-            detail=f"Failed to fetch repository from GitHub Hub: {str(e)}"
-        )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to add repository: {e}", exc_info=True)
-        
-        # Cleanup on failure
-        if 'repo_id' in locals():
-            try:
-                repo_store.delete(repo_id)
-                if 'repo_dir' in locals():
-                    shutil.rmtree(repo_dir, ignore_errors=True)
-            except:
-                pass
-        
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -238,14 +263,28 @@ async def index_repository_task(indexer, repo_store, job_store, job_id: str, rep
         # Update job status
         job_store.update_job(job_id, {"status": "running", "started_at": utc_now_iso()})
         
-        # Run indexing
-        result = await indexer.index_repository(repo_id, repo_path)
+        # Run indexing synchronously in executor (index() is not async)
+        import asyncio
+        loop = asyncio.get_event_loop()
+        
+        logger.info(f"Calling indexer.index(repo_id={repo_id}, repo_path={repo_path})")
+        
+        result = await loop.run_in_executor(
+            None,  # Use default executor
+            indexer.index,
+            repo_id,
+            repo_path,
+            "full",  # mode
+            {}  # options
+        )
+        
+        logger.info(f"Indexing completed with result: {result}")
         
         # Update job as completed
         job_store.update_job(job_id, {
             "status": "completed",
             "completed_at": utc_now_iso(),
-            "result": result
+            "result": result or {}
         })
         
         # Update repo status
@@ -254,13 +293,12 @@ async def index_repository_task(indexer, repo_store, job_store, job_id: str, rep
             "indexed_at": utc_now_iso(),
             "last_indexed_at": utc_now_iso(),
             "statistics": {
-                "total_files": result.get("files_processed", 0),
-                "indexed_files": result.get("entities_indexed", 0),
-                "chunks": result.get("chunks_created", 0)
+                "total_files": result.get("files_processed", 0) if result else 0,
+                "indexed_files": result.get("entities_indexed", 0) if result else 0,
             }
         })
         
-        logger.info(f"Repository {repo_id} indexed successfully: {result}")
+        logger.info(f"Repository {repo_id} indexed successfully")
         
     except Exception as e:
         logger.error(f"Failed to index repository {repo_id}: {e}", exc_info=True)
@@ -320,11 +358,10 @@ async def delete_repository(request: Request, repo_id: str):
     # Delete from repo store
     repo_store.delete(repo_id)
     
-    # Cleanup local files if they exist
+    # Cleanup local files
     if repo.get("local_path"):
         try:
-            # Remove the entire repo directory
-            repo_dir = os.path.dirname(repo["local_path"])
+            repo_dir = Path(repo["local_path"]).parent
             shutil.rmtree(repo_dir, ignore_errors=True)
             logger.info(f"Cleaned up local files for {repo_id}")
         except Exception as e:

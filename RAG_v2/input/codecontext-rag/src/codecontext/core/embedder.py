@@ -156,6 +156,57 @@ class LLMGatewayEmbedder:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.close()
 
+    def embed_code_entity(self, entity: dict) -> dict:
+        """Embed a code entity with validation"""
+        import asyncio
+        
+        # Build text
+        text_parts = []
+        if entity.get('entity_type'):
+            text_parts.append(f"Type: {entity['entity_type']}")
+        if entity.get('name'):
+            text_parts.append(f"Name: {entity['name']}")
+        if entity.get('file_path'):
+            text_parts.append(f"File: {entity['file_path']}")
+        if entity.get('code'):
+            # Limit code length to avoid token limits
+            code = entity['code'][:5000]  # Max 5000 chars
+            text_parts.append(f"Code:\n{code}")
+        if entity.get('language'):
+            text_parts.append(f"Language: {entity['language']}")
+        
+        text = "\n".join(text_parts)
+        
+        # If text is empty, use a default
+        if not text.strip():
+            text = f"Empty {entity.get('entity_type', 'entity')}"
+        
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        # Get embedding
+        embedding = loop.run_until_complete(self.embed_text(text))
+        
+        # VALIDATE dimension
+        if not embedding:
+            print(f"Warning: Empty embedding for {entity.get('id')}")
+            # Return entity without embedding - will be filtered out
+            return entity
+        
+        if len(embedding) != self.dimensions:
+            print(f"Warning: Expected {self.dimensions} dims, got {len(embedding)} for {entity.get('id')}")
+            # Pad or truncate to match expected dimension
+            if len(embedding) < self.dimensions:
+                embedding.extend([0.0] * (self.dimensions - len(embedding)))
+            else:
+                embedding = embedding[:self.dimensions]
+        
+        entity['embedding'] = embedding
+        return entity
+
 
 class OpenAIEmbedder:
     """
