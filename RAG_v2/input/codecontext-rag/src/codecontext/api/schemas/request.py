@@ -87,3 +87,83 @@ class CodeSearchRequest(BaseModel):
     search_type: Optional[str] = "semantic"
     max_results: Optional[int] = 10
     filters: Optional[Dict] = None
+
+
+class ContextRequest(BaseModel):
+    query: str
+    max_chunks: Optional[int] = 8
+    surround_lines: Optional[int] = 0
+    expand_neighbors: Optional[bool] = True
+    filters: Optional[RecommendationFilters] = None
+
+
+class PromptOptions(BaseModel):
+    # LLM/prompt controls
+    model: Optional[str] = None
+    temperature: Optional[float] = 0.2
+    max_tokens: Optional[int] = 2200  # total budget for prompt messages
+    system_prompt: Optional[str] = None
+
+    # Retrieval/expansion controls
+    max_chunks: Optional[int] = 12
+    per_file_neighbor_chunks: Optional[int] = 2
+    include_dependency_expansion: Optional[bool] = True
+    dependency_depth: Optional[int] = 1
+    dependency_direction: Optional[str] = "both"  # imports | imported_by | both
+    neighbor_files_limit: Optional[int] = 4
+
+    # Hybrid ranking controls
+    hybrid_alpha: Optional[float] = 0.2  # weight for keyword score vs semantic (0..1)
+
+    # Filters
+    languages: Optional[List[str]] = None
+
+
+class PromptRequest(BaseModel):
+    query: str
+    options: Optional[PromptOptions] = None
+    filters: Optional[RecommendationFilters] = None
+
+
+class PromptMessage(BaseModel):
+    role: str
+    content: str
+
+
+class GeneratePatchRequest(BaseModel):
+    # Either provide prompt_messages (from /prompt), or query+options to build internally.
+    prompt_messages: Optional[List[PromptMessage]] = None
+    query: Optional[str] = None
+    options: Optional[PromptOptions] = None
+    filters: Optional[RecommendationFilters] = None
+
+    # LLM controls
+    model: Optional[str] = None
+    temperature: Optional[float] = 0.2
+    max_output_tokens: Optional[int] = 1400
+    stream: Optional[bool] = False
+    dry_run: Optional[bool] = False
+
+    # Safety / restrictions
+    restrict_to_files: Optional[List[str]] = None
+    enforce_restriction: Optional[bool] = True
+
+    # If set, include a high-level instruction to output ONLY a unified diff without commentary
+    force_unified_diff: Optional[bool] = True
+
+
+class ApplyPatchRequest(BaseModel):
+    patch: str
+    base_branch: Optional[str] = None       # defaults to repo.branch
+    new_branch: Optional[str] = None        # auto-generated if not provided
+    commit_message: Optional[str] = None    # default derived from PR title or 'Automated patch'
+    push: Optional[bool] = False
+    create_pr: Optional[bool] = False
+    pr_title: Optional[str] = None
+    pr_body: Optional[str] = None
+    draft_pr: Optional[bool] = False
+    dry_run: Optional[bool] = False
+
+    # Safety / restrictions
+    restrict_to_files: Optional[List[str]] = None
+    enforce_restriction: Optional[bool] = True

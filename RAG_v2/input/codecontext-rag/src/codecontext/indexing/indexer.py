@@ -248,6 +248,7 @@ class Indexer:
                 'language': file_data['language'],
                 'start_line': 0,
                 'end_line': file_data['lines_of_code'],
+                'chunk_id': ''
             }
             file_entity = self.embedder.embed_code_entity(file_entity)
             entities_to_index.append(file_entity)
@@ -260,10 +261,11 @@ class Indexer:
                     'file_path': file_path,
                     'entity_type': 'function',
                     'name': func['name'],
-                    'code': func['code'],
+                    'code': func.get('code', ''),
                     'language': file_data['language'],
                     'start_line': func['start_line'],
                     'end_line': func['end_line'],
+                    'chunk_id': ''
                 }
                 func_entity = self.embedder.embed_code_entity(func_entity)
                 entities_to_index.append(func_entity)
@@ -276,13 +278,32 @@ class Indexer:
                     'file_path': file_path,
                     'entity_type': 'class',
                     'name': cls['name'],
-                    'code': '',
+                    'code': cls.get('code', ''),
                     'language': file_data['language'],
                     'start_line': cls['start_line'],
                     'end_line': cls['end_line'],
+                    'chunk_id': ''
                 }
                 cls_entity = self.embedder.embed_code_entity(cls_entity)
                 entities_to_index.append(cls_entity)
+
+            # Index chunk-level
+            for idx, ch in enumerate(file_data.get('chunks', [])):
+                chunk_id = f"{repo_id}:chunk:{file_path}:{ch['start_line']}-{ch['end_line']}"
+                chunk_entity = {
+                    'id': chunk_id,
+                    'repo_id': repo_id,
+                    'file_path': file_path,
+                    'entity_type': 'chunk',
+                    'name': f"chunk_{idx}",
+                    'code': ch.get('code', '')[:4000],  # cap per-row code payload
+                    'language': file_data['language'],
+                    'start_line': ch['start_line'],
+                    'end_line': ch['end_line'],
+                    'chunk_id': chunk_id
+                }
+                chunk_entity = self.embedder.embed_code_entity(chunk_entity)
+                entities_to_index.append(chunk_entity)
 
         # Step 5: Upsert to vector store
         print(f"Indexing {len(entities_to_index)} entities...")

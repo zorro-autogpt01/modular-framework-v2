@@ -1,4 +1,3 @@
-# src/codecontext/integrations/llm_gateway.py
 
 import httpx
 from typing import List, Dict, Optional, AsyncIterator
@@ -18,7 +17,8 @@ class LLMGatewayClient:
         temperature: float = 0.7,
         max_tokens: int = None,
         stream: bool = False,
-        metadata: Dict = None
+        metadata: Dict = None,
+        dry_run: bool = False
     ) -> Dict | AsyncIterator[str]:
         """Send chat request to LLM Gateway"""
         
@@ -27,7 +27,8 @@ class LLMGatewayClient:
             "messages": messages,
             "temperature": temperature,
             "stream": stream,
-            "metadata": metadata or {}
+            "metadata": metadata or {},
+            "dry_run": dry_run
         }
         
         if max_tokens:
@@ -78,13 +79,6 @@ class LLMGatewayClient:
         Note: This requires LLM Gateway to support embeddings API.
         If not available, fall back to local embedder.
         """
-        # This would need to be added to LLM Gateway
-        # For now, this is a placeholder
-        
-        messages = [{"role": "user", "content": text}]
-        
-        # Use chat with special system prompt to return embedding
-        # OR add dedicated embedding endpoint to LLM Gateway
         raise NotImplementedError("Embedding endpoint not yet in LLM Gateway")
     
     async def create_conversation(

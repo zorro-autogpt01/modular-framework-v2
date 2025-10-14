@@ -8,6 +8,9 @@ from .config import settings
 from .utils.logging import configure_logging, get_logger
 from .utils.responses import error_response
 from .api.routes import health, repositories, recommendations, dependencies, impact_analysis, search
+from .api.routes import context as context_routes
+from .api.routes import prompts as prompts_routes
+from .api.routes import patches as patches_routes
 from .storage.inmemory import InMemoryRepositoryStore, InMemoryJobStore
 from .core.parser import CodeParser
 from .core.embedder import LLMGatewayEmbedder
@@ -102,6 +105,9 @@ app.include_router(recommendations.router)
 app.include_router(dependencies.router)
 app.include_router(impact_analysis.router)
 app.include_router(search.router)
+app.include_router(context_routes.router)
+app.include_router(prompts_routes.router)
+app.include_router(patches_routes.router)
 
 # Exception handlers
 @app.exception_handler(404)
