@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from 'react'
 import { api } from '../services/api'
 
@@ -7,7 +8,7 @@ export default function Impact() {
   const [filesText, setFilesText] = useState('src/models/user.py')
   const [resp, setResp] = useState<any | null>(null)
 
-  useEffect(() => { api.listRepositories({}).then(r => setRepos(r.data.repositories)) }, [])
+  useEffect(() => { api.listRepositories({}).then(r => setRepos(r.repositories)).catch(() => setRepos([])) }, [])
 
   const run = async () => {
     if (!repoId) return
@@ -23,7 +24,7 @@ export default function Impact() {
         <div className="row">
           <select className="input" value={repoId} onChange={e => setRepoId(e.target.value)}>
             <option value="">Select repo</option>
-            {repos.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+            {repos.map((r: any) => <option key={r.id} value={r.id}>{r.full_name || r.name}</option>)}
           </select>
           <textarea className="input" style={{ flex: 1, minHeight: 80 }} value={filesText} onChange={e => setFilesText(e.target.value)} />
           <button className="button" onClick={run}>Analyze</button>
@@ -36,4 +37,5 @@ export default function Impact() {
         </div>
       )}
     </div>
-  )}
+  )
+}

@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from 'react'
 import { api } from '../services/api'
 
@@ -8,7 +9,7 @@ export default function Dependencies() {
   const [depth, setDepth] = useState(2)
   const [data, setData] = useState<any | null>(null)
 
-  useEffect(() => { api.listRepositories({}).then(r => setRepos(r.data.repositories)) }, [])
+  useEffect(() => { api.listRepositories({}).then(r => setRepos(r.repositories)).catch(() => setRepos([])) }, [])
 
   const run = async () => {
     if (!repoId || !filePath) return
@@ -23,7 +24,7 @@ export default function Dependencies() {
         <div className="row">
           <select className="input" value={repoId} onChange={e => setRepoId(e.target.value)}>
             <option value="">Select repo</option>
-            {repos.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+            {repos.map((r: any) => <option key={r.id} value={r.id}>{r.full_name || r.name}</option>)}
           </select>
           <input className="input" placeholder="file path" value={filePath} onChange={e => setFilePath(e.target.value)} style={{ flex: 1 }} />
           <input className="input" type="number" min={1} max={5} value={depth} onChange={e => setDepth(Number(e.target.value))} />
@@ -39,3 +40,4 @@ export default function Dependencies() {
     </div>
   )
 }
+

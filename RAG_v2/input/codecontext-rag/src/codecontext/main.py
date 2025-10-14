@@ -10,7 +10,7 @@ from .utils.responses import error_response
 from .api.routes import health, repositories, recommendations, dependencies, impact_analysis, search
 from .storage.inmemory import InMemoryRepositoryStore, InMemoryJobStore
 from .core.parser import CodeParser
-from .core.embedder import LLMGatewayEmbedder  # Only import what you need
+from .core.embedder import LLMGatewayEmbedder
 from .core.ranker import RankingEngine
 from .storage.vector_store import VectorStore
 from .indexing.indexer import Indexer
@@ -24,7 +24,6 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         response.headers["X-Request-Id"] = request.state.request_id
         response.headers.setdefault("X-RateLimit-Limit", str(settings.rate_limit_per_minute))
-        # NOTE: Implement real rate limiting later
         response.headers.setdefault("X-RateLimit-Remaining", str(settings.rate_limit_per_minute))
         return response
 
@@ -41,8 +40,8 @@ configure_logging(settings.log_level)
 
 # Create FastAPI app
 app = FastAPI(
-    title="CodeContext RAG API", 
-    version=settings.api_version, 
+    title="CodeContext RAG API",
+    version=settings.api_version,
     openapi_url="/openapi.json"
 )
 
@@ -56,16 +55,13 @@ if settings.use_llm_gateway_embeddings:
     embedder = LLMGatewayEmbedder(
         gateway_url=settings.llm_gateway_url,
         model=settings.embedding_model,
-        #dimensions=settings.embedding_dimensions
         dimensions=1536
     )
 else:
     logger.info("Using local embeddings (fallback)")
-    # You could implement a local embedder here if needed
     embedder = LLMGatewayEmbedder(
         gateway_url=settings.llm_gateway_url,
         model=settings.embedding_model,
-        #dimensions=settings.embedding_dimensions
         dimensions=1536
     )
 
@@ -75,8 +71,8 @@ ranker = RankingEngine()
 repo_store = InMemoryRepositoryStore()
 job_store = InMemoryJobStore(repo_store)
 
-# Initialize indexer
-indexer = Indexer(vector_store, parser, embedder)
+# Initialize indexer (with metadata persistence path)
+indexer = Indexer(vector_store, parser, embedder, meta_path=settings.index_meta_path)
 indexer.repo_store = repo_store  # Attach for incremental indexing
 
 # Attach to app state
@@ -105,15 +101,14 @@ app.include_router(repositories.router)
 app.include_router(recommendations.router)
 app.include_router(dependencies.router)
 app.include_router(impact_analysis.router)
-app.include_router(search.router)  # Only include once!
-
+app.include_router(search.router)
 
 # Exception handlers
 @app.exception_handler(404)
 async def not_found_handler(request: Request, exc):
     body = error_response(
-        request, 
-        code="NOT_FOUND", 
+        request,
+        code="NOT_FOUND",
         message="Requested resource not found"
     )
     return JSONResponse(status_code=404, content=body)
@@ -122,9 +117,9 @@ async def not_found_handler(request: Request, exc):
 @app.exception_handler(422)
 async def validation_error_handler(request: Request, exc):
     body = error_response(
-        request, 
-        code="INVALID_REQUEST", 
-        message="Validation error", 
+        request,
+        code="INVALID_REQUEST",
+        message="Validation error",
         details={"errors": str(exc)}
     )
     return JSONResponse(status_code=400, content=body)
@@ -133,7 +128,7 @@ async def validation_error_handler(request: Request, exc):
 @app.get("/")
 async def root(request: Request):
     return {
-        "message": "CodeContext RAG API", 
+        "message": "CodeContext RAG API",
         "version": settings.api_version,
         "status": "running"
     }
@@ -145,6 +140,13 @@ async def startup_event():
     logger.info("CodeContext RAG API starting up...")
     logger.info(f"LLM Gateway URL: {settings.llm_gateway_url}")
     logger.info(f"Vector store path: {settings.lancedb_path}")
+
+    # Load cached dependency graphs and git signals from disk so reindex isn't needed
+    try:
+        loaded = indexer.load_all_metadata()
+        logger.info(f"Loaded index metadata for {loaded} repositories from {settings.index_meta_path}")
+    except Exception as e:
+        logger.warning(f"Failed to load index metadata: {e}")
 
 
 @app.on_event("shutdown")

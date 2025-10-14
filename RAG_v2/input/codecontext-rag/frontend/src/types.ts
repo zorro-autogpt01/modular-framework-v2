@@ -7,9 +7,12 @@ export type ApiEnvelope<T> = {
 
 export type Repository = {
   id: string
+  owner?: string
   name: string
-  source_type: string
+  full_name?: string
+  branch?: string
   status: string
-  created_at: string
-  last_indexed_at?: string | null
+  indexed_at?: string | null
+  created_at?: string | null
 }
+

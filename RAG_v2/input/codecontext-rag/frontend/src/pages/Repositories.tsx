@@ -4,16 +4,21 @@ import type { Repository } from '../types'
 
 export default function Repositories() {
   const [repos, setRepos] = useState<Repository[]>([])
-  const [name, setName] = useState('')
-  const [sourceType, setSourceType] = useState('local')
+  const [connectionId, setConnectionId] = useState('')
+  const [branch, setBranch] = useState('')
+  const [autoIndex, setAutoIndex] = useState(true)
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('all')
+  const [error, setError] = useState<string | null>(null)
 
   const load = async () => {
     setLoading(true)
+    setError(null)
     try {
       const res = await api.listRepositories({ status })
-      setRepos(res.data.repositories)
+      setRepos(res.repositories)
+    } catch (e: any) {
+      setError(e?.message || String(e))
     } finally {
       setLoading(false)
     }
@@ -21,35 +26,77 @@ export default function Repositories() {
 
   useEffect(() => { load() }, [status])
 
-  const registerRepo = async () => {
-    if (!name) return
-    await api.registerRepository({ name, source_type: sourceType })
-    setName('')
-    await load()
+  const addRepo = async () => {
+    if (!connectionId) {
+      setError('connection_id is required')
+      return
+    }
+    setError(null)
+    try {
+      await api.addRepository({
+        connection_id: connectionId,
+        branch: branch || undefined,
+        auto_index: autoIndex
+      })
+      setConnectionId('')
+      setBranch('')
+      setAutoIndex(true)
+      await load()
+    } catch (e: any) {
+      setError(e?.message || String(e))
+    }
   }
 
-  const indexRepo = async (id: string) => {
-    await api.indexRepository(id, { mode: 'incremental' })
-    await load()
+  const reindexRepo = async (id: string) => {
+    setError(null)
+    try {
+      await api.reindexRepository(id)
+      await load()
+    } catch (e: any) {
+      setError(e?.message || String(e))
+    }
   }
 
   const deleteRepo = async (id: string) => {
-    await api.deleteRepository(id)
-    await load()
+    setError(null)
+    try {
+      await api.deleteRepository(id)
+      await load()
+    } catch (e: any) {
+      setError(e?.message || String(e))
+    }
   }
 
   return (
     <div>
       <div className="card">
-        <h3>Register Repository</h3>
+        <h3>Add Repository (GitHub Hub)</h3>
         <div className="row">
-          <input className="input" placeholder="Repository name" value={name} onChange={e => setName(e.target.value)} />
-          <select className="input" value={sourceType} onChange={e => setSourceType(e.target.value)}>
-            <option value="local">local</option>
-            <option value="git">git</option>
-          </select>
-          <button className="button" onClick={registerRepo}>Register</button>
+          <input
+            className="input"
+            placeholder="connection_id (from GitHub Hub)"
+            value={connectionId}
+            onChange={e => setConnectionId(e.target.value)}
+            style={{ flex: 2 }}
+          />
+          <input
+            className="input"
+            placeholder="branch (optional)"
+            value={branch}
+            onChange={e => setBranch(e.target.value)}
+            style={{ flex: 1 }}
+          />
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <input
+              type="checkbox"
+              checked={autoIndex}
+              onChange={e => setAutoIndex(e.target.checked)}
+            />
+            Auto-index
+          </label>
+          <button className="button" onClick={addRepo}>Add</button>
         </div>
+        {error && <div style={{ color: '#e03131', marginTop: 8 }}>{error}</div>}
       </div>
 
       <div className="row" style={{ marginBottom: 12 }}>
@@ -57,10 +104,10 @@ export default function Repositories() {
           Status:
           <select className="input" value={status} onChange={e => setStatus(e.target.value)}>
             <option value="all">all</option>
-            <option value="registered">registered</option>
+            <option value="pending">pending</option>
             <option value="indexing">indexing</option>
             <option value="indexed">indexed</option>
-            <option value="failed">failed</option>
+            <option value="error">error</option>
           </select>
         </label>
         <button className="button" onClick={load} disabled={loading}>{loading ? 'Loading...' : 'Refresh'}</button>
@@ -69,18 +116,19 @@ export default function Repositories() {
       <table className="table">
         <thead>
           <tr>
-            <th>ID</th><th>Name</th><th>Status</th><th>Created</th><th>Actions</th>
+            <th>ID</th><th>Full Name</th><th>Branch</th><th>Status</th><th>Indexed At</th><th>Actions</th>
           </tr>
         </thead>
         <tbody>
           {repos.map(r => (
             <tr key={r.id}>
               <td>{r.id}</td>
-              <td>{r.name}</td>
+              <td>{r.full_name || r.name}</td>
+              <td>{r.branch || 'main'}</td>
               <td>{r.status}</td>
-              <td>{new Date(r.created_at).toLocaleString()}</td>
+              <td>{r.indexed_at ? new Date(r.indexed_at).toLocaleString() : '-'}</td>
               <td className="row">
-                <button className="button" onClick={() => indexRepo(r.id)}>Index</button>
+                <button className="button" onClick={() => reindexRepo(r.id)}>Reindex</button>
                 <button className="button" onClick={() => deleteRepo(r.id)} style={{ background: '#e03131', borderColor: '#e03131' }}>Delete</button>
               </td>
             </tr>
@@ -90,3 +138,4 @@ export default function Repositories() {
     </div>
   )
 }
+

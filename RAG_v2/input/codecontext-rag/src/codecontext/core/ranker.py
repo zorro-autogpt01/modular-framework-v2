@@ -1,4 +1,4 @@
-# src/codecontext/core/ranker.py
+
 from typing import List, Dict, Optional
 import math
 
@@ -30,29 +30,42 @@ class RankingEngine:
         recency_scores: Optional[Dict[str, float]] = None
     ) -> List[Dict]:
         """Rank candidates by combining multiple signals"""
-        
+        centrality_scores = centrality_scores or {}
+        comodification_scores = comodification_scores or {}
+        recency_scores = recency_scores or {}
+
+        # Normalize centrality so that max centrality maps to 1.0
+        max_centrality = max(centrality_scores.values()) if centrality_scores else 0.0
+        def norm_centrality(fp: str) -> float:
+            if not max_centrality:
+                return 0.0
+            return (centrality_scores.get(fp, 0.0) / max_centrality)
+
         for candidate in candidates:
-            file_path = candidate['file_path']
+            file_path = candidate.get('file_path')
+            if not file_path:
+                # Skip malformed
+                candidate['confidence'] = 0
+                candidate['reasons'] = []
+                candidate['scores'] = {'semantic': 0, 'dependency': 0, 'history': 0, 'recency': 0}
+                continue
             
             # 1. Semantic similarity score (from vector search)
-            semantic_score = candidate.get('_distance', 0.0)
-            # Convert distance to similarity (assuming cosine distance)
-            semantic_score = 1.0 - semantic_score
+            # Convert distance to similarity (assuming cosine distance in [0,1])
+            semantic_score = candidate.get('_distance', 0.5)
+            semantic_score = 1.0 - float(semantic_score)
+            semantic_score = max(0.0, min(1.0, semantic_score))
             
-            # 2. Dependency centrality score
-            dependency_score = 0.5  # Default
-            if centrality_scores and file_path in centrality_scores:
-                dependency_score = centrality_scores[file_path]
+            # 2. Dependency centrality score (normalized)
+            dependency_score = norm_centrality(file_path)
             
-            # 3. Co-modification/history score
-            history_score = 0.5  # Default
-            if comodification_scores and file_path in comodification_scores:
-                history_score = comodification_scores[file_path]
+            # 3. Co-modification/history score (assume already 0..1 if provided)
+            history_score = float(comodification_scores.get(file_path, 0.5))
+            history_score = max(0.0, min(1.0, history_score))
             
-            # 4. Recency score
-            recency_score = 0.5  # Default
-            if recency_scores and file_path in recency_scores:
-                recency_score = recency_scores[file_path]
+            # 4. Recency score (0..1)
+            recency_score = float(recency_scores.get(file_path, 0.5))
+            recency_score = max(0.0, min(1.0, recency_score))
             
             # Combined confidence score (0-100)
             confidence = (
@@ -67,32 +80,32 @@ class RankingEngine:
             if semantic_score > 0.6:
                 reasons.append({
                     'type': 'semantic',
-                    'score': semantic_score,
+                    'score': round(semantic_score, 3),
                     'explanation': self._explain_semantic(candidate, semantic_score)
                 })
             
-            if dependency_score > 0.6:
+            if dependency_score > 0.4:  # lower threshold due to normalization
                 reasons.append({
                     'type': 'dependency',
-                    'score': dependency_score,
-                    'explanation': f"Central in dependency graph (score: {dependency_score:.2f})"
+                    'score': round(dependency_score, 3),
+                    'explanation': f"Central in dependency graph (normalized centrality: {dependency_score:.2f})"
                 })
             
             if history_score > 0.6:
                 reasons.append({
                     'type': 'history',
-                    'score': history_score,
-                    'explanation': f"Frequently modified with similar features"
+                    'score': round(history_score, 3),
+                    'explanation': "Frequently modified with related changes"
                 })
             
             if recency_score > 0.7:
                 reasons.append({
                     'type': 'recency',
-                    'score': recency_score,
+                    'score': round(recency_score, 3),
                     'explanation': f"Recently modified (score: {recency_score:.2f})"
                 })
             
-            candidate['confidence'] = int(confidence)
+            candidate['confidence'] = int(round(confidence))
             candidate['reasons'] = reasons
             candidate['scores'] = {
                 'semantic': semantic_score,
@@ -102,7 +115,7 @@ class RankingEngine:
             }
         
         # Sort by confidence
-        ranked = sorted(candidates, key=lambda x: x['confidence'], reverse=True)
+        ranked = sorted(candidates, key=lambda x: x.get('confidence', 0), reverse=True)
         return ranked
     
     def _explain_semantic(self, candidate: Dict, score: float) -> str:

@@ -1,4 +1,3 @@
-# src/codecontext/api/routes/repositories.py
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status, BackgroundTasks
 from pydantic import BaseModel
 from datetime import datetime
@@ -79,11 +78,6 @@ async def add_repository(
 ):
     """
     Add a repository from GitHub Hub connection and optionally start indexing
-    
-    This will:
-    1. Fetch connection details from GitHub Hub
-    2. Clone the repository using git
-    3. Start indexing in the background if auto_index=True
     """
     repo_store = request.app.state.repo_store
     indexer = request.app.state.indexer
@@ -169,7 +163,7 @@ async def add_repository(
                 result = subprocess.run(
                     [
                         "git", "clone",
-                        "--depth", "1",  # Shallow clone for speed
+                        "--depth", "1",
                         "--branch", branch,
                         "--single-branch",
                         repo_url,
@@ -177,12 +171,11 @@ async def add_repository(
                     ],
                     capture_output=True,
                     text=True,
-                    timeout=300  # 5 minute timeout
+                    timeout=300
                 )
                 
                 if result.returncode != 0:
                     logger.error(f"Git clone failed: {result.stderr}")
-                    # Cleanup
                     shutil.rmtree(repo_dir, ignore_errors=True)
                     raise HTTPException(
                         status_code=500,
@@ -255,6 +248,32 @@ async def add_repository(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _summarize_index_result(result: dict | None) -> dict:
+    """Convert indexer result to a JSON-serializable summary"""
+    if not result:
+        return {}
+    dep = result.get("dependency_graph")
+    graph_stats = None
+    try:
+        if dep and getattr(dep, "graph", None):
+            g = dep.graph
+            # Avoid heavy computation; simple stats only
+            graph_stats = {
+                "nodes": g.number_of_nodes(),
+                "edges": g.number_of_edges(),
+            }
+            # Avoid calling find_circular_dependencies if graph is large
+    except Exception:
+        graph_stats = None
+
+    return {
+        "status": result.get("status"),
+        "entities_indexed": result.get("entities_indexed"),
+        "files_processed": result.get("files_processed"),
+        "dependency_graph": graph_stats,
+    }
+
+
 async def index_repository_task(indexer, repo_store, job_store, job_id: str, repo_id: str, repo_path: str):
     """Background task to index a repository"""
     try:
@@ -270,21 +289,21 @@ async def index_repository_task(indexer, repo_store, job_store, job_id: str, rep
         logger.info(f"Calling indexer.index(repo_id={repo_id}, repo_path={repo_path})")
         
         result = await loop.run_in_executor(
-            None,  # Use default executor
+            None,
             indexer.index,
             repo_id,
             repo_path,
-            "full",  # mode
-            {}  # options
+            "full",
+            {}
         )
         
         logger.info(f"Indexing completed with result: {result}")
         
-        # Update job as completed
+        # Update job as completed with JSON-safe summary only
         job_store.update_job(job_id, {
             "status": "completed",
             "completed_at": utc_now_iso(),
-            "result": result or {}
+            "result": _summarize_index_result(result)
         })
         
         # Update repo status
@@ -303,14 +322,12 @@ async def index_repository_task(indexer, repo_store, job_store, job_id: str, rep
     except Exception as e:
         logger.error(f"Failed to index repository {repo_id}: {e}", exc_info=True)
         
-        # Update job as failed
         job_store.update_job(job_id, {
             "status": "failed",
             "completed_at": utc_now_iso(),
             "error": str(e)
         })
         
-        # Update repo status
         repo_store.update(repo_id, {
             "status": "error",
             "error": str(e)
@@ -390,13 +407,9 @@ async def reindex_repository(
     
     logger.info(f"Re-indexing repository {repo_id}")
     
-    # Create new job
     job = job_store.enqueue(repo_id, "full", {})
-    
-    # Update status
     repo_store.update(repo_id, {"status": "indexing"})
     
-    # Start indexing in background
     background_tasks.add_task(
         index_repository_task,
         indexer=indexer,
@@ -423,3 +436,4 @@ def get_index_status(request: Request, repo_id: str):
             detail={"code": "NOT_FOUND", "message": "No indexing job found for this repository"}
         )
     return success_response(request, status_data)
+

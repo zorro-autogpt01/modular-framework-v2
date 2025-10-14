@@ -1,4 +1,3 @@
-# src/codecontext/config.py
 
 import os
 from dataclasses import dataclass
@@ -43,12 +42,15 @@ class Settings:
     llm_gateway_model: str = os.getenv("LLM_GATEWAY_MODEL", "gpt-4o-mini")
     
     # Embeddings - Use LLM Gateway by default
-    use_llm_gateway_embeddings: bool = _bool(os.getenv("USE_LLM_GATEWAY_EMBEDDINGS"), True)  # Changed to True
+    use_llm_gateway_embeddings: bool = _bool(os.getenv("USE_LLM_GATEWAY_EMBEDDINGS"), True)
     embedding_model: str = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
     embedding_dimensions: Optional[int] = int(os.getenv("EMBEDDING_DIMENSIONS")) if os.getenv("EMBEDDING_DIMENSIONS") else None
     
     # Legacy local embeddings (fallback)
     local_embedding_model: str = os.getenv("LOCAL_EMBEDDING_MODEL", "microsoft/codebert-base")
     openai_api_key: str | None = os.getenv("OPENAI_API_KEY")
+
+    # Index metadata persistence (dependency graph + git signals)
+    index_meta_path: str = os.getenv("INDEX_META_PATH", "./data/index_meta")
 
 settings = Settings()

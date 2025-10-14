@@ -1,4 +1,3 @@
-# src/codecontext/storage/inmemory.py
 from __future__ import annotations
 from typing import Dict, List, Optional
 import secrets
@@ -7,10 +6,22 @@ import time
 import threading
 import json
 from pathlib import Path
+import os
+from json import JSONDecodeError
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _atomic_write_json(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp, "w") as f:
+        json.dump(data, f, indent=2, default=str)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
 
 
 class InMemoryRepositoryStore:
@@ -27,14 +38,19 @@ class InMemoryRepositoryStore:
                     self._repos = json.load(f)
             except Exception as e:
                 print(f"Failed to load repos: {e}")
+                # Backup the corrupted file
+                try:
+                    bad = self._persist_path.with_suffix(self._persist_path.suffix + ".bad")
+                    os.replace(self._persist_path, bad)
+                    print(f"Backed up corrupted repos file to: {bad}")
+                except Exception:
+                    pass
                 self._repos = {}
     
     def _save(self):
-        """Save repositories to disk"""
+        """Save repositories to disk (atomic)"""
         try:
-            self._persist_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self._persist_path, 'w') as f:
-                json.dump(self._repos, f, indent=2)
+            _atomic_write_json(self._persist_path, self._repos)
         except Exception as e:
             print(f"Failed to save repos: {e}")
 
@@ -120,18 +136,24 @@ class InMemoryJobStore:
                     self._repo_job = data.get("repo_job", {})
             except Exception as e:
                 print(f"Failed to load jobs: {e}")
+                # Backup corrupted file
+                try:
+                    bad = self._persist_path.with_suffix(self._persist_path.suffix + ".bad")
+                    os.replace(self._persist_path, bad)
+                    print(f"Backed up corrupted jobs file to: {bad}")
+                except Exception:
+                    pass
                 self._jobs = {}
                 self._repo_job = {}
     
     def _save(self):
-        """Save jobs to disk"""
+        """Save jobs to disk (atomic)"""
         try:
-            self._persist_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self._persist_path, 'w') as f:
-                json.dump({
-                    "jobs": self._jobs,
-                    "repo_job": self._repo_job
-                }, f, indent=2)
+            data = {
+                "jobs": self._jobs,
+                "repo_job": self._repo_job
+            }
+            _atomic_write_json(self._persist_path, data)
         except Exception as e:
             print(f"Failed to save jobs: {e}")
 
@@ -177,7 +199,7 @@ class InMemoryJobStore:
             for i in range(1, 101):
                 time.sleep(0.02)
                 job["progress"] = {"current": i, "total": 100, "percentage": float(i)}
-                if i % 10 == 0:  # Save every 10%
+                if i % 10 == 0:
                     self._save()
             job["status"] = "completed"
             job["completed_at"] = _now()
@@ -201,3 +223,4 @@ class InMemoryJobStore:
             "completed_at": j.get("completed_at"),
             "error": j.get("error"),
         }
+

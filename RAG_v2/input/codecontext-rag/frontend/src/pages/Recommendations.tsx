@@ -9,7 +9,7 @@ export default function Recommendations() {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    api.listRepositories({ status: 'all' }).then(r => setRepos(r.data.repositories))
+    api.listRepositories({ status: 'all' }).then(r => setRepos(r.repositories)).catch(() => setRepos([]))
   }, [])
 
   const recommend = async () => {
@@ -28,7 +28,7 @@ export default function Recommendations() {
         <div className="row">
           <select className="input" value={repoId} onChange={e => setRepoId(e.target.value)}>
             <option value="">Select repo</option>
-            {repos.map(r => <option key={r.id} value={r.id}>{r.name} ({r.id})</option>)}
+            {repos.map((r: any) => <option key={r.id} value={r.id}>{(r.full_name || r.name)} ({r.id})</option>)}
           </select>
           <input className="input" value={query} onChange={e => setQuery(e.target.value)} style={{ flex: 1 }} />
           <button className="button" onClick={recommend} disabled={loading}>{loading ? 'Loading...' : 'Recommend'}</button>

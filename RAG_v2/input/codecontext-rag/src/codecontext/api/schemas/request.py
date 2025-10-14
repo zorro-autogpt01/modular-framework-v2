@@ -2,8 +2,6 @@ from pydantic import BaseModel, Field
 from typing import Optional, List, Dict
 
 
-# src/codecontext/api/schemas/request.py
-
 class RegisterRepositoryRequest(BaseModel):
     name: str
     source_type: str  # "local", "git", "github_hub"
@@ -14,8 +12,8 @@ class RegisterRepositoryRequest(BaseModel):
     branch: Optional[str] = "main"
     
     # For GitHub Hub integration
-    github_conn_id: Optional[str] = None  # NEW
-    github_branch: Optional[str] = None   # NEW
+    github_conn_id: Optional[str] = None
+    github_branch: Optional[str] = None
     
     languages: Optional[List[str]] = None
     config: Optional[Dict] = None
@@ -82,13 +80,6 @@ class ImpactAnalysisRequest(BaseModel):
     analysis_depth: Optional[int] = 2
     options: Optional[ImpactAnalysisOptions] = None
 
-class CodeSearchRequest(BaseModel):
-    repository_id: str
-    query: str
-    search_type: Optional[str] = "semantic"
-    max_results: Optional[int] = 10
-    filters: Optional[Dict] = None
-
 
 class CodeSearchRequest(BaseModel):
     repository_id: str
@@ -96,8 +87,3 @@ class CodeSearchRequest(BaseModel):
     search_type: Optional[str] = "semantic"
     max_results: Optional[int] = 10
     filters: Optional[Dict] = None
-
-    repository_id: str
-    modified_files: List[str]
-    analysis_depth: Optional[int] = 2
-    options: Optional[ImpactAnalysisOptions] = None
