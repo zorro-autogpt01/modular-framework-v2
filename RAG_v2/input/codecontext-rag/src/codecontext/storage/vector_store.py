@@ -2,6 +2,7 @@
 import lancedb
 from typing import List, Dict, Optional
 import pyarrow as pa
+import pandas as pd
 
 class VectorStore:
     def __init__(self, path: str = "./data/lancedb"):
@@ -23,7 +24,7 @@ class VectorStore:
                 pa.field("language", pa.string()),
                 pa.field("start_line", pa.int32()),
                 pa.field("end_line", pa.int32()),
-                pa.field("embedding", pa.list_(pa.float32(), 768)),  # Adjust dimension
+                pa.field("embedding", pa.list_(pa.float32(), 1536)),  # Adjust dimension
             ])
             self.db.create_table("code_entities", schema=schema)
     

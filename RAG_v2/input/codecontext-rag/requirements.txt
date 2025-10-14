@@ -4,6 +4,7 @@ uvicorn[standard]
 pydantic
 python-multipart
 httpx
+pandas
 
 # Code Analysis (optional for API skeleton)
 tree-sitter
