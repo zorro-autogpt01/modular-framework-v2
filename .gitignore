@@ -4,8 +4,8 @@
 *.bak
 *.bak.*
 *.md
-/input-parser
-/modular-framework/aider
-/modular-framework/aider_backup_1759571260
-/modular-framework/certs
-/modular-framework/framework
+/input-parser/*
+/modular-framework/aider/*
+/modular-framework/aider_backup_1759571260/*
+/modular-framework/certs/*
+/modular-framework/framework/*
