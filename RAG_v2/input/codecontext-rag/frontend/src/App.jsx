@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, GitBranch, FileCode, Zap, TrendingUp, Settings, Plus, Trash2, RefreshCw, Code, GitPullRequest, Network, Activity, MessageSquare, Layers } from 'lucide-react';
+import mermaid from 'mermaid';
 
 // API Client
 const API_BASE = 'http://localhost:7998';
@@ -30,9 +31,13 @@ const api = {
   refineRecommendations: (data) => api.request('/recommendations/refine', { method: 'POST', body: JSON.stringify(data) }),
   
   // Dependencies
-  getDependencies: (filePath, repoId, depth = 2) => 
-    api.request(`/dependencies/${encodeURIComponent(filePath)}?repository_id=${repoId}&depth=${depth}&direction=both`),
+  getDependencies: (filePath, repoId, depth = 2, format = 'json') => 
+    api.request(`/dependencies/${encodeURIComponent(filePath)}?repository_id=${repoId}&depth=${depth}&direction=both&format=${format}`),
   
+  // Graphs
+  getGraph: (repoId, type = 'dependency', format = 'json', node = '', depth = 0) =>
+    api.request(`/repositories/${repoId}/graphs?type=${type}&format=${format}${node ? `&node_filter=${encodeURIComponent(node)}` : ''}${depth ? `&depth=${depth}` : ''}`),
+
   // Context
   getContext: (repoId, data) => api.request(`/repositories/${repoId}/context`, { method: 'POST', body: JSON.stringify(data) }),
   
@@ -46,6 +51,37 @@ const api = {
   // Search
   searchCode: (data) => api.request('/search/code', { method: 'POST', body: JSON.stringify(data) }),
 };
+
+// Initialize mermaid once
+mermaid.initialize({ startOnLoad: false, theme: 'dark' });
+
+function MermaidRenderer({ chart, className }) {
+  const [svg, setSvg] = useState('');
+  useEffect(() => {
+    let cancelled = false;
+    const id = `mmd-${Math.random().toString(36).slice(2)}`;
+    if (!chart) {
+      setSvg('');
+      return;
+    }
+    mermaid
+      .render(id, chart)
+      .then(({ svg }) => {
+        if (!cancelled) setSvg(svg);
+      })
+      .catch(() => setSvg(''));
+    return () => {
+      cancelled = true;
+    };
+  }, [chart]);
+  if (!chart) return null;
+  return (
+    <div
+      className={className}
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
+  );
+}
 
 // Main App Component
 export default function App() {
@@ -486,14 +522,21 @@ function RecommendationsView({ selectedRepo }) {
 function DependenciesView({ selectedRepo }) {
   const [filePath, setFilePath] = useState('');
   const [dependencies, setDependencies] = useState(null);
+  const [mermaidText, setMermaidText] = useState('');
   const [loading, setLoading] = useState(false);
   
-  const handleGetDeps = async () => {
+  const handleGetDeps = async (format = 'json') => {
     if (!selectedRepo || !filePath) return;
     setLoading(true);
     try {
-      const data = await api.getDependencies(filePath, selectedRepo.id, 2);
-      setDependencies(data.data);
+      const data = await api.getDependencies(filePath, selectedRepo.id, 2, format);
+      if (format === 'json') {
+        setDependencies(data.data);
+        setMermaidText('');
+      } else {
+        setDependencies(null);
+        setMermaidText(data.data?.graph_text || '');
+      }
     } catch (error) {
       alert('Failed: ' + error.message);
     } finally {
@@ -505,21 +548,35 @@ function DependenciesView({ selectedRepo }) {
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold text-white mb-4">Dependency Analysis</h2>
-        <div className="flex gap-3">
+        <div className="flex gap-3 flex-wrap">
           <input
             type="text"
             value={filePath}
             onChange={(e) => setFilePath(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleGetDeps()}
+            onKeyPress={(e) => e.key === 'Enter' && handleGetDeps('json')}
             placeholder="Enter file path (e.g., src/main.py)"
-            className="flex-1 px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-purple-500"
+            className="flex-1 min-w-[280px] px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-purple-500"
           />
           <button 
-            onClick={handleGetDeps}
+            onClick={() => handleGetDeps('json')}
             disabled={loading || !selectedRepo}
-            className="px-6 py-3 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-lg transition-colors"
+            className="px-4 py-3 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-lg transition-colors"
           >
-            Analyze
+            Analyze (JSON)
+          </button>
+          <button 
+            onClick={() => handleGetDeps('mermaid')}
+            disabled={loading || !selectedRepo}
+            className="px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg transition-colors"
+          >
+            Mermaid
+          </button>
+          <button 
+            onClick={() => handleGetDeps('plantuml')}
+            disabled={loading || !selectedRepo}
+            className="px-4 py-3 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-lg transition-colors"
+          >
+            PlantUML
           </button>
         </div>
       </div>
@@ -556,6 +613,13 @@ function DependenciesView({ selectedRepo }) {
           </div>
         </div>
       )}
+
+      {mermaidText && (
+        <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-6">
+          <h3 className="text-lg font-semibold text-white mb-4">Mermaid Diagram</h3>
+          <MermaidRenderer chart={mermaidText} />
+        </div>
+      )}
     </div>
   );
 }
@@ -587,6 +651,8 @@ function ContextView({ selectedRepo }) {
   const [query, setQuery] = useState('');
   const [context, setContext] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [retrievalMode, setRetrievalMode] = useState('vector');
+  const [callDepth, setCallDepth] = useState(2);
   
   const handleGetContext = async () => {
     if (!selectedRepo || !query) return;
@@ -595,7 +661,9 @@ function ContextView({ selectedRepo }) {
       const data = await api.getContext(selectedRepo.id, {
         query,
         max_chunks: 10,
-        expand_neighbors: true
+        expand_neighbors: true,
+        retrieval_mode: retrievalMode,
+        call_graph_depth: Number(callDepth) || 2
       });
       setContext(data.data);
     } catch (error) {
@@ -609,14 +677,31 @@ function ContextView({ selectedRepo }) {
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold text-white mb-4">Context Retrieval</h2>
-        <div className="flex gap-3">
+        <div className="flex gap-3 flex-wrap">
           <input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && handleGetContext()}
             placeholder="What context do you need?"
-            className="flex-1 px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-purple-500"
+            className="flex-1 min-w-[280px] px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-purple-500"
+          />
+          <select
+            value={retrievalMode}
+            onChange={(e) => setRetrievalMode(e.target.value)}
+            className="px-3 py-3 bg-white/5 border border-white/20 rounded-lg text-white"
+          >
+            <option value="vector">Vector</option>
+            <option value="callgraph">Call Graph</option>
+          </select>
+          <input
+            type="number"
+            min={1}
+            max={5}
+            value={callDepth}
+            onChange={(e) => setCallDepth(e.target.value)}
+            className="w-24 px-3 py-3 bg-white/5 border border-white/20 rounded-lg text-white"
+            title="Call graph depth"
           />
           <button 
             onClick={handleGetContext}
@@ -632,8 +717,28 @@ function ContextView({ selectedRepo }) {
         <div className="space-y-4">
           <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-6">
             <h3 className="text-lg font-semibold text-white mb-2">Summary</h3>
-            <p className="text-white/60">Retrieved {context.summary?.total_chunks || 0} relevant code chunks</p>
+            <p className="text-white/60">
+              Retrieved {context.summary?.total_chunks || 0} chunks • Mode: {context.summary?.retrieval_mode || 'vector'}
+            </p>
           </div>
+
+          {Array.isArray(context.artifacts) && context.artifacts.length > 0 && (
+            <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-6">
+              <h3 className="text-lg font-semibold text-white mb-4">Artifacts</h3>
+              {context.artifacts.map((a, idx) => (
+                <div key={idx} className="mb-4">
+                  <p className="text-sm text-white/60 mb-2">{a.label} ({a.type})</p>
+                  {a.type === 'mermaid' ? (
+                    <MermaidRenderer chart={a.content} />
+                  ) : (
+                    <pre className="bg-black/30 p-3 rounded text-white/70 overflow-x-auto">
+                      <code>{a.content}</code>
+                    </pre>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
           
           {context.chunks?.map((chunk, idx) => (
             <div key={idx} className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-6">
@@ -662,6 +767,8 @@ function PromptsView({ selectedRepo }) {
   const [query, setQuery] = useState('');
   const [prompt, setPrompt] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [retrievalMode, setRetrievalMode] = useState('vector');
+  const [callDepth, setCallDepth] = useState(2);
   
   const handleBuildPrompt = async () => {
     if (!selectedRepo || !query) return;
@@ -671,7 +778,9 @@ function PromptsView({ selectedRepo }) {
         query,
         options: {
           max_chunks: 12,
-          include_dependency_expansion: true
+          include_dependency_expansion: true,
+          retrieval_mode: retrievalMode,
+          call_graph_depth: Number(callDepth) || 2
         }
       });
       setPrompt(data.data);
@@ -686,14 +795,31 @@ function PromptsView({ selectedRepo }) {
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold text-white mb-4">Prompt Builder</h2>
-        <div className="flex gap-3">
+        <div className="flex gap-3 flex-wrap">
           <input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && handleBuildPrompt()}
             placeholder="What do you want to build?"
-            className="flex-1 px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-purple-500"
+            className="flex-1 min-w-[280px] px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-purple-500"
+          />
+          <select
+            value={retrievalMode}
+            onChange={(e) => setRetrievalMode(e.target.value)}
+            className="px-3 py-3 bg-white/5 border border-white/20 rounded-lg text-white"
+          >
+            <option value="vector">Vector</option>
+            <option value="callgraph">Call Graph</option>
+          </select>
+          <input
+            type="number"
+            min={1}
+            max={5}
+            value={callDepth}
+            onChange={(e) => setCallDepth(e.target.value)}
+            className="w-24 px-3 py-3 bg-white/5 border border-white/20 rounded-lg text-white"
+            title="Call graph depth"
           />
           <button 
             onClick={handleBuildPrompt}
@@ -724,6 +850,24 @@ function PromptsView({ selectedRepo }) {
               </div>
             </div>
           </div>
+
+          {Array.isArray(prompt.artifacts) && prompt.artifacts.length > 0 && (
+            <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-6">
+              <h3 className="text-lg font-semibold text-white mb-4">Artifacts</h3>
+              {prompt.artifacts.map((a, idx) => (
+                <div key={idx} className="mb-4">
+                  <p className="text-sm text-white/60 mb-2">{a.label} ({a.type})</p>
+                  {a.type === 'mermaid' ? (
+                    <MermaidRenderer chart={a.content} />
+                  ) : (
+                    <pre className="bg-black/30 p-3 rounded text-white/70 overflow-x-auto">
+                      <code>{a.content}</code>
+                    </pre>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
           
           <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-6">
             <h3 className="text-lg font-semibold text-white mb-4">Messages ({prompt.messages?.length || 0})</h3>

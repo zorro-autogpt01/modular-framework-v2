@@ -1,4 +1,3 @@
-
 import os
 from dataclasses import dataclass
 from typing import Optional
@@ -7,6 +6,15 @@ def _bool(val: str | None, default: bool) -> bool:
     if val is None:
         return default
     return val.lower() in {"1", "true", "yes", "y", "on"}
+
+def _split_list(val: str | None) -> list[str]:
+    if not val:
+        return []
+    # Split by semicolon or newline for multi-command hooks
+    parts = []
+    for line in val.splitlines():
+        parts.extend([p.strip() for p in line.split(";") if p.strip()])
+    return parts
 
 @dataclass
 class Settings:
@@ -52,5 +60,18 @@ class Settings:
 
     # Index metadata persistence (dependency graph + git signals)
     index_meta_path: str = os.getenv("INDEX_META_PATH", "./data/index_meta")
+
+    # Neo4j (optional)
+    neo4j_enabled: bool = _bool(os.getenv("NEO4J_ENABLED"), False)
+    neo4j_url: str = os.getenv("NEO4J_URL", "bolt://localhost:7687")
+    neo4j_user: str = os.getenv("NEO4J_USER", "neo4j")
+    neo4j_password: str = os.getenv("NEO4J_PASSWORD", "password")
+
+    # Pre-commit hooks (run before committing patches in worktree)
+    # Example: "black .; ruff . --fix; mypy ."
+    pre_commit_hooks: list[str] = None
+
+    def __post_init__(self):
+        self.pre_commit_hooks = _split_list(os.getenv("PRE_COMMIT_HOOKS", ""))
 
 settings = Settings()

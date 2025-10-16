@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple, Set
 import uuid
 import inspect as _inspect
 
@@ -8,6 +8,7 @@ from ...utils.responses import success_response
 from ...api.schemas.request import PromptRequest, PromptOptions, RecommendationFilters
 from ...api.schemas.response import PromptResponse, PromptMessage, SelectedChunk
 from ...integrations.llm_gateway import LLMGatewayClient
+from ...diagramming.serializers import to_mermaid
 
 router = APIRouter(prefix="/repositories", tags=["Prompts"], dependencies=[Depends(authorize)])
 
@@ -31,9 +32,6 @@ def _normalize_candidates(candidates: List[Dict]) -> List[Dict]:
 
 
 def _keyword_score(query: str, text: str) -> float:
-    """
-    Simple lexical overlap score (0..1).
-    """
     if not query or not text:
         return 0.0
     q_terms = [t.lower() for t in query.split() if len(t) > 2]
@@ -48,10 +46,6 @@ def _keyword_score(query: str, text: str) -> float:
 
 
 def _hybrid_rerank(candidates: List[Dict], query: str, alpha: float = 0.2) -> List[Dict]:
-    """
-    Blend semantic similarity (1 - distance) with keyword overlap.
-    new_score = (1 - distance) * (1 - alpha) + keyword_score * alpha
-    """
     reranked = []
     for c in candidates:
         sem = 1.0 - float(c.get("_distance", 0.5))
@@ -62,11 +56,41 @@ def _hybrid_rerank(candidates: List[Dict], query: str, alpha: float = 0.2) -> Li
         ])[:4000]
         kw = _keyword_score(query, blob)
         blended = (sem * (1.0 - alpha)) + (kw * alpha)
-        # push into confidence-like number for sorting
         c["_hybrid"] = blended
         reranked.append(c)
     reranked.sort(key=lambda x: x.get("_hybrid", 0.0), reverse=True)
     return reranked
+
+
+def _compute_signature(text: str, name: Optional[str]) -> str:
+    import hashlib, re
+    t = (text or "")
+    t = re.sub(r'\s+', '', t)
+    if name:
+        t = name + '|' + t
+    return hashlib.sha1(t.encode('utf-8', errors='ignore')).hexdigest()
+
+
+def _dedup_by_signature(items: List[Dict], sig_counts: Dict[str, int]) -> List[Dict]:
+    seen: Set[str] = set()
+    out: List[Dict] = []
+    for it in items:
+        code = it.get('code') or it.get('snippet') or ''
+        sig = _compute_signature(code, it.get('name'))
+        if sig in seen:
+            continue
+        seen.add(sig)
+        if sig in sig_counts and sig_counts[sig] > 1:
+            rs = it.get('reasons') or []
+            rs = list(rs)
+            rs.append({
+                'type': 'dedup',
+                'score': 1.0,
+                'explanation': f"Deduplicated {sig_counts[sig]-1} similar definitions"
+            })
+            it['reasons'] = rs
+        out.append(it)
+    return out
 
 
 async def _vector_top_chunks(
@@ -74,8 +98,16 @@ async def _vector_top_chunks(
     repo_id: str,
     query: str,
     max_chunks: int,
-    languages: Optional[List[str]]
-) -> List[Dict[str, Any]]:
+    languages: Optional[List[str]],
+    retrieval_mode: str = "vector",
+    call_graph_depth: int = 2,
+    slice_target: Optional[str] = None,
+    slice_direction: str = "forward",
+    slice_depth: int = 2
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], Dict[str, Any]]:
+    """
+    Returns (top_chunks, artifacts, per_file_summaries)
+    """
     embedder = request.app.state.embedder
     vector_store = request.app.state.vector_store
     ranker = request.app.state.ranker
@@ -90,6 +122,49 @@ async def _vector_top_chunks(
     if languages and len(languages) > 0:
         filters["language"] = languages[0]
 
+    artifacts: List[Dict[str, Any]] = []
+    preferred_files: Set[str] = set()
+
+    # Build callgraph-artifact and preferred files if needed
+    if retrieval_mode.lower() in ("callgraph", "slice"):
+        call_graph = indexer.call_graphs.get(repo_id) or {}
+        if retrieval_mode.lower() == "callgraph":
+            # Use query embedding to find top functions
+            if _inspect.iscoroutinefunction(getattr(embedder, "embed_text", None)):
+                qf = await embedder.embed_text(query)
+            else:
+                qf = embedder.embed_text(query)
+            func_candidates = vector_store.search(
+                embedding=qf, k=max_chunks * 6,
+                filters={"repo_id": repo_id, "entity_type": "function"}
+            )
+            func_candidates = _normalize_candidates(func_candidates)
+            sig_counts = (indexer.signature_counts or {}).get(repo_id, {}) if hasattr(indexer, "signature_counts") else {}
+            func_candidates = _dedup_by_signature(func_candidates, sig_counts)
+            centrality_scores = indexer.dependency_centrality.get(repo_id, {}) or {}
+            comodification_scores = indexer.comodification_scores.get(repo_id, {}) or {}
+            recency_scores = indexer.git_recency.get(repo_id, {}) or {}
+            ranked_funcs = ranker.rank(func_candidates, centrality_scores, comodification_scores, recency_scores)
+            for it in ranked_funcs[: max(3, max_chunks // 2)]:
+                if it.get('file_path'):
+                    preferred_files.add(it['file_path'])
+            top_names = [it.get('name') for it in ranked_funcs[:5] if it.get('name')]
+            from ...api.routes.context import _build_callgraph_artifact as _artifact
+            mer = _artifact(call_graph, top_names, call_graph_depth, "forward")
+            if mer:
+                artifacts.append({"type": "mermaid", "label": "callgraph", "content": mer})
+        else:
+            # Slice mode
+            from ...api.routes.context import _function_entity_for_name as _fmap, _build_callgraph_artifact as _artifact
+            seed = (slice_target or "").strip() or query
+            ent = await _fmap(request, repo_id, seed)
+            seed_name = ent.get('name') if ent else seed
+            mer = _artifact(call_graph, [seed_name], slice_depth, slice_direction.lower())
+            if mer:
+                artifacts.append({"type": "mermaid", "label": f"slice({slice_direction})", "content": mer})
+            if ent and ent.get('file_path'):
+                preferred_files.add(ent['file_path'])
+
     candidates = vector_store.search(
         embedding=query_embedding,
         k=max_chunks * 4,
@@ -97,22 +172,22 @@ async def _vector_top_chunks(
     )
     candidates = _normalize_candidates(candidates)
 
-    # Re-rank with hybrid scoring
+    if preferred_files:
+        for c in candidates:
+            if c.get('file_path') in preferred_files:
+                c['_distance'] = max(0.0, float(c.get('_distance', 0.5)) - 0.07)
+
     candidates = _hybrid_rerank(candidates, query, alpha=0.2)
 
-    # Rank with multi-signal ranker (adds confidence and reasons)
     centrality_scores = indexer.dependency_centrality.get(repo_id, {}) or {}
     comodification_scores = indexer.comodification_scores.get(repo_id, {}) or {}
     recency_scores = indexer.git_recency.get(repo_id, {}) or {}
 
-    ranked = ranker.rank(
-        candidates,
-        centrality_scores=centrality_scores,
-        comodification_scores=comodification_scores,
-        recency_scores=recency_scores
-    )
+    ranked = ranker.rank(candidates, centrality_scores, comodification_scores, recency_scores)
 
-    # De-dup by chunk id
+    sig_counts = (indexer.signature_counts or {}).get(repo_id, {}) if hasattr(indexer, "signature_counts") else {}
+    ranked = _dedup_by_signature(ranked, sig_counts)
+
     seen = set()
     top = []
     for it in ranked:
@@ -124,7 +199,18 @@ async def _vector_top_chunks(
         top.append(it)
         if len(top) >= max_chunks:
             break
-    return top
+
+    # Build per-file summaries (hierarchical prompt)
+    per_file_summaries: Dict[str, str] = {}
+    selected_files = sorted(list({c.get('file_path') for c in top if c.get('file_path')}))
+    for fp in selected_files:
+        ents = request.app.state.vector_store.get_by_file(repo_id, fp)
+        cls = [e.get('name') for e in ents if e.get('entity_type') == 'class'][:8]
+        fns = [e.get('name') for e in ents if e.get('entity_type') == 'function'][:12]
+        summary = f"File: {fp}\nClasses: {', '.join(cls) or '-'}\nFunctions: {', '.join(fns) or '-'}"
+        per_file_summaries[fp] = summary
+
+    return top, artifacts, per_file_summaries
 
 
 async def _dependency_neighbor_chunks(
@@ -138,9 +224,6 @@ async def _dependency_neighbor_chunks(
     per_file_neighbor_chunks: int,
     languages: Optional[List[str]]
 ) -> List[Dict[str, Any]]:
-    """
-    For each base file, expand to dependency neighbors, and select top chunk(s) per neighbor file.
-    """
     indexer = request.app.state.indexer
     vector_store = request.app.state.vector_store
 
@@ -159,7 +242,6 @@ async def _dependency_neighbor_chunks(
             files.extend(deps.get("imports") or [])
         if direction in ("imported_by", "both"):
             files.extend(deps.get("imported_by") or [])
-        # ensure unique
         for nf in files:
             if nf not in neighbor_files and nf not in base_files:
                 neighbor_files.append(nf)
@@ -195,9 +277,9 @@ async def build_prompt(
 ):
     """
     Build a ready-to-send LLM prompt under a token budget:
-    - Retrieve top chunks
+    - Retrieve top chunks (vector | callgraph | slice)
     - Optionally expand via dependency neighbors
-    - Assemble messages with minimal context and constraints
+    - Assemble messages with hierarchical summaries + token budgeting
     """
     session_id = str(uuid.uuid4())
     request.state.request_id = session_id
@@ -212,25 +294,31 @@ async def build_prompt(
     dep_depth = options.dependency_depth or 1
     dep_dir = options.dependency_direction or "both"
     neighbor_files_limit = options.neighbor_files_limit or 4
+    retrieval_mode = (options.retrieval_mode or "vector").lower()
+    call_graph_depth = options.call_graph_depth or 2
+    slice_target = options.slice_target
+    slice_direction = options.slice_direction or "forward"
+    slice_depth = options.slice_depth or 2
     languages = options.languages or (body.filters.languages if body.filters and body.filters.languages else None)
 
     embedder = request.app.state.embedder
     vector_store = request.app.state.vector_store
-    indexer = request.app.state.indexer
 
-    # 1) Base top chunks
-    base_chunks = await _vector_top_chunks(
+    base_chunks, artifacts, per_file_summaries = await _vector_top_chunks(
         request=request,
         repo_id=repo_id,
         query=body.query,
         max_chunks=max_chunks,
-        languages=languages
+        languages=languages,
+        retrieval_mode=retrieval_mode,
+        call_graph_depth=call_graph_depth,
+        slice_target=slice_target,
+        slice_direction=slice_direction,
+        slice_depth=slice_depth
     )
 
-    # 2) Dependency neighbor expansion
     neighbor_chunks: List[Dict[str, Any]] = []
     if include_dep and base_chunks:
-        # get embedding once for neighbor searches
         import inspect as _inspect2
         if _inspect2.iscoroutinefunction(getattr(embedder, "embed_text", None)):
             q_emb = await embedder.embed_text(body.query)
@@ -250,9 +338,11 @@ async def build_prompt(
             languages=languages
         )
 
-    # 3) Assemble prompt with token budgeting
     from ...core.prompt import PromptAssembler
     assembler = PromptAssembler(LLMGatewayClient())
+    # Build header blocks from per_file_summaries
+    header_blocks = [per_file_summaries[fp] for fp in sorted(per_file_summaries.keys())]
+
     messages, usage = await assembler.assemble(
         query=body.query,
         base_chunks=base_chunks,
@@ -260,19 +350,16 @@ async def build_prompt(
         model=model,
         system_prompt=options.system_prompt,
         temperature=temperature,
-        max_tokens=max_tokens
+        max_tokens=max_tokens,
+        header_blocks=header_blocks
     )
 
     selected_chunks = []
-    # Extract selected chunks from messages by correlating with base/neighbor chunks
-    # Instead, we rely on assembler returning selected info via messages; we provided only text.
-    # So we rebuild selected list from the chunks we attempted to include (best effort).
     seen_ids = set()
     for c in base_chunks + neighbor_chunks:
         cid = c.get("chunk_id") or c.get("id")
         if not cid or cid in seen_ids:
             continue
-        # If snippet text appears in messages, it's likely included
         snip = (c.get("snippet") or c.get("code") or "")[:60]
         included = any(snip and (snip in m.get("content", "")) for m in messages)
         if included:
@@ -299,7 +386,9 @@ async def build_prompt(
             "neighbor_chunks_added": len([sc for sc in selected_chunks if sc["id"] not in {b.get('id') or b.get('chunk_id') for b in base_chunks}]),
             "dependency_expansion": include_dep,
             "dependency_depth": dep_depth,
-            "dependency_direction": dep_dir
-        }
+            "dependency_direction": dep_dir,
+            "retrieval_mode": retrieval_mode
+        },
+        "artifacts": artifacts
     }
     return success_response(request, data, response)

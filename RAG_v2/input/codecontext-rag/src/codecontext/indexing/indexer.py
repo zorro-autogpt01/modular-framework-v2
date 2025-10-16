@@ -10,6 +10,10 @@ from ..storage.vector_store import VectorStore
 from ..git.analyzer import GitAnalyzer
 from ..config import settings
 
+# Diagramming runners
+from ..diagramming.pyreverse_runner import run_pyreverse
+from ..diagramming.depcruise_runner import run_depcruise
+from ..diagramming.doxygen_runner import run_doxygen
 
 def _atomic_write(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -20,6 +24,13 @@ def _atomic_write(path: Path, data: dict) -> None:
         os.fsync(f.fileno())
     os.replace(tmp, path)
 
+def _compute_signature(text: str, name: str | None = None) -> str:
+    import hashlib, re
+    t = (text or "")
+    t = re.sub(r'\s+', '', t)
+    if name:
+        t = name + '|' + t
+    return hashlib.sha1(t.encode('utf-8', errors='ignore')).hexdigest()
 
 class Indexer:
     def __init__(
@@ -37,20 +48,24 @@ class Indexer:
         self.graphs: Dict[str, DependencyGraph] = {}
         self.dependency_centrality: Dict[str, Dict[str, float]] = {}
         self.git_recency: Dict[str, Dict[str, float]] = {}
-        # Used by ranker as "history_score"
         self.comodification_scores: Dict[str, Dict[str, float]] = {}
 
-        # Persistence path for metadata
-        self.meta_path = Path(meta_path or settings.index_meta_path)
+        # Higher-level graphs
+        self.class_graphs: Dict[str, Dict] = {}
+        self.module_graphs: Dict[str, Dict] = {}
+        self.call_graphs: Dict[str, Dict] = {}
 
-        # repo_store will be attached by main.py
+        # Signature-based dedup info
+        self.signature_counts: Dict[str, Dict[str, int]] = {}
+        self.signature_representative: Dict[str, Dict[str, str]] = {}
+
+        self.meta_path = Path(meta_path or settings.index_meta_path)
         self.repo_store = None
 
     def _meta_file(self, repo_id: str) -> Path:
         return self.meta_path / f"{repo_id}.json"
 
     def save_metadata(self, repo_id: str) -> None:
-        """Persist graph edges + centrality + recency + 'history' (comodification_scores) for a repo."""
         dep_graph = self.graphs.get(repo_id)
         edges: List[List[str]] = []
         if dep_graph and getattr(dep_graph, "graph", None):
@@ -61,18 +76,19 @@ class Indexer:
 
         payload = {
             "repo_id": repo_id,
-            "graph": {
-                "edges": edges
-            },
+            "graph": {"edges": edges},
             "centrality": self.dependency_centrality.get(repo_id, {}),
             "recency": self.git_recency.get(repo_id, {}),
-            # Store "history" under 'comodification' key (used by ranker already)
             "comodification": self.comodification_scores.get(repo_id, {}),
+            "class_graph": self.class_graphs.get(repo_id, {"nodes": [], "edges": []}),
+            "module_graph": self.module_graphs.get(repo_id, {"nodes": [], "edges": []}),
+            "call_graph": self.call_graphs.get(repo_id, {"nodes": [], "edges": []}),
+            "signature_counts": self.signature_counts.get(repo_id, {}),
+            "signature_representative": self.signature_representative.get(repo_id, {}),
         }
         _atomic_write(self._meta_file(repo_id), payload)
 
     def load_metadata_for_repo(self, repo_id: str) -> bool:
-        """Load metadata for a single repo, rebuild in-memory caches."""
         fp = self._meta_file(repo_id)
         if not fp.exists():
             return False
@@ -83,24 +99,28 @@ class Indexer:
             print(f"Failed to load index metadata for {repo_id}: {e}")
             return False
 
-        # Rebuild dependency graph
         dg = DependencyGraph()
         edges = data.get("graph", {}).get("edges", []) or []
         try:
             for u, v in edges:
                 dg.graph.add_edge(u, v)
         except Exception:
-            # If malformed, keep an empty graph
             pass
 
         self.graphs[repo_id] = dg
         self.dependency_centrality[repo_id] = data.get("centrality", {}) or {}
         self.git_recency[repo_id] = data.get("recency", {}) or {}
         self.comodification_scores[repo_id] = data.get("comodification", {}) or {}
+
+        self.class_graphs[repo_id] = data.get("class_graph", {"nodes": [], "edges": []}) or {"nodes": [], "edges": []}
+        self.module_graphs[repo_id] = data.get("module_graph", {"nodes": [], "edges": []}) or {"nodes": [], "edges": []}
+        self.call_graphs[repo_id] = data.get("call_graph", {"nodes": [], "edges": []}) or {"nodes": [], "edges": []}
+
+        self.signature_counts[repo_id] = data.get("signature_counts", {}) or {}
+        self.signature_representative[repo_id] = data.get("signature_representative", {}) or {}
         return True
 
     def load_all_metadata(self) -> int:
-        """Scan meta directory and load all repo metadata files."""
         if not self.meta_path.exists():
             return 0
         count = 0
@@ -115,14 +135,8 @@ class Indexer:
         repo_id: str,
         changed_files: List[str]
     ) -> Dict:
-        """
-        Perform incremental re-index of specific files
-
-        Used by webhooks when files change
-        """
         if not self.repo_store:
             raise ValueError("Indexer.repo_store is not set")
-
         repo = self.repo_store.get(repo_id)
         if not repo:
             raise ValueError(f"Repository {repo_id} not found")
@@ -130,37 +144,45 @@ class Indexer:
         repo_path = repo.get('source_path') or f"./repositories/{repo_id}"
 
         from .incremental import IncrementalIndexer
-        inc_indexer = IncrementalIndexer(
-            self.parser,
-            self.embedder,
-            self.vector_store
-        )
+        inc_indexer = IncrementalIndexer(self.parser, self.embedder, self.vector_store)
+        result = await inc_indexer.reindex_files(repo_id=repo_id, repo_path=repo_path, changed_files=changed_files)
 
-        result = await inc_indexer.reindex_files(
-            repo_id=repo_id,
-            repo_path=repo_path,
-            changed_files=changed_files
-        )
-
-        # Update repository metadata time
         from ..utils.time import utc_now_iso
         repo['last_indexed_at'] = utc_now_iso()
 
-        # Note: For simplicity, we don't recompute centrality/recency/history here.
-        # A full reindex or a separate recompute step can refresh these signals.
-
-        # Persist updated metadata (best-effort)
         try:
             self.save_metadata(repo_id)
         except Exception as e:
             print(f"Warning: failed to save index metadata (incremental) for {repo_id}: {e}")
 
-        return {
-            'status': 'completed',
-            'mode': 'incremental',
-            'files_updated': result['files_updated'],
-            'entities_updated': result['entities_updated']
-        }
+        return {'status': 'completed', 'mode': 'incremental', 'files_updated': result['files_updated'], 'entities_updated': result['entities_updated']}
+
+    def _sync_graphs_to_neo4j(self, repo_id: str):
+        if not settings.neo4j_enabled:
+            return
+        try:
+            from ..integrations.neo4j_client import Neo4jClient
+            client = Neo4jClient(settings.neo4j_url, settings.neo4j_user, settings.neo4j_password)
+            client.ensure_schema()
+            dep_edges = []
+            dg = self.graphs.get(repo_id)
+            if dg and getattr(dg, "graph", None):
+                try:
+                    for (u, v) in dg.graph.edges():
+                        dep_edges.append({"source": str(u), "target": str(v), "type": "imports"})
+                except Exception:
+                    pass
+            dep_graph = {
+                "nodes": [{"id": str(n), "label": str(n).split("/")[-1], "type": "file"} for n in (dg.graph.nodes() if dg else [])],
+                "edges": dep_edges
+            }
+            client.upsert_graph(repo_id, "dependency", dep_graph)
+            client.upsert_graph(repo_id, "module", self.module_graphs.get(repo_id) or {"nodes": [], "edges": []})
+            client.upsert_graph(repo_id, "class", self.class_graphs.get(repo_id) or {"nodes": [], "edges": []})
+            client.upsert_graph(repo_id, "call", self.call_graphs.get(repo_id) or {"nodes": [], "edges": []})
+            client.close()
+        except Exception as e:
+            print(f"Neo4j sync failed: {e}")
 
     def index(
         self,
@@ -169,20 +191,52 @@ class Indexer:
         mode: str = "incremental",
         options: Optional[Dict] = None
     ) -> Dict:
-        """Execute full indexing pipeline"""
         options = options or {}
 
-        # Step 1: Parse repository
         print(f"Parsing repository: {repo_path}")
         parsed_data = self.parser.parse_repository(repo_path)
 
-        # Step 2: Build dependency graph
         print("Building dependency graph...")
         dep_graph = DependencyGraph()
         dep_graph.build_from_parsed_files(parsed_data['files'], repo_path)
         self.graphs[repo_id] = dep_graph
 
-        # Step 3: Git analysis (if enabled)
+        langs_present = set(parsed_data.get('language_stats', {}).keys())
+        class_graph = {"nodes": [], "edges": []}
+        module_graph = {"nodes": [], "edges": []}
+        call_graph = {"nodes": [], "edges": []}
+
+        if 'python' in langs_present:
+            try:
+                pyrev = run_pyreverse(repo_path)
+                class_graph = pyrev.get("class_graph", {"nodes": [], "edges": []})
+                module_graph = pyrev.get("module_graph", {"nodes": [], "edges": []}) or module_graph
+            except Exception as e:
+                print(f"pyreverse failed: {e}")
+
+        if 'javascript' in langs_present:
+            try:
+                depc = run_depcruise(repo_path)
+                if depc and depc.get("nodes") is not None:
+                    module_graph = depc
+            except Exception as e:
+                print(f"dependency-cruiser failed: {e}")
+
+        try:
+            doxy = run_doxygen(repo_path)
+            if doxy and doxy.get("call_graph"):
+                call_graph = doxy["call_graph"]
+            if doxy and doxy.get("class_graph"):
+                dg = doxy["class_graph"]
+                if not class_graph.get("nodes"):
+                    class_graph = dg
+        except Exception as e:
+            print(f"doxygen runner failed: {e}")
+
+        self.class_graphs[repo_id] = class_graph or {"nodes": [], "edges": []}
+        self.module_graphs[repo_id] = module_graph or {"nodes": [], "edges": []}
+        self.call_graphs[repo_id] = call_graph or {"nodes": [], "edges": []}
+
         git_analyzer = None
         if options.get('analyze_git_history', True) and settings.enable_git_analysis:
             print("Analyzing git history...")
@@ -191,15 +245,12 @@ class Indexer:
             except Exception as e:
                 print(f"Git analysis skipped (not a git repo): {e}")
 
-        # Compute signals and cache them
-        # 3a) Dependency centrality
         try:
             centrality = dep_graph.get_centrality_scores() if dep_graph else {}
         except Exception:
             centrality = {}
         self.dependency_centrality[repo_id] = centrality or {}
 
-        # 3b) Git recency (simple per-file score)
         recency_scores: Dict[str, float] = {}
         if git_analyzer:
             try:
@@ -210,7 +261,6 @@ class Indexer:
                 pass
         self.git_recency[repo_id] = recency_scores or {}
 
-        # 3c) Git change frequency as "history" score (normalized 0..1)
         history_scores: Dict[str, float] = {}
         if git_analyzer:
             try:
@@ -221,30 +271,30 @@ class Indexer:
                 max_freq = max(raw_freq.values()) if raw_freq else 0
                 if max_freq > 0:
                     for fp, cnt in raw_freq.items():
-                        # Normalize to 0..1
                         history_scores[fp] = float(cnt) / float(max_freq)
                 else:
-                    # No history — default to 0.0 to avoid bias
                     history_scores = {fp: 0.0 for fp in raw_freq.keys()}
             except Exception as e:
                 print(f"History score computation failed: {e}")
         self.comodification_scores[repo_id] = history_scores or {}
 
-        # Step 4: Generate embeddings and prepare for vector store
         print("Generating embeddings...")
         entities_to_index = []
+
+        # Reset signature maps
+        self.signature_counts[repo_id] = {}
+        self.signature_representative[repo_id] = {}
 
         for file_data in parsed_data['files']:
             file_path = file_data['file_path']
 
-            # Index file-level
             file_entity = {
                 'id': f"{repo_id}:file:{file_path}",
                 'repo_id': repo_id,
                 'file_path': file_path,
                 'entity_type': 'file',
                 'name': file_path.split('/')[-1],
-                'code': '',  # Not storing full file
+                'code': '',
                 'language': file_data['language'],
                 'start_line': 0,
                 'end_line': file_data['lines_of_code'],
@@ -253,10 +303,19 @@ class Indexer:
             file_entity = self.embedder.embed_code_entity(file_entity)
             entities_to_index.append(file_entity)
 
-            # Index function-level
             for func in file_data.get('functions', []):
+                sig = _compute_signature(func.get('code', ''), func.get('name'))
+                cnts = self.signature_counts[repo_id]
+                cnts[sig] = cnts.get(sig, 0) + 1
+                rep_map = self.signature_representative[repo_id]
+                is_new = sig not in rep_map
+                if is_new:
+                    rep_map[sig] = f"{repo_id}:func:{file_path}:{func['name']}"
+                else:
+                    continue
+
                 func_entity = {
-                    'id': f"{repo_id}:func:{file_path}:{func['name']}",
+                    'id': rep_map[sig],
                     'repo_id': repo_id,
                     'file_path': file_path,
                     'entity_type': 'function',
@@ -270,10 +329,19 @@ class Indexer:
                 func_entity = self.embedder.embed_code_entity(func_entity)
                 entities_to_index.append(func_entity)
 
-            # Index class-level
             for cls in file_data.get('classes', []):
+                sig = _compute_signature(cls.get('code', ''), cls.get('name'))
+                cnts = self.signature_counts[repo_id]
+                cnts[sig] = cnts.get(sig, 0) + 1
+                rep_map = self.signature_representative[repo_id]
+                is_new = sig not in rep_map
+                if is_new:
+                    rep_map[sig] = f"{repo_id}:class:{file_path}:{cls['name']}"
+                else:
+                    continue
+
                 cls_entity = {
-                    'id': f"{repo_id}:class:{file_path}:{cls['name']}",
+                    'id': rep_map[sig],
                     'repo_id': repo_id,
                     'file_path': file_path,
                     'entity_type': 'class',
@@ -287,7 +355,6 @@ class Indexer:
                 cls_entity = self.embedder.embed_code_entity(cls_entity)
                 entities_to_index.append(cls_entity)
 
-            # Index chunk-level
             for idx, ch in enumerate(file_data.get('chunks', [])):
                 chunk_id = f"{repo_id}:chunk:{file_path}:{ch['start_line']}-{ch['end_line']}"
                 chunk_entity = {
@@ -296,7 +363,7 @@ class Indexer:
                     'file_path': file_path,
                     'entity_type': 'chunk',
                     'name': f"chunk_{idx}",
-                    'code': ch.get('code', '')[:4000],  # cap per-row code payload
+                    'code': ch.get('code', '')[:4000],
                     'language': file_data['language'],
                     'start_line': ch['start_line'],
                     'end_line': ch['end_line'],
@@ -305,23 +372,35 @@ class Indexer:
                 chunk_entity = self.embedder.embed_code_entity(chunk_entity)
                 entities_to_index.append(chunk_entity)
 
-        # Step 5: Upsert to vector store
         print(f"Indexing {len(entities_to_index)} entities...")
         self.vector_store.upsert(entities_to_index)
 
-        # Persist metadata for this repo so we can restore after restart
+        # Best-effort persist
         try:
             self.save_metadata(repo_id)
         except Exception as e:
             print(f"Warning: failed to save index metadata for {repo_id}: {e}")
 
-        # Step 6: Store metadata (returned to callers if needed)
+        # Optional: push graphs to Neo4j
+        self._sync_graphs_to_neo4j(repo_id)
+
         result = {
             'status': 'completed',
             'entities_indexed': len(entities_to_index),
             'files_processed': len(parsed_data['files']),
             'dependency_graph': dep_graph,
             'git_analyzer': git_analyzer,
+            'graphs_summary': {
+                'class_nodes': len(self.class_graphs[repo_id].get('nodes', [])),
+                'class_edges': len(self.class_graphs[repo_id].get('edges', [])),
+                'module_nodes': len(self.module_graphs[repo_id].get('nodes', [])),
+                'module_edges': len(self.module_graphs[repo_id].get('edges', [])),
+                'call_nodes': len(self.call_graphs[repo_id].get('nodes', [])),
+                'call_edges': len(self.call_graphs[repo_id].get('edges', [])),
+            },
+            'dedup_summary': {
+                'unique_signatures': len(self.signature_counts[repo_id]),
+                'total_occurrences': sum(self.signature_counts[repo_id].values()),
+            }
         }
-
         return result

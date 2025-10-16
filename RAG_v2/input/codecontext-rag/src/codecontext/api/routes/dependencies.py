@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Request, HTTPException
 from ...api.dependencies import authorize
 from ...utils.responses import success_response
+from ...diagramming.serializers import to_mermaid, to_plantuml
 
 router = APIRouter(prefix="", tags=["Dependencies"], dependencies=[Depends(authorize)])
 
@@ -64,9 +65,40 @@ def get_file_dependencies(
     except Exception:
         cycles = []
 
+    graph_payload = {"nodes": nodes, "edges": edges}
+
+    if format == "mermaid":
+        text = to_mermaid(graph_payload, kind="dependency")
+        data = {
+            "file_path": target,
+            "graph_text": text,
+            "format": "mermaid",
+            "statistics": {
+                "total_dependencies": len(imports) + len(imported_by),
+                "depth": depth,
+                "circular_dependencies": cycles[:10]
+            },
+        }
+        return success_response(request, data)
+
+    if format == "plantuml":
+        text = to_plantuml(graph_payload, kind="dependency")
+        data = {
+            "file_path": target,
+            "graph_text": text,
+            "format": "plantuml",
+            "statistics": {
+                "total_dependencies": len(imports) + len(imported_by),
+                "depth": depth,
+                "circular_dependencies": cycles[:10]
+            },
+        }
+        return success_response(request, data)
+
+    # Default JSON
     data = {
         "file_path": target,
-        "graph": {"nodes": nodes, "edges": edges},
+        "graph": graph_payload,
         "statistics": {
             "total_dependencies": len(imports) + len(imported_by),
             "depth": depth,

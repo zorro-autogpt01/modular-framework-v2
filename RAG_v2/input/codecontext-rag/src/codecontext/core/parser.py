@@ -60,9 +60,20 @@ class CodeParser:
             text = source_code.decode('utf-8', errors='replace')
             lines = text.splitlines()
 
-            functions = self._extract_functions(tree.root_node, source_code)
-            classes = self._extract_classes(tree.root_node, source_code)
-            imports = self._extract_imports(tree.root_node, source_code, language)
+            if language == 'python':
+                functions = self._extract_functions_py(tree.root_node, source_code)
+                classes = self._extract_classes_py(tree.root_node, source_code)
+                imports = self._extract_imports_py(tree.root_node, source_code)
+            elif language == 'javascript':
+                functions = self._extract_functions_js(tree.root_node, source_code)
+                classes = self._extract_classes_js(tree.root_node, source_code)
+                imports = self._extract_imports_js(tree.root_node, source_code)
+            elif language == 'java':
+                functions = self._extract_functions_java(tree.root_node, source_code)
+                classes = self._extract_classes_java(tree.root_node, source_code)
+                imports = self._extract_imports_java(tree.root_node, source_code)
+            else:
+                functions, classes, imports = [], [], []
 
             # Build chunks
             chunks = self._build_chunks(
@@ -85,11 +96,11 @@ class CodeParser:
             print(f"Error parsing {file_path}: {e}")
             return None
 
-    def _extract_functions(self, node: Node, source: bytes) -> List[Dict]:
-        """Extract function definitions from AST (Python only currently)"""
-        functions = []
+    # ---------------- Python extractors ----------------
 
-        if node.type == 'function_definition':  # Python
+    def _extract_functions_py(self, node: Node, source: bytes) -> List[Dict]:
+        functions: List[Dict] = []
+        if node.type == 'function_definition':
             name_node = node.child_by_field_name('name')
             if name_node:
                 functions.append({
@@ -98,17 +109,13 @@ class CodeParser:
                     'end_line': node.end_point[0],
                     'code': source[node.start_byte:node.end_byte].decode('utf-8', errors='replace'),
                 })
-
         for child in node.children:
-            functions.extend(self._extract_functions(child, source))
-
+            functions.extend(self._extract_functions_py(child, source))
         return functions
 
-    def _extract_classes(self, node: Node, source: bytes) -> List[Dict]:
-        """Extract class definitions from AST (Python only currently)"""
-        classes = []
-
-        if node.type == 'class_definition':  # Python
+    def _extract_classes_py(self, node: Node, source: bytes) -> List[Dict]:
+        classes: List[Dict] = []
+        if node.type == 'class_definition':
             name_node = node.child_by_field_name('name')
             if name_node:
                 classes.append({
@@ -117,24 +124,143 @@ class CodeParser:
                     'end_line': node.end_point[0],
                     'code': source[node.start_byte:node.end_byte].decode('utf-8', errors='replace'),
                 })
-
         for child in node.children:
-            classes.extend(self._extract_classes(child, source))
-
+            classes.extend(self._extract_classes_py(child, source))
         return classes
 
-    def _extract_imports(self, node: Node, source: bytes, language: str) -> List[str]:
-        """Extract import statements (Python only currently)"""
-        imports = []
-
-        if language == 'python':
-            if node.type in ('import_statement', 'import_from_statement'):
-                imports.append(source[node.start_byte:node.end_byte].decode('utf-8', errors='replace'))
-
+    def _extract_imports_py(self, node: Node, source: bytes) -> List[str]:
+        imports: List[str] = []
+        if node.type in ('import_statement', 'import_from_statement'):
+            imports.append(source[node.start_byte:node.end_byte].decode('utf-8', errors='replace'))
         for child in node.children:
-            imports.extend(self._extract_imports(child, source, language))
-
+            imports.extend(self._extract_imports_py(child, source))
         return imports
+
+    # ---------------- JavaScript/TypeScript extractors ----------------
+
+    def _extract_functions_js(self, node: Node, source: bytes) -> List[Dict]:
+        """
+        Extract function-like constructs:
+        - function_declaration
+        - method_definition (class methods)
+        - lexical_declaration const foo = () => {}
+        """
+        out: List[Dict] = []
+        t = node.type
+
+        def add(name_node: Optional[Node], start: int, end: int):
+            if not name_node:
+                # Try to infer for anonymous arrows; skip if unknown
+                return
+            name = source[name_node.start_byte:name_node.end_byte].decode('utf-8', errors='replace')
+            out.append({
+                'name': name,
+                'start_line': start,
+                'end_line': end,
+                'code': source[node.start_byte:node.end_byte].decode('utf-8', errors='replace'),
+            })
+
+        if t == 'function_declaration':
+            name_node = node.child_by_field_name('name')
+            add(name_node, node.start_point[0], node.end_point[0])
+
+        if t == 'method_definition':
+            # method_definition: has 'name' field or 'property_identifier'
+            name_node = node.child_by_field_name('name')
+            if not name_node:
+                # fallback: first child with identifier-like
+                for ch in node.children:
+                    if ch.type in ('property_identifier', 'identifier'):
+                        name_node = ch
+                        break
+            add(name_node, node.start_point[0], node.end_point[0])
+
+        # const foo = () => {} or const foo = function() {}
+        if t == 'lexical_declaration':
+            # Look for variable_declarator with identifier and initializer an arrow_function or function
+            for ch in node.children:
+                if ch.type == 'variable_declarator':
+                    id_node = ch.child_by_field_name('name')
+                    init = ch.child_by_field_name('value')
+                    if init and init.type in ('arrow_function', 'function'):
+                        if id_node:
+                            out.append({
+                                'name': source[id_node.start_byte:id_node.end_byte].decode('utf-8', errors='replace'),
+                                'start_line': ch.start_point[0],
+                                'end_line': ch.end_point[0],
+                                'code': source[ch.start_byte:ch.end_byte].decode('utf-8', errors='replace'),
+                            })
+
+        for c in node.children:
+            out.extend(self._extract_functions_js(c, source))
+        return out
+
+    def _extract_classes_js(self, node: Node, source: bytes) -> List[Dict]:
+        out: List[Dict] = []
+        if node.type == 'class_declaration':
+            name_node = node.child_by_field_name('name')
+            if name_node:
+                out.append({
+                    'name': source[name_node.start_byte:name_node.end_byte].decode('utf-8', errors='replace'),
+                    'start_line': node.start_point[0],
+                    'end_line': node.end_point[0],
+                    'code': source[node.start_byte:node.end_byte].decode('utf-8', errors='replace'),
+                })
+        for c in node.children:
+            out.extend(self._extract_classes_js(c, source))
+        return out
+
+    def _extract_imports_js(self, node: Node, source: bytes) -> List[str]:
+        out: List[str] = []
+        # tree-sitter-javascript uses 'import_statement'
+        if node.type == 'import_statement':
+            out.append(source[node.start_byte:node.end_byte].decode('utf-8', errors='replace'))
+        for c in node.children:
+            out.extend(self._extract_imports_js(c, source))
+        return out
+
+    # ---------------- Java extractors ----------------
+
+    def _extract_functions_java(self, node: Node, source: bytes) -> List[Dict]:
+        out: List[Dict] = []
+        if node.type in ('method_declaration', 'constructor_declaration'):
+            # Name under 'name' field (identifier)
+            name_node = node.child_by_field_name('name')
+            if name_node:
+                out.append({
+                    'name': source[name_node.start_byte:name_node.end_byte].decode('utf-8', errors='replace'),
+                    'start_line': node.start_point[0],
+                    'end_line': node.end_point[0],
+                    'code': source[node.start_byte:node.end_byte].decode('utf-8', errors='replace'),
+                })
+        for c in node.children:
+            out.extend(self._extract_functions_java(c, source))
+        return out
+
+    def _extract_classes_java(self, node: Node, source: bytes) -> List[Dict]:
+        out: List[Dict] = []
+        if node.type == 'class_declaration':
+            name_node = node.child_by_field_name('name')
+            if name_node:
+                out.append({
+                    'name': source[name_node.start_byte:name_node.end_byte].decode('utf-8', errors='replace'),
+                    'start_line': node.start_point[0],
+                    'end_line': node.end_point[0],
+                    'code': source[node.start_byte:node.end_byte].decode('utf-8', errors='replace'),
+                })
+        for c in node.children:
+            out.extend(self._extract_classes_java(c, source))
+        return out
+
+    def _extract_imports_java(self, node: Node, source: bytes) -> List[str]:
+        out: List[str] = []
+        if node.type == 'import_declaration':
+            out.append(source[node.start_byte:node.end_byte].decode('utf-8', errors='replace'))
+        for c in node.children:
+            out.extend(self._extract_imports_java(c, source))
+        return out
+
+    # ---------------- Chunking ----------------
 
     def _build_chunks(
         self,
@@ -147,14 +273,14 @@ class CodeParser:
     ) -> List[Dict]:
         """
         Build chunk list:
-        - Python: function/class-based chunks from AST + fixed-size chunks for residual ranges.
+        - Python/JS/Java: function/class-based chunks from AST + fixed-size chunks for residual ranges.
         - Other languages: fixed-size chunks.
         Lines are zero-based as elsewhere in the app.
         """
         chunks: List[Dict] = []
         total = len(lines)
 
-        if language == 'python':
+        if language in ('python', 'javascript', 'java'):
             # Function/class chunks
             spans: List[Tuple[int, int, str, str]] = []  # (start, end, type, name)
             for fn in functions:
@@ -203,7 +329,7 @@ class CodeParser:
                         'entities': []
                     })
         else:
-            # Non-Python: fixed-size chunks across the file
+            # Non-target languages: fixed-size chunks across the file
             for cs, ce in self._sliding_windows(0, max(0, total - 1), window, overlap):
                 code = "\n".join(lines[cs:ce + 1])
                 chunks.append({

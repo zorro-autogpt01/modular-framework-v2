@@ -23,6 +23,9 @@ openai
 networkx
 pygraphviz
 
+# Linting/Diagrams
+pylint  # provides pyreverse
+
 # Git
 gitpython==3.1.40
 
@@ -45,3 +48,6 @@ black
 ruff
 mypy
 pre-commit
+
+# Graph database
+neo4j

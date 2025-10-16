@@ -1,5 +1,21 @@
 version: "3.9"
 services:  
+  neo4j:
+    image: neo4j:5
+    environment:
+      NEO4J_AUTH=neo4j/password
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    networks:
+      codecontext-network
+    environment:
+      NEO4J_ENABLED: "True"
+      NEO4J_URL: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: password
+    networks:
+      - codecontext-network
   web:
     build: ./frontend
     image: codecontext-rag-web:latest
@@ -29,6 +45,10 @@ services:
       INDEX_META_PATH: /data/index_meta
       LLM_GATEWAY_URL: http://192.168.0.10:3010
       CORS_ORIGINS: "http://localhost:3000,http://web:80"
+      NEO4J_ENABLED: "True"
+      NEO4J_URL: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: password
     volumes:
       - ./:/app
       - lancedb_data:/data/lancedb

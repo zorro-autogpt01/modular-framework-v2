@@ -95,13 +95,20 @@ class ContextRequest(BaseModel):
     surround_lines: Optional[int] = 0
     expand_neighbors: Optional[bool] = True
     filters: Optional[RecommendationFilters] = None
+    # Retrieval options
+    retrieval_mode: Optional[str] = "vector"  # "vector" | "callgraph" | "slice"
+    call_graph_depth: Optional[int] = 2
+    # Program slicing
+    slice_target: Optional[str] = None        # function name or token
+    slice_direction: Optional[str] = "forward"  # forward | backward
+    slice_depth: Optional[int] = 2
 
 
 class PromptOptions(BaseModel):
     # LLM/prompt controls
     model: Optional[str] = None
     temperature: Optional[float] = 0.2
-    max_tokens: Optional[int] = 2200  # total budget for prompt messages
+    max_tokens: Optional[int] = 2200
     system_prompt: Optional[str] = None
 
     # Retrieval/expansion controls
@@ -109,14 +116,23 @@ class PromptOptions(BaseModel):
     per_file_neighbor_chunks: Optional[int] = 2
     include_dependency_expansion: Optional[bool] = True
     dependency_depth: Optional[int] = 1
-    dependency_direction: Optional[str] = "both"  # imports | imported_by | both
+    dependency_direction: Optional[str] = "both"
     neighbor_files_limit: Optional[int] = 4
 
     # Hybrid ranking controls
-    hybrid_alpha: Optional[float] = 0.2  # weight for keyword score vs semantic (0..1)
+    hybrid_alpha: Optional[float] = 0.2
 
     # Filters
     languages: Optional[List[str]] = None
+
+    # Retrieval modes
+    retrieval_mode: Optional[str] = "vector"  # "vector" | "callgraph" | "slice"
+    call_graph_depth: Optional[int] = 2
+
+    # Program slicing
+    slice_target: Optional[str] = None
+    slice_direction: Optional[str] = "forward"
+    slice_depth: Optional[int] = 2
 
 
 class PromptRequest(BaseModel):
@@ -140,7 +156,7 @@ class GeneratePatchRequest(BaseModel):
     # LLM controls
     model: Optional[str] = None
     temperature: Optional[float] = 0.2
-    max_output_tokens: Optional[int] = 1400
+    max_output_tokens: Optional[float] = 1400
     stream: Optional[bool] = False
     dry_run: Optional[bool] = False
 
@@ -154,9 +170,9 @@ class GeneratePatchRequest(BaseModel):
 
 class ApplyPatchRequest(BaseModel):
     patch: str
-    base_branch: Optional[str] = None       # defaults to repo.branch
-    new_branch: Optional[str] = None        # auto-generated if not provided
-    commit_message: Optional[str] = None    # default derived from PR title or 'Automated patch'
+    base_branch: Optional[str] = None
+    new_branch: Optional[str] = None
+    commit_message: Optional[str] = None
     push: Optional[bool] = False
     create_pr: Optional[bool] = False
     pr_title: Optional[str] = None
@@ -167,3 +183,11 @@ class ApplyPatchRequest(BaseModel):
     # Safety / restrictions
     restrict_to_files: Optional[List[str]] = None
     enforce_restriction: Optional[bool] = True
+
+    # Hooks
+    skip_hooks: Optional[bool] = False
+
+class TracePythonRequest(BaseModel):
+    entry_module: Optional[str] = None  # ex: "app.main"
+    entry_script: Optional[str] = None  # ex: "scripts/run.py"
+    argv: Optional[List[str]] = None

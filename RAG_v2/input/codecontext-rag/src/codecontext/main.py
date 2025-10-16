@@ -11,6 +11,8 @@ from .api.routes import health, repositories, recommendations, dependencies, imp
 from .api.routes import context as context_routes
 from .api.routes import prompts as prompts_routes
 from .api.routes import patches as patches_routes
+from .api.routes import graphs as graphs_routes
+from .api.routes import trace as trace_routes
 from .storage.inmemory import InMemoryRepositoryStore, InMemoryJobStore
 from .core.parser import CodeParser
 from .core.embedder import LLMGatewayEmbedder
@@ -19,7 +21,6 @@ from .storage.vector_store import VectorStore
 from .indexing.indexer import Indexer
 
 logger = get_logger(__name__)
-
 
 class RequestIdMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -30,13 +31,10 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         response.headers.setdefault("X-RateLimit-Remaining", str(settings.rate_limit_per_minute))
         return response
 
-
 start_time = time.time()
-
 
 def uptime_seconds() -> int:
     return int(time.time() - start_time)
-
 
 # Configure logging
 configure_logging(settings.log_level)
@@ -74,9 +72,9 @@ ranker = RankingEngine()
 repo_store = InMemoryRepositoryStore()
 job_store = InMemoryJobStore(repo_store)
 
-# Initialize indexer (with metadata persistence path)
+# Initialize indexer
 indexer = Indexer(vector_store, parser, embedder, meta_path=settings.index_meta_path)
-indexer.repo_store = repo_store  # Attach for incremental indexing
+indexer.repo_store = repo_store
 
 # Attach to app state
 app.state.vector_store = vector_store
@@ -98,7 +96,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
+# Routers
 app.include_router(health.router)
 app.include_router(repositories.router)
 app.include_router(recommendations.router)
@@ -108,6 +106,8 @@ app.include_router(search.router)
 app.include_router(context_routes.router)
 app.include_router(prompts_routes.router)
 app.include_router(patches_routes.router)
+app.include_router(graphs_routes.router)
+app.include_router(trace_routes.router)
 
 # Exception handlers
 @app.exception_handler(404)
@@ -139,24 +139,19 @@ async def root(request: Request):
         "status": "running"
     }
 
-
 # Lifecycle events
 @app.on_event("startup")
 async def startup_event():
     logger.info("CodeContext RAG API starting up...")
     logger.info(f"LLM Gateway URL: {settings.llm_gateway_url}")
     logger.info(f"Vector store path: {settings.lancedb_path}")
-
-    # Load cached dependency graphs and git signals from disk so reindex isn't needed
     try:
         loaded = indexer.load_all_metadata()
         logger.info(f"Loaded index metadata for {loaded} repositories from {settings.index_meta_path}")
     except Exception as e:
         logger.warning(f"Failed to load index metadata: {e}")
 
-
 @app.on_event("shutdown")
 async def shutdown_event():
     logger.info("CodeContext RAG API shutting down...")
-    # Close embedder HTTP client
     await embedder.close()

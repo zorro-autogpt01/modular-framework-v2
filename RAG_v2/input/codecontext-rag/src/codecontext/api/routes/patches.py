@@ -18,7 +18,9 @@ from ...integrations.llm_gateway import LLMGatewayClient
 from ...integrations.github_hub import GitHubHubClient
 from ...core.prompt import PromptAssembler
 from ...core.patch import validate_patch
-from .prompts import _vector_top_chunks, _dependency_neighbor_chunks  # reuse helpers
+from .prompts import _vector_top_chunks, _dependency_neighbor_chunks
+
+from ...config import settings
 
 router = APIRouter(prefix="/repositories", tags=["Patches"], dependencies=[Depends(authorize)])
 
@@ -59,14 +61,24 @@ async def _build_messages_if_needed(
     dep_depth = options.dependency_depth or 1
     dep_dir = options.dependency_direction or "both"
     neighbor_files_limit = options.neighbor_files_limit or 4
+    retrieval_mode = (options.retrieval_mode or "vector").lower()
+    call_graph_depth = options.call_graph_depth or 2
     languages = options.languages or (body.filters.languages if body.filters and body.filters.languages else None)
+    slice_target = options.slice_target
+    slice_direction = options.slice_direction or "forward"
+    slice_depth = options.slice_depth or 2
 
-    base_chunks = await _vector_top_chunks(
+    base_chunks, artifacts, _ = await _vector_top_chunks(
         request=request,
         repo_id=repo_id,
         query=body.query,
         max_chunks=max_chunks,
-        languages=languages
+        languages=languages,
+        retrieval_mode=retrieval_mode,
+        call_graph_depth=call_graph_depth,
+        slice_target=slice_target,
+        slice_direction=slice_direction,
+        slice_depth=slice_depth
     )
 
     neighbor_chunks: List[Dict[str, Any]] = []
@@ -102,6 +114,37 @@ async def _build_messages_if_needed(
     )
     return messages
 
+
+def _slugify_branch(text: str) -> str:
+    base = re.sub(r'[^a-zA-Z0-9._/-]+', '-', (text or "patch"))
+    base = re.sub(r'[-/]+', '-', base).strip('-')
+    if not base:
+        base = "patch"
+    return base[:40]
+
+
+def _run(cmd: List[str], cwd: str | None = None, timeout: int = 120) -> tuple[int, str, str]:
+    try:
+        p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+        return p.returncode, p.stdout, p.stderr
+    except subprocess.TimeoutExpired as e:
+        return 124, "", f"Timeout running: {' '.join(cmd)}"
+    except Exception as e:
+        return 1, "", f"Exception running {' '.join(cmd)}: {e}"
+
+
+def _run_pre_commit_hooks(hooks: List[str], cwd: str, logs: List[str]) -> bool:
+    if not hooks:
+        return True
+    ok = True
+    for cmd in hooks:
+        parts = cmd.strip().split()
+        code, out, err = _run(parts, cwd=cwd, timeout=300)
+        logs.append(out or err or f"ran: {cmd}")
+        if code != 0:
+            ok = False
+            logs.append(f"Hook failed: {cmd}")
+    return ok
 
 @router.post("/{repo_id}/patch")
 async def generate_patch(
@@ -190,24 +233,6 @@ async def generate_patch(
         await llm_client.close()
 
 
-def _slugify_branch(text: str) -> str:
-    base = re.sub(r'[^a-zA-Z0-9._/-]+', '-', (text or "patch"))
-    base = re.sub(r'[-/]+', '-', base).strip('-')
-    if not base:
-        base = "patch"
-    return base[:40]
-
-
-def _run(cmd: List[str], cwd: str | None = None, timeout: int = 120) -> tuple[int, str, str]:
-    try:
-        p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout)
-        return p.returncode, p.stdout, p.stderr
-    except subprocess.TimeoutExpired as e:
-        return 124, "", f"Timeout running: {' '.join(cmd)}"
-    except Exception as e:
-        return 1, "", f"Exception running {' '.join(cmd)}: {e}"
-
-
 @router.post("/{repo_id}/apply-patch")
 async def apply_patch(
     request: Request,
@@ -217,9 +242,7 @@ async def apply_patch(
 ):
     """
     Apply a unified diff patch to a temporary worktree, commit it on a new branch, optionally push and open a PR.
-    - Validates the patch before applying.
-    - Uses git worktree to avoid mutating the main working copy.
-    - If push/create_pr are requested, attempts to push and then open a PR via GitHub Hub.
+    Runs optional pre-commit hooks before committing.
     """
     session_id = str(uuid.uuid4())
     request.state.request_id = session_id
@@ -235,7 +258,6 @@ async def apply_patch(
 
     base_branch = body.base_branch or repo.get("branch") or "main"
 
-    # Validate patch
     validation = validate_patch(
         body.patch,
         repo_root=repo_path,
@@ -254,10 +276,8 @@ async def apply_patch(
     commit_sha: Optional[str] = None
 
     try:
-        # Fetch latest base
         code, out, err = _run(["git", "fetch", "--all", "--tags"], cwd=repo_path, timeout=180)
         logs.append(out or err or "")
-        # Create temporary worktree
         parent = os.path.abspath(os.path.join(repo_path, ".."))
         worktrees_root = os.path.join(parent, "worktrees")
         os.makedirs(worktrees_root, exist_ok=True)
@@ -268,14 +288,12 @@ async def apply_patch(
         if code != 0:
             raise HTTPException(status_code=500, detail=f"Failed to create worktree/branch: {err}")
 
-        # Dry run apply
         with tempfile.NamedTemporaryFile(mode="w", delete=False) as tf:
             tf.write(body.patch)
             tf.flush()
             patch_file = tf.name
 
         try:
-            # try -p1 then -p0
             code, out, err = _run(["git", "apply", "--check", "-p1", patch_file], cwd=worktree_dir)
             logs.append(out or err or "")
             if code != 0:
@@ -284,10 +302,9 @@ async def apply_patch(
                 if code != 0:
                     raise HTTPException(status_code=400, detail=f"Patch does not apply cleanly: {err}")
         finally:
-            pass  # keep patch_file for actual apply below
+            pass
 
         if body.dry_run:
-            # Clean worktree if created
             try:
                 os.unlink(patch_file)
             except Exception:
@@ -305,7 +322,6 @@ async def apply_patch(
             }
             return success_response(request, data, response)
 
-        # Apply and commit
         code, out, err = _run(["git", "apply", "-p1", "--index", patch_file], cwd=worktree_dir)
         logs.append(out or err or "")
         if code != 0:
@@ -314,21 +330,24 @@ async def apply_patch(
             if code != 0:
                 raise HTTPException(status_code=400, detail=f"Patch apply failed: {err}")
 
-        # Stage (apply --index should stage; ensure staged)
+        # Run pre-commit hooks if configured
+        if not body.skip_hooks and settings.pre_commit_hooks:
+            ok = _run_pre_commit_hooks(settings.pre_commit_hooks, cwd=worktree_dir, logs=logs)
+            if not ok:
+                # Allow user to override by skip_hooks true
+                raise HTTPException(status_code=400, detail={"message": "Pre-commit hooks failed", "logs": logs})
+
         code, out, err = _run(["git", "add", "-A"], cwd=worktree_dir)
         logs.append(out or err or "")
 
-        # Commit
         code, out, err = _run(["git", "commit", "-m", commit_message], cwd=worktree_dir)
         logs.append(out or err or "")
         if code != 0:
             raise HTTPException(status_code=500, detail=f"Commit failed: {err}")
 
-        # Get commit sha
         code, out, err = _run(["git", "rev-parse", "HEAD"], cwd=worktree_dir)
         commit_sha = (out or "").strip()
 
-        # Optional push
         if body.push:
             code, out, err = _run(["git", "push", "-u", "origin", new_branch], cwd=worktree_dir, timeout=240)
             logs.append(out or err or "")
@@ -336,10 +355,8 @@ async def apply_patch(
                 raise HTTPException(status_code=500, detail=f"Push failed: {err}")
             pushed = True
 
-        # Optional PR creation (requires push)
         if body.create_pr:
             if not pushed:
-                # Try to push if not already pushed
                 code, out, err = _run(["git", "push", "-u", "origin", new_branch], cwd=worktree_dir, timeout=240)
                 logs.append(out or err or "")
                 if code != 0:
@@ -380,11 +397,8 @@ async def apply_patch(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Apply patch failed: {str(e)}")
     finally:
-        # Clean up temp patch file not needed (handled above)
-        # Attempt to remove worktree from git registry (leave files for inspection)
         try:
             if worktree_dir and os.path.isdir(worktree_dir):
-                # Best-effort: remove worktree from git to avoid buildup (keep files)
                 _run(["git", "worktree", "prune"], cwd=repo_path)
         except Exception:
             pass
