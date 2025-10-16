@@ -11,12 +11,14 @@ from .api.routes import health, repositories, recommendations, dependencies, imp
 from .api.routes import context as context_routes
 from .api.routes import prompts as prompts_routes
 from .api.routes import patches as patches_routes
+from .api.routes import ws as ws_routes
 from .storage.inmemory import InMemoryRepositoryStore, InMemoryJobStore
 from .core.parser import CodeParser
 from .core.embedder import LLMGatewayEmbedder
 from .core.ranker import RankingEngine
 from .storage.vector_store import VectorStore
 from .indexing.indexer import Indexer
+from .storage.cache import get_cache
 
 logger = get_logger(__name__)
 
@@ -74,6 +76,9 @@ ranker = RankingEngine()
 repo_store = InMemoryRepositoryStore()
 job_store = InMemoryJobStore(repo_store)
 
+# Initialize cache (Redis preferred, fallback to in-memory)
+cache = get_cache(settings.redis_url)
+
 # Initialize indexer (with metadata persistence path)
 indexer = Indexer(vector_store, parser, embedder, meta_path=settings.index_meta_path)
 indexer.repo_store = repo_store  # Attach for incremental indexing
@@ -86,6 +91,7 @@ app.state.ranker = ranker
 app.state.indexer = indexer
 app.state.repo_store = repo_store
 app.state.job_store = job_store
+app.state.cache = cache
 app.state.uptime_seconds = uptime_seconds
 
 # Middleware
@@ -108,6 +114,7 @@ app.include_router(search.router)
 app.include_router(context_routes.router)
 app.include_router(prompts_routes.router)
 app.include_router(patches_routes.router)
+app.include_router(ws_routes.router)
 
 # Exception handlers
 @app.exception_handler(404)
@@ -160,3 +167,8 @@ async def shutdown_event():
     logger.info("CodeContext RAG API shutting down...")
     # Close embedder HTTP client
     await embedder.close()
+    # Close cache if needed
+    try:
+      await cache.close()  # some caches may not implement
+    except Exception:
+      pass

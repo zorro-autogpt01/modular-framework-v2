@@ -1,6 +1,6 @@
 from fastapi import Depends, Header, HTTPException, Request, status
 from typing import Optional
-from ..config import settings
+from ..config import Settings
 
 
 def authorize(authorization: Optional[str] = Header(default=None)) -> None:

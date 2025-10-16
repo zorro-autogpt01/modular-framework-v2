@@ -18,7 +18,9 @@ class Settings:
 
     # Storage
     lancedb_path: str = os.getenv("LANCEDB_PATH", "./data/lancedb")
+        # Redis Cache
     redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    redis_enabled: bool = _bool(os.getenv("REDIS_ENABLED"), True)
 
     # Security
     api_key_required: bool = _bool(os.getenv("API_KEY_REQUIRED"), False)
