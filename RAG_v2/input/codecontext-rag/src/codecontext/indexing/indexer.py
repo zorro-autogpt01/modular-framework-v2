@@ -375,6 +375,31 @@ class Indexer:
         print(f"Indexing {len(entities_to_index)} entities...")
         self.vector_store.upsert(entities_to_index)
 
+        # NEW: Run feature extraction if enabled
+        if settings.enable_feature_extraction:
+            print("Running feature extraction...")
+            try:
+                from ..features.extractor import FeatureExtractor
+                from ..storage.feature_store import FeatureStore
+                from ..integrations.llm_gateway import LLMGatewayClient
+                
+                feature_store = FeatureStore()
+                llm_client = LLMGatewayClient()
+                extractor = FeatureExtractor(embedder, llm_client)
+                
+                features = await extractor.extract_features(
+                    repo_id,
+                    repo_path,
+                    parsed_data,
+                    vector_store
+                )
+                
+                feature_store.save_features(features)
+                print(f"Saved {len(features)} features")
+                
+            except Exception as e:
+                print(f"Feature extraction failed: {e}")
+
         # Best-effort persist
         try:
             self.save_metadata(repo_id)

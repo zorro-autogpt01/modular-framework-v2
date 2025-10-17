@@ -81,6 +81,9 @@ class Settings:
     # Tests
     test_cmd: str = os.getenv("TEST_CMD", "pytest -q")
 
+    # Feature extraction
+    enable_feature_extraction: bool = _bool(os.getenv("ENABLE_FEATURE_EXTRACTION"), True)
+
     def __post_init__(self):
         self.pre_commit_hooks = _split_list(os.getenv("PRE_COMMIT_HOOKS", ""))
 
