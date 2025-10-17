@@ -10,7 +10,6 @@ def _bool(val: str | None, default: bool) -> bool:
 def _split_list(val: str | None) -> list[str]:
     if not val:
         return []
-    # Split by semicolon or newline for multi-command hooks
     parts = []
     for line in val.splitlines():
         parts.extend([p.strip() for p in line.split(";") if p.strip()])
@@ -58,7 +57,7 @@ class Settings:
     local_embedding_model: str = os.getenv("LOCAL_EMBEDDING_MODEL", "microsoft/codebert-base")
     openai_api_key: str | None = os.getenv("OPENAI_API_KEY")
 
-    # Index metadata persistence (dependency graph + git signals)
+    # Index metadata persistence
     index_meta_path: str = os.getenv("INDEX_META_PATH", "./data/index_meta")
 
     # Neo4j (optional)
@@ -67,9 +66,20 @@ class Settings:
     neo4j_user: str = os.getenv("NEO4J_USER", "neo4j")
     neo4j_password: str = os.getenv("NEO4J_PASSWORD", "password")
 
-    # Pre-commit hooks (run before committing patches in worktree)
-    # Example: "black .; ruff . --fix; mypy ."
+    # Pre-commit hooks for apply-patch
     pre_commit_hooks: list[str] = None
+
+    # Local reranker (cross-encoder)
+    reranker_enabled: bool = _bool(os.getenv("RERANKER_ENABLED"), True)
+    reranker_model: str = os.getenv("RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
+    reranker_topk: int = int(os.getenv("RERANKER_TOPK", "50"))
+
+    # Agentic retrieval
+    agentic_default: bool = _bool(os.getenv("AGENTIC_DEFAULT"), False)
+    agentic_max_iters: int = int(os.getenv("AGENTIC_MAX_ITERS", "2"))
+
+    # Tests
+    test_cmd: str = os.getenv("TEST_CMD", "pytest -q")
 
     def __post_init__(self):
         self.pre_commit_hooks = _split_list(os.getenv("PRE_COMMIT_HOOKS", ""))

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, GitBranch, FileCode, Zap, TrendingUp, Settings, Plus, Trash2, RefreshCw, Code, GitPullRequest, Network, Activity, MessageSquare, Layers } from 'lucide-react';
+import { Search, GitBranch, FileCode, Zap, TrendingUp, Settings, Plus, Trash2, RefreshCw, Code, GitPullRequest, Network, Activity, MessageSquare, Layers, Beaker, Map } from 'lucide-react';
 import mermaid from 'mermaid';
 
 // API Client
@@ -9,50 +9,30 @@ const api = {
   async request(endpoint, options = {}) {
     const response = await fetch(`${API_BASE}${endpoint}`, {
       ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
+      headers: { 'Content-Type': 'application/json', ...options.headers },
     });
     if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
     return response.json();
   },
-  
-  // Repositories
   listRepos: () => api.request('/repositories'),
   addRepo: (data) => api.request('/repositories', { method: 'POST', body: JSON.stringify(data) }),
   deleteRepo: (id) => api.request(`/repositories/${id}`, { method: 'DELETE' }),
   reindexRepo: (id) => api.request(`/repositories/${id}/reindex`, { method: 'POST' }),
   getIndexStatus: (id) => api.request(`/repositories/${id}/index/status`),
-  
-  // Recommendations
   getRecommendations: (data) => api.request('/recommendations', { method: 'POST', body: JSON.stringify(data) }),
   interactiveRecommendations: (data) => api.request('/recommendations/interactive', { method: 'POST', body: JSON.stringify(data) }),
   refineRecommendations: (data) => api.request('/recommendations/refine', { method: 'POST', body: JSON.stringify(data) }),
-  
-  // Dependencies
-  getDependencies: (filePath, repoId, depth = 2, format = 'json') => 
-    api.request(`/dependencies/${encodeURIComponent(filePath)}?repository_id=${repoId}&depth=${depth}&direction=both&format=${format}`),
-  
-  // Graphs
-  getGraph: (repoId, type = 'dependency', format = 'json', node = '', depth = 0) =>
-    api.request(`/repositories/${repoId}/graphs?type=${type}&format=${format}${node ? `&node_filter=${encodeURIComponent(node)}` : ''}${depth ? `&depth=${depth}` : ''}`),
-
-  // Context
+  getDependencies: (filePath, repoId, depth = 2, format = 'json') => api.request(`/dependencies/${encodeURIComponent(filePath)}?repository_id=${repoId}&depth=${depth}&direction=both&format=${format}`),
+  getGraph: (repoId, type = 'dependency', format = 'json', node = '', depth = 0) => api.request(`/repositories/${repoId}/graphs?type=${type}&format=${format}${node ? `&node_filter=${encodeURIComponent(node)}` : ''}${depth ? `&depth=${depth}` : ''}`),
   getContext: (repoId, data) => api.request(`/repositories/${repoId}/context`, { method: 'POST', body: JSON.stringify(data) }),
-  
-  // Prompts
   buildPrompt: (repoId, data) => api.request(`/repositories/${repoId}/prompt`, { method: 'POST', body: JSON.stringify(data) }),
-  
-  // Patches
   generatePatch: (repoId, data) => api.request(`/repositories/${repoId}/patch`, { method: 'POST', body: JSON.stringify(data) }),
   applyPatch: (repoId, data) => api.request(`/repositories/${repoId}/apply-patch`, { method: 'POST', body: JSON.stringify(data) }),
-  
-  // Search
   searchCode: (data) => api.request('/search/code', { method: 'POST', body: JSON.stringify(data) }),
+  selectTests: (repoId, data) => api.request(`/repositories/${repoId}/tests/select`, { method: 'POST', body: JSON.stringify(data) }),
+  runTests: (repoId, data) => api.request(`/repositories/${repoId}/tests/run`, { method: 'POST', body: JSON.stringify(data) }),
 };
 
-// Initialize mermaid once
 mermaid.initialize({ startOnLoad: false, theme: 'dark' });
 
 function MermaidRenderer({ chart, className }) {
@@ -60,58 +40,30 @@ function MermaidRenderer({ chart, className }) {
   useEffect(() => {
     let cancelled = false;
     const id = `mmd-${Math.random().toString(36).slice(2)}`;
-    if (!chart) {
-      setSvg('');
-      return;
-    }
-    mermaid
-      .render(id, chart)
-      .then(({ svg }) => {
-        if (!cancelled) setSvg(svg);
-      })
-      .catch(() => setSvg(''));
-    return () => {
-      cancelled = true;
-    };
+    if (!chart) { setSvg(''); return; }
+    mermaid.render(id, chart).then(({ svg }) => { if (!cancelled) setSvg(svg); }).catch(() => setSvg(''));
+    return () => { cancelled = true; };
   }, [chart]);
   if (!chart) return null;
-  return (
-    <div
-      className={className}
-      dangerouslySetInnerHTML={{ __html: svg }}
-    />
-  );
+  return <div className={className} dangerouslySetInnerHTML={{ __html: svg }} />;
 }
 
-// Main App Component
 export default function App() {
   const [activeTab, setActiveTab] = useState('repositories');
   const [repos, setRepos] = useState([]);
   const [selectedRepo, setSelectedRepo] = useState(null);
   const [loading, setLoading] = useState(false);
-  
-  useEffect(() => {
-    loadRepos();
-  }, []);
-  
+  useEffect(() => { loadRepos(); }, []);
   const loadRepos = async () => {
     setLoading(true);
     try {
       const data = await api.listRepos();
       setRepos(data);
-      if (data.length > 0 && !selectedRepo) {
-        setSelectedRepo(data[0]);
-      }
-    } catch (error) {
-      console.error('Failed to load repos:', error);
-    } finally {
-      setLoading(false);
-    }
+      if (data.length > 0 && !selectedRepo) setSelectedRepo(data[0]);
+    } catch (e) { console.error(e); } finally { setLoading(false); }
   };
-  
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-      {/* Header */}
       <header className="border-b border-white/10 bg-black/20 backdrop-blur-xl">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
@@ -124,22 +76,13 @@ export default function App() {
                 <p className="text-xs text-purple-300">Intelligent Code Analysis</p>
               </div>
             </div>
-            
-            <select 
-              className="px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-              value={selectedRepo?.id || ''}
-              onChange={(e) => setSelectedRepo(repos.find(r => r.id === e.target.value))}
-            >
+            <select className="px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white text-sm" value={selectedRepo?.id || ''} onChange={(e) => setSelectedRepo(repos.find(r => r.id === e.target.value))}>
               <option value="">Select Repository</option>
-              {repos.map(repo => (
-                <option key={repo.id} value={repo.id}>{repo.full_name}</option>
-              ))}
+              {repos.map(repo => (<option key={repo.id} value={repo.id}>{repo.full_name}</option>))}
             </select>
           </div>
         </div>
       </header>
-      
-      {/* Navigation */}
       <nav className="border-b border-white/10 bg-black/10 backdrop-blur-xl sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-6">
           <div className="flex gap-1 overflow-x-auto">
@@ -147,21 +90,23 @@ export default function App() {
             <NavTab icon={Search} label="Search" active={activeTab === 'search'} onClick={() => setActiveTab('search')} />
             <NavTab icon={TrendingUp} label="Recommendations" active={activeTab === 'recommendations'} onClick={() => setActiveTab('recommendations')} />
             <NavTab icon={Network} label="Dependencies" active={activeTab === 'dependencies'} onClick={() => setActiveTab('dependencies')} />
+            <NavTab icon={Map} label="Graphs" active={activeTab === 'graphs'} onClick={() => setActiveTab('graphs')} />
             <NavTab icon={FileCode} label="Context" active={activeTab === 'context'} onClick={() => setActiveTab('context')} />
             <NavTab icon={MessageSquare} label="Prompts" active={activeTab === 'prompts'} onClick={() => setActiveTab('prompts')} />
+            <NavTab icon={Beaker} label="Tests" active={activeTab === 'tests'} onClick={() => setActiveTab('tests')} />
             <NavTab icon={GitPullRequest} label="Patches" active={activeTab === 'patches'} onClick={() => setActiveTab('patches')} />
           </div>
         </div>
       </nav>
-      
-      {/* Main Content */}
       <main className="max-w-7xl mx-auto px-6 py-8">
         {activeTab === 'repositories' && <RepositoriesView repos={repos} onReload={loadRepos} />}
         {activeTab === 'search' && <SearchView selectedRepo={selectedRepo} />}
         {activeTab === 'recommendations' && <RecommendationsView selectedRepo={selectedRepo} />}
         {activeTab === 'dependencies' && <DependenciesView selectedRepo={selectedRepo} />}
+        {activeTab === 'graphs' && <GraphExplorerView selectedRepo={selectedRepo} />}
         {activeTab === 'context' && <ContextView selectedRepo={selectedRepo} />}
         {activeTab === 'prompts' && <PromptsView selectedRepo={selectedRepo} />}
+        {activeTab === 'tests' && <TestsView selectedRepo={selectedRepo} />}
         {activeTab === 'patches' && <PatchesView selectedRepo={selectedRepo} />}
       </main>
     </div>
@@ -170,19 +115,13 @@ export default function App() {
 
 function NavTab({ icon: Icon, label, active, onClick }) {
   return (
-    <button
-      onClick={onClick}
-      className={`flex items-center gap-2 px-4 py-3 text-sm font-medium transition-all border-b-2 ${
-        active 
-          ? 'text-purple-300 border-purple-400' 
-          : 'text-white/60 border-transparent hover:text-white/80'
-      }`}
-    >
+    <button onClick={onClick} className={`flex items-center gap-2 px-4 py-3 text-sm font-medium transition-all border-b-2 ${active ? 'text-purple-300 border-purple-400' : 'text-white/60 border-transparent hover:text-white/80'}`}>
       <Icon className="w-4 h-4" />
       {label}
     </button>
   );
 }
+
 
 // Repositories View
 function RepositoriesView({ repos, onReload }) {
@@ -1000,6 +939,101 @@ function PatchesView({ selectedRepo }) {
     </div>
   );
 }
+
+function GraphExplorerView({ selectedRepo }) {
+  const [type, setType] = useState('dependency');
+  const [format, setFormat] = useState('mermaid');
+  const [node, setNode] = useState('');
+  const [depth, setDepth] = useState(2);
+  const [result, setResult] = useState(null);
+  const [chart, setChart] = useState('');
+  const run = async () => {
+    if (!selectedRepo) return;
+    try {
+      const data = await api.getGraph(selectedRepo.id, type, format, node, depth);
+      setResult(data.data);
+      if (format === 'mermaid') setChart(data.data?.graph_text || '');
+      else setChart('');
+    } catch (e) { alert('Failed: ' + e.message); }
+  };
+  return (
+    <div className="space-y-6">
+      <div className="flex gap-3 flex-wrap">
+        <select value={type} onChange={e => setType(e.target.value)} className="px-3 py-2 bg-white/5 border border-white/20 rounded-lg text-white">
+          <option value="dependency">dependency</option>
+          <option value="module">module</option>
+          <option value="class">class</option>
+          <option value="call">call</option>
+        </select>
+        <select value={format} onChange={e => setFormat(e.target.value)} className="px-3 py-2 bg-white/5 border border-white/20 rounded-lg text-white">
+          <option value="mermaid">mermaid</option>
+          <option value="json">json</option>
+          <option value="plantuml">plantuml</option>
+        </select>
+        <input placeholder="node filter (optional)" value={node} onChange={e => setNode(e.target.value)} className="px-3 py-2 bg-white/5 border border-white/20 rounded-lg text-white flex-1 min-w-[200px]" />
+        <input type="number" min={0} max={5} value={depth} onChange={e => setDepth(Number(e.target.value))} className="w-24 px-3 py-2 bg-white/5 border border-white/20 rounded-lg text-white" />
+        <button onClick={run} disabled={!selectedRepo} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg">Fetch</button>
+      </div>
+      {chart && <MermaidRenderer chart={chart} />}
+      {result && format !== 'mermaid' && (
+        <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+          <pre className="text-white/80 text-sm overflow-auto">{JSON.stringify(result, null, 2)}</pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TestsView({ selectedRepo }) {
+  const [modified, setModified] = useState('src/auth/login.py\nsrc/api/routes/users.py');
+  const [ranked, setRanked] = useState(null);
+  const [running, setRunning] = useState(false);
+  const [output, setOutput] = useState('');
+  const selectTests = async () => {
+    if (!selectedRepo) return;
+    try {
+      const files = modified.split(/\n|,/).map(s => s.trim()).filter(Boolean);
+      const data = await api.selectTests(selectedRepo.id, { modified_files: files });
+      setRanked(data.data);
+    } catch (e) { alert('Failed: ' + e.message); }
+  };
+  const runSelected = async () => {
+    if (!selectedRepo) return;
+    setRunning(true);
+    try {
+      const tests = (ranked?.ranked_tests || []).filter(t => t.score > 0).slice(0, 10).map(t => t.test);
+      const data = await api.runTests(selectedRepo.id, { tests });
+      setOutput(data.data?.output || '');
+    } catch (e) { alert('Run failed: ' + e.message); } finally { setRunning(false); }
+  };
+  return (
+    <div className="space-y-6">
+      <div className="bg-white/5 border border-white/10 rounded-xl p-6">
+        <h3 className="text-lg font-semibold text-white mb-3">Select Tests</h3>
+        <textarea className="w-full min-h-[120px] px-3 py-2 bg-white/5 border border-white/20 rounded-lg text-white" value={modified} onChange={e => setModified(e.target.value)} />
+        <div className="mt-3 flex gap-3">
+          <button onClick={selectTests} disabled={!selectedRepo} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg">Select</button>
+          <button onClick={runSelected} disabled={!selectedRepo || running} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg">{running ? 'Running...' : 'Run Selected'}</button>
+        </div>
+      </div>
+      {ranked && (
+        <div className="bg-white/5 border border-white/10 rounded-xl p-6">
+          <h4 className="text-white font-semibold mb-3">Ranked Tests</h4>
+          <ul className="text-white/80 text-sm space-y-1">
+            {(ranked.ranked_tests || []).slice(0, 20).map((t, i) => (<li key={i}>{t.test} — score {t.score}</li>))}
+          </ul>
+        </div>
+      )}
+      {output && (
+        <div className="bg-white/5 border border-white/10 rounded-xl p-6">
+          <h4 className="text-white font-semibold mb-3">Test Output</h4>
+          <pre className="text-white/80 text-sm overflow-auto whitespace-pre-wrap">{output}</pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 // Modal Component
 function Modal({ children, onClose }) {
