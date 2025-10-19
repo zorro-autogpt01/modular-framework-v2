@@ -20,17 +20,9 @@ class GHClient:
 
     @staticmethod
     def parse_repo(url: str) -> Tuple[str, str]:
-        """
-        Supports:
-          - https://github.com/owner/repo(.git)
-          - https://ghe.company.tld/org/repo(.git)
-          - git@github.com:owner/repo(.git)
-        Returns (owner, repo) or raises ValueError.
-        """
         if not url or not isinstance(url, str):
             raise ValueError("repo_url is required")
         u = url.strip()
-        # SSH style: git@host:owner/repo.git
         if "@" in u and ":" in u and not u.startswith("http"):
             try:
                 path = u.split(":", 1)[1]
@@ -41,7 +33,6 @@ class GHClient:
                 return owner, repo
             except Exception as e:
                 raise ValueError(f"Invalid SSH repo URL: {url}") from e
-        # HTTP(S) style
         try:
             parsed = urlparse(u)
             parts = [p for p in parsed.path.split("/") if p]
@@ -52,9 +43,7 @@ class GHClient:
         except Exception as e:
             raise ValueError(f"Invalid repo URL: {url}") from e
 
-    # ----- simple endpoints -----
     def get_branches(self, owner: str, repo: str, per_page: int = 100, max_pages: int = 20) -> List[str]:
-        """List branches with pagination to avoid truncation on large repos."""
         names: List[str] = []
         seen = set()
         for page in range(1, max_pages + 1):
@@ -65,7 +54,6 @@ class GHClient:
                 timeout=30,
             )
             if r.status_code == 404:
-                # Return clean 404 error
                 r.raise_for_status()
             r.raise_for_status()
             batch = r.json() or []
@@ -101,7 +89,6 @@ class GHClient:
         data = r.json()
         content_b64 = data.get("content") or ""
         if content_b64:
-            # GitHub base64 can include newlines; handle safely
             try:
                 decoded = base64.b64decode(content_b64.encode("utf-8")).decode("utf-8", errors="ignore")
             except Exception:
@@ -135,7 +122,6 @@ class GHClient:
         r.raise_for_status()
         return r.json()
 
-    # Pull requests
     def create_pull_request(self, owner: str, repo: str, title: str, head: str, base: str, body: Optional[str] = None, draft: bool = False) -> Dict[str, Any]:
         payload = {"title": title, "head": head, "base": base}
         if body: payload["body"] = body
@@ -144,7 +130,6 @@ class GHClient:
         r.raise_for_status()
         return r.json()
 
-    # ----- batch commit (single commit for many files) -----
     def get_commit_and_tree(self, owner: str, repo: str, branch: str) -> tuple[str, str]:
         ref = requests.get(f"{self.base_url}/repos/{owner}/{repo}/git/ref/heads/{branch}", headers=self._h(), timeout=30)
         ref.raise_for_status()
@@ -179,10 +164,7 @@ class GHClient:
         return r.json()
 
     def compare_commits(self, owner: str, repo: str, base: str, head: str) -> Dict[str, Any]:
-        r = requests.get(
-            f"{self.base_url}/repos/{owner}/{repo}/compare/{base}...{head}",
-            headers=self._h(), timeout=60
-        )
+        r = requests.get(f"{self.base_url}/repos/{owner}/{repo}/compare/{base}...{head}", headers=self._h(), timeout=60)
         r.raise_for_status()
         return r.json()
 
@@ -190,17 +172,11 @@ class GHClient:
                      path: Optional[str] = None, per_page: int = 100) -> List[Dict[str, Any]]:
         params = {"sha": sha, "path": path, "per_page": per_page}
         params = {k: v for k, v in params.items() if v is not None}
-        r = requests.get(
-            f"{self.base_url}/repos/{owner}/{repo}/commits",
-            headers=self._h(), params=params, timeout=60
-        )
+        r = requests.get(f"{self.base_url}/repos/{owner}/{repo}/commits", headers=self._h(), params=params, timeout=60)
         r.raise_for_status()
         return r.json()
 
     def batch_commit(self, owner: str, repo: str, branch: str, message: str, changes: List[Dict[str, str]]) -> Dict[str, Any]:
-        """
-        changes: [{ "path": "dir/file.txt", "content": "string", "mode": "100644" }]
-        """
         commit_sha, base_tree = self.get_commit_and_tree(owner, repo, branch)
         tree_entries = []
         for ch in changes:

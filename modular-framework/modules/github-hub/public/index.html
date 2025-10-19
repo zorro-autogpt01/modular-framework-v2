@@ -8,30 +8,26 @@
   <link rel="stylesheet" href="./css/theme.css"/>
   <style>
     :root { --indent: 14px; }
-
-    .wrap{display:grid;grid-template-columns:320px 1fr;gap:12px;height:100vh}
+    .wrap{display:grid;grid-template-columns:360px 1fr;gap:12px;height:100vh}
     .side{border-right:1px solid var(--line);padding:12px;overflow:auto}
     .main{padding:12px;overflow:auto}
     .file-view{
       white-space:pre; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
       border:1px solid var(--line); border-radius:6px; padding:10px; background:#111; min-height:200px
     }
-    .muted{color:var(--muted); font-size:12px}
 
-    /* SIDE MODE (embed=side) */
     .embed-side .header { display:none; }
     .embed-side .wrap { grid-template-columns: 1fr; height: 100vh; }
     .embed-side .side { border-right: none; padding: 8px; }
     .embed-side .main { display: none; }
 
-    /* Tree */
     .tree { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px }
     .tree > ul { list-style:none; margin:0; padding-left:0; }
     .tree ul ul { list-style:none; margin:0; padding-left: var(--indent); }
     .tree li { margin:0; }
     .tree .row {
       display:grid;
-      grid-template-columns: 1em 1.1em 1.1em 1fr; /* twisty | checkbox | icon | name */
+      grid-template-columns: 1em 1.1em 1.1em 1fr;
       align-items:center;
       gap:6px;
       padding:3px 6px;
@@ -46,7 +42,6 @@
     .tree .dir.collapsed > .row .twisty::before { content: "▸"; }
     .tree .dir.open      > .row .twisty::before { content: "▾"; }
 
-    /* Small toolbar above the tree */
     .tree-tools { display:flex; gap:6px; margin:6px 0 8px; align-items:center; }
     .chip { font-size:11px; color:#bbb; padding:2px 6px; border:1px solid #333; border-radius:999px; }
     button.ghost{background:#2a2c31}
@@ -74,6 +69,7 @@
         <div class="grow"></div>
         <button class="ghost" id="openPrBtn" title="Create Pull Request">New PR</button>
       </div>
+
       <input type="search" id="filterInput" placeholder="Filter files (glob or /regex/)" />
       <label>Repo URL</label>
       <input id="repoUrl" placeholder="https://github.com/owner/repo" />
@@ -91,17 +87,33 @@
         <label>PAT (repo scope)</label>
         <input id="token" placeholder="ghp_..." />
       </details>
-      <div class="row" id="copyTools" style="margin-top:10px">
-        <button id="copyBtn" class="ghost" title="Concatenate selected files and copy">Copy to clipboard</button>
-        <span class="chip" id="tokenCountChip">0 tokens</span>
+
+      <h3 style="margin-top:14px">Events</h3>
+      <div class="row">
+        <button class="ghost" id="pollGlobalBtn" title="Trigger poll across all connections">Poll all</button>
+        <button class="ghost" id="pollConnBtn" title="Trigger poll for active connection">Poll current</button>
+        <button class="ghost" id="pollStatusBtn" title="Show polling status">Status</button>
       </div>
+
+      <h3 style="margin-top:14px">Subscriptions</h3>
+      <div class="row">
+        <button class="ghost" id="manageSubsBtn" title="Manage subscriptions">Manage</button>
+        <div class="grow"></div>
+        <div class="row" id="copyTools">
+          <button id="copyBtn" class="ghost" title="Concatenate selected files and copy">Copy files</button>
+          <span class="chip" id="tokenCountChip">0 tokens</span>
+        </div>
+      </div>
+
       <div class="tree-tools">
         <button class="ghost" id="expandAllBtn">Expand all</button>
         <button class="ghost" id="collapseAllBtn">Collapse all</button>
         <span class="chip" id="selCountChip">0 selected</span>
       </div>
+
       <div id="tree" class="tree"></div>
     </div>
+
     <div class="main">
       <h3>Selected File</h3>
       <div id="fileMeta" class="muted"></div>
@@ -112,10 +124,11 @@
       </div>
     </div>
   </div>
-<div id="connModal" class="modal">
-  <div class="box">
-    <h3>Connections</h3>
-    <h4 style="margin:6px 0 8px">Add / Edit</h4>
+
+  <div id="connModal" class="modal">
+    <div class="box">
+      <h3>Connections</h3>
+      <h4 style="margin:6px 0 8px">Add / Edit</h4>
       <div class="grid2">
         <div>
           <label>ID</label><input id="mId" placeholder="owner-repo or any slug" />
@@ -128,42 +141,83 @@
           <label>Token (PAT)</label><input id="mTok" placeholder="ghp_..." />
         </div>
       </div>
-    <div id="connList" class="muted" style="margin:6px 0 10px">Loading…</div>
-    <hr/>
-
-    <div class="row">
-      <button id="saveConnBtn">Save</button>
-      <button class="ghost" id="testConnModalBtn">Test</button>
-      <button class="ghost" id="closeConnBtn">Close</button>
-    </div>
-    <small class="muted">Tokens are stored encrypted if a key is configured on the server.</small>
-  </div>
-</div>
-
-<div id="prModal" class="modal">
-  <div class="box">
-    <h3>New Pull Request</h3>
-    <div class="grid2">
-      <div>
-        <label>Title</label><input id="prTitle" />
-        <label>Base (target)</label><input id="prBase" placeholder="main" />
+      <div id="connList" class="muted" style="margin:6px 0 10px">Loading…</div>
+      <hr/>
+      <div class="row">
+        <button id="saveConnBtn">Save</button>
+        <button class="ghost" id="testConnModalBtn">Test</button>
+        <button class="ghost" id="closeConnBtn">Close</button>
       </div>
-      <div>
-        <label>Head (source)</label><input id="prHead" placeholder="feature/my-change" />
-        <label>Draft?</label>
-        <select id="prDraft"><option value="false">No</option><option value="true">Yes</option></select>
-      </div>
-    </div>
-    <label>Body (markdown)</label>
-    <textarea id="prBody" rows="6"></textarea>
-    <div class="row">
-      <button id="createPrBtn">Create PR</button>
-      <button class="ghost" id="closePrBtn">Close</button>
+      <small class="muted">Tokens are stored encrypted if a key is configured on the server.</small>
     </div>
   </div>
-</div>
 
-<div id="toast" class="toast"></div>
-<script type="module" src="./js/app.js"></script>
+  <div id="prModal" class="modal">
+    <div class="box">
+      <h3>New Pull Request</h3>
+      <div class="grid2">
+        <div>
+          <label>Title</label><input id="prTitle" />
+          <label>Base (target)</label><input id="prBase" placeholder="main" />
+        </div>
+        <div>
+          <label>Head (source)</label><input id="prHead" placeholder="feature/my-change" />
+          <label>Draft?</label>
+          <select id="prDraft"><option value="false">No</option><option value="true">Yes</option></select>
+        </div>
+      </div>
+      <label>Body (markdown)</label>
+      <textarea id="prBody" rows="6"></textarea>
+      <div class="row">
+        <button id="createPrBtn">Create PR</button>
+        <button class="ghost" id="closePrBtn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="pollModal" class="modal">
+    <div class="box">
+      <h3>Polling Status</h3>
+      <div id="pollStatusBox" class="muted">Loading…</div>
+      <div class="row">
+        <button class="ghost" id="closePollBtn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="subsModal" class="modal">
+    <div class="box">
+      <h3>Subscriptions</h3>
+      <div class="grid2">
+        <div>
+          <label>Endpoint URL (HTTPS)</label>
+          <input id="subUrl" placeholder="https://service.local/hooks/github-hub" />
+          <label>Secret (HMAC key, optional)</label>
+          <input id="subSecret" placeholder="optional" />
+          <label>Events</label>
+          <select id="subEvents" multiple>
+            <option value="repo.push" selected>repo.push</option>
+            <option value="ping">ping</option>
+          </select>
+        </div>
+        <div>
+          <label>Connection filter (optional)</label>
+          <input id="subConn" placeholder="connection id" />
+          <label>Branches (comma-separated, optional)</label>
+          <input id="subBranches" placeholder="main,release/1.2" />
+          <label>Active?</label>
+          <input type="checkbox" id="subActive" checked />
+        </div>
+      </div>
+      <div class="row">
+        <button id="saveSubBtn">Save</button>
+        <button class="ghost" id="closeSubsBtn">Close</button>
+      </div>
+      <div id="subsList" style="margin-top:10px" class="muted">Loading…</div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+  <script type="module" src="./js/app.js"></script>
 </body>
 </html>
