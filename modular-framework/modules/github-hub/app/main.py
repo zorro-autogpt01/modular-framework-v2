@@ -453,3 +453,45 @@ def api_head_connection(conn_id: str):
     if not c:
         raise HTTPException(404, "Connection not found")
     return {"ok": True}
+
+@app.get("/api/connections/{conn_id}/clone_url")
+def api_get_clone_url(conn_id: str):
+    """
+    Returns the authenticated clone URL (HTTPS with token embedded) for git operations.
+    NOTE: The token is exposed in this URL, so this endpoint must be secured/internal.
+    """
+    conn = _resolve_conn(conn_id, None)
+    
+    # 1. Get the authenticated repo URL and token
+    repo_url = conn.get("repo_url")
+    github_token = conn.get("token") # Fetched via _resolve_conn -> get_connection -> _dec()
+    
+    if not repo_url:
+        raise HTTPException(400, "Connection has no repo_url configured.")
+    
+    if not github_token:
+        # This handles cases where the token might only be an ENV var fallback,
+        # but for cloning, we must have it explicit or in the conn object.
+        raise HTTPException(400, "Authentication token is required but not available for this connection.")
+
+    # 2. Construct the authenticated HTTPS URL: https://<token>@github.com/<owner>/<repo>
+    if repo_url.startswith("https://github.com"):
+        authenticated_repo_url = repo_url.replace(
+            "https://", 
+            f"https://{github_token}@"
+        )
+    elif repo_url.startswith("http"):
+        # Handle non-GitHub Enterprise HTTP URLs if necessary
+        # Assuming all token auth is for GitHub/Enterprise HTTPS for simplicity
+        authenticated_repo_url = repo_url.replace(
+            "http://", 
+            f"http://{github_token}@"
+        )
+    else:
+        # For SSH URLs (git@...), we cannot embed the token easily.
+        # Cloning with SSH requires the key to be set up on the cloning host.
+        # Raising an error forces the client to use a proper URL type.
+        raise HTTPException(400, "Only HTTPS repo_urls can be used for authenticated cloning via this endpoint.")
+
+    # 3. Return the authenticated URL
+    return {"clone_url": authenticated_repo_url}

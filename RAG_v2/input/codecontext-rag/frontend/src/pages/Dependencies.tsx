@@ -5,7 +5,7 @@ import { LoadingSpinner } from '../components/shared/LoadingSpinner'
 import { ErrorMessage } from '../components/shared/ErrorMessage'
 import { MermaidDiagram } from '../components/shared/MermaidDiagram'
 import { api } from '../services/api'
-import { Network, FileCode } from 'lucide-react'
+import { Network, FileCode, RefreshCw } from 'lucide-react'
 import type { Repository } from '../types/index'
 
 export const Dependencies: React.FC = () => {
@@ -43,15 +43,33 @@ export const Dependencies: React.FC = () => {
       const result = await api.getDependencies(filePath, selectedRepo, depth, format)
       setData(result)
     } catch (err: any) {
-      setError(err.message || 'Failed to analyze dependencies')
+      if (err?.response?.status === 404) {
+        setError('Dependency graph not available. Please reindex the repository, then try again.')
+      } else {
+        setError(err.message || 'Failed to analyze dependencies')
+      }
     } finally {
       setLoading(false)
     }
   }
 
+  const reindex = async () => {
+    if (!selectedRepo) return
+    try {
+      await api.reindexRepository(selectedRepo)
+      alert('Reindexing started. Come back in a minute and try again.')
+    } catch (err: any) {
+      setError(err.message || 'Failed to start reindexing')
+    }
+  }
+
   return (
     <div className="space-y-6">
-      <Card title="Dependency Analysis">
+      <Card title="Dependency Analysis" actions={
+        <Button size="sm" variant="secondary" icon={<RefreshCw className="w-4 h-4" />} onClick={reindex}>
+          Reindex
+        </Button>
+      }>
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -131,19 +149,19 @@ export const Dependencies: React.FC = () => {
         <LoadingSpinner text="Analyzing dependencies..." />
       ) : data ? (
         <Card title="Results">
-          {format === 'mermaid' && data.graph_text ? (
-            <MermaidDiagram chart={data.graph_text} />
-          ) : format === 'plantuml' && data.graph_text ? (
+          {format === 'mermaid' && (data as any).graph_text ? (
+            <MermaidDiagram chart={(data as any).graph_text} />
+          ) : format === 'plantuml' && (data as any).graph_text ? (
             <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-auto text-sm">
-              {data.graph_text}
+              {(data as any).graph_text}
             </pre>
-          ) : data.graph ? (
+          ) : (data as any).graph ? (
             <>
               <div className="grid grid-cols-2 gap-6 mb-6">
                 <div>
                   <h4 className="font-semibold text-gray-900 mb-3">Imports</h4>
                   <div className="space-y-2">
-                    {data.graph.nodes
+                    {(data as any).graph.nodes
                       ?.filter((n: any) => n.type === 'import')
                       .map((node: any, idx: number) => (
                         <div key={idx} className="flex items-center gap-2 p-2 bg-blue-50 rounded">
@@ -156,7 +174,7 @@ export const Dependencies: React.FC = () => {
                 <div>
                   <h4 className="font-semibold text-gray-900 mb-3">Imported By</h4>
                   <div className="space-y-2">
-                    {data.graph.nodes
+                    {(data as any).graph.nodes
                       ?.filter((n: any) => n.type === 'imported_by')
                       .map((node: any, idx: number) => (
                         <div key={idx} className="flex items-center gap-2 p-2 bg-green-50 rounded">
@@ -167,27 +185,27 @@ export const Dependencies: React.FC = () => {
                   </div>
                 </div>
               </div>
-              
-              {data.statistics && (
+
+              {(data as any).statistics && (
                 <div className="pt-6 border-t border-gray-200">
                   <h4 className="font-semibold text-gray-900 mb-3">Statistics</h4>
                   <div className="grid grid-cols-3 gap-4">
                     <div>
                       <p className="text-sm text-gray-600">Total Dependencies</p>
                       <p className="text-xl font-bold text-gray-900">
-                        {data.statistics.total_dependencies}
+                        {(data as any).statistics.total_dependencies}
                       </p>
                     </div>
                     <div>
                       <p className="text-sm text-gray-600">Depth</p>
                       <p className="text-xl font-bold text-gray-900">
-                        {data.statistics.depth}
+                        {(data as any).statistics.depth}
                       </p>
                     </div>
                     <div>
                       <p className="text-sm text-gray-600">Circular Dependencies</p>
                       <p className="text-xl font-bold text-red-600">
-                        {data.statistics.circular_dependencies?.length || 0}
+                        {(data as any).statistics.circular_dependencies?.length || 0}
                       </p>
                     </div>
                   </div>

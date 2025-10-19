@@ -11,25 +11,25 @@ router = APIRouter(prefix="/repositories", tags=["Graphs"], dependencies=[Depend
 def get_graph(
     request: Request,
     repo_id: str,
-    type: str = "dependency",  # dependency | module | class | call
-    format: str = "json",       # json | mermaid | plantuml
+    type: str = "dependency",
+    format: str = "json",
     node_filter: Optional[str] = None,
     depth: int = 0
 ):
-    """
-    Return serialized graphs in machine-readable or diagram text formats.
-    - type: dependency (file import graph), module (module deps), class (class relations), call (function calls)
-    - format: json | mermaid | plantuml
-    - node_filter: optional node id to include neighborhood around (only for dependency graph when format=json)
-    - depth: for neighborhood filtering (>=1)
-    """
     indexer = request.app.state.indexer
 
-    # Build graph payload depending on type
     if type == "dependency":
         dep = indexer.graphs.get(repo_id)
+        # Lazy-load metadata if needed
         if not dep or not getattr(dep, "graph", None):
-            raise HTTPException(status_code=404, detail="Dependency graph not found")
+            try:
+                if indexer.load_metadata_for_repo(repo_id):
+                    dep = indexer.graphs.get(repo_id)
+            except Exception:
+                dep = None
+
+        if not dep or not getattr(dep, "graph", None):
+            raise HTTPException(status_code=404, detail="Dependency graph not found. Please reindex the repository.")
 
         if node_filter and depth and depth > 0:
             deps = dep.dependencies_of(node_filter, depth=depth, direction="both")
@@ -44,10 +44,9 @@ def get_graph(
             for f in imports:
                 edges.append({"source": node_filter, "target": f, "type": "imports"})
             for f in imported_by:
-                edges.append({"source": f, "target": node_filter, "type": "imported_by"})
+                edges.append({"source": node_filter, "target": node_filter if f == node_filter else f, "type": "imported_by"})
             graph_payload = {"nodes": nodes, "edges": edges}
         else:
-            # Full node/edge listing (may be large)
             try:
                 nodes = [{"id": n, "label": str(n).split("/")[-1], "type": "file"} for n in dep.graph.nodes()]
                 edges = [{"source": str(u), "target": str(v), "type": "imports"} for (u, v) in dep.graph.edges()]
@@ -58,25 +57,34 @@ def get_graph(
     elif type == "module":
         mg = indexer.module_graphs.get(repo_id)
         if mg is None:
-            raise HTTPException(status_code=404, detail="Module graph not found")
+            # Try to load on demand
+            if indexer.load_metadata_for_repo(repo_id):
+                mg = indexer.module_graphs.get(repo_id)
+        if mg is None:
+            raise HTTPException(status_code=404, detail="Module graph not found. Please reindex the repository.")
         graph_payload = mg
 
     elif type == "class":
         cg = indexer.class_graphs.get(repo_id)
         if cg is None:
-            raise HTTPException(status_code=404, detail="Class graph not found")
+            if indexer.load_metadata_for_repo(repo_id):
+                cg = indexer.class_graphs.get(repo_id)
+        if cg is None:
+            raise HTTPException(status_code=404, detail="Class graph not found. Please reindex the repository.")
         graph_payload = cg
 
     elif type == "call":
         callg = indexer.call_graphs.get(repo_id)
         if callg is None:
-            raise HTTPException(status_code=404, detail="Call graph not found")
+            if indexer.load_metadata_for_repo(repo_id):
+                callg = indexer.call_graphs.get(repo_id)
+        if callg is None:
+            raise HTTPException(status_code=404, detail="Call graph not found. Please reindex the repository.")
         graph_payload = callg
 
     else:
         raise HTTPException(status_code=400, detail="Unknown graph type")
 
-    # Format
     if format == "json":
         return success_response(request, {"type": type, "graph": graph_payload})
     elif format == "mermaid":

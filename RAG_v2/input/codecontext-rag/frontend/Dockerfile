@@ -18,6 +18,9 @@ RUN npm run build
 # Production stage
 FROM nginx:alpine
 
+# Install curl for docker-compose healthcheck
+RUN apk add --no-cache curl
+
 # Copy built files
 COPY --from=builder /app/dist /usr/share/nginx/html
 

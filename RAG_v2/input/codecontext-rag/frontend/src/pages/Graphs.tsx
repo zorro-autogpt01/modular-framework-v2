@@ -5,7 +5,7 @@ import { LoadingSpinner } from '../components/shared/LoadingSpinner'
 import { ErrorMessage } from '../components/shared/ErrorMessage'
 import { MermaidDiagram } from '../components/shared/MermaidDiagram'
 import { api } from '../services/api'
-import { Map } from 'lucide-react'
+import { Map, RefreshCw } from 'lucide-react'
 import type { Repository } from '../types/index'
 
 export const Graphs: React.FC = () => {
@@ -44,15 +44,33 @@ export const Graphs: React.FC = () => {
       const result = await api.getGraph(selectedRepo, graphType, format, nodeFilter, depth)
       setData(result)
     } catch (err: any) {
-      setError(err.message || 'Failed to load graph')
+      if (err?.response?.status === 404) {
+        setError('Graph not available. Please reindex the repository, then try again.')
+      } else {
+        setError(err.message || 'Failed to load graph')
+      }
     } finally {
       setLoading(false)
     }
   }
 
+  const reindex = async () => {
+    if (!selectedRepo) return
+    try {
+      await api.reindexRepository(selectedRepo)
+      alert('Reindexing started. Try again in ~1 minute.')
+    } catch (err: any) {
+      setError(err.message || 'Failed to start reindexing')
+    }
+  }
+
   return (
     <div className="space-y-6">
-      <Card title="Code Graphs">
+      <Card title="Code Graphs" actions={
+        <Button size="sm" variant="secondary" icon={<RefreshCw className="w-4 h-4" />} onClick={reindex}>
+          Reindex
+        </Button>
+      }>
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -149,32 +167,32 @@ export const Graphs: React.FC = () => {
         <LoadingSpinner text="Loading graph..." />
       ) : data ? (
         <Card title={`${graphType} Graph`}>
-          {format === 'mermaid' && data.graph_text ? (
+          {format === 'mermaid' && (data as any).graph_text ? (
             <div className="overflow-auto">
-              <MermaidDiagram chart={data.graph_text} />
+              <MermaidDiagram chart={(data as any).graph_text} />
             </div>
-          ) : format === 'plantuml' && data.graph_text ? (
+          ) : format === 'plantuml' && (data as any).graph_text ? (
             <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-auto text-sm max-h-[600px]">
-              {data.graph_text}
+              {(data as any).graph_text}
             </pre>
-          ) : data.graph ? (
+          ) : (data as any).graph ? (
             <div className="space-y-6">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-gray-600">Nodes</p>
                   <p className="text-2xl font-bold text-gray-900">
-                    {data.graph.nodes?.length || 0}
+                    {(data as any).graph.nodes?.length || 0}
                   </p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-600">Edges</p>
                   <p className="text-2xl font-bold text-gray-900">
-                    {data.graph.edges?.length || 0}
+                    {(data as any).graph.edges?.length || 0}
                   </p>
                 </div>
               </div>
               <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-auto text-sm max-h-[600px]">
-                {JSON.stringify(data.graph, null, 2)}
+                {JSON.stringify((data as any).graph, null, 2)}
               </pre>
             </div>
           ) : null}

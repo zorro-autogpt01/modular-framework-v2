@@ -375,28 +375,43 @@ class Indexer:
         print(f"Indexing {len(entities_to_index)} entities...")
         self.vector_store.upsert(entities_to_index)
 
-        # NEW: Run feature extraction if enabled
+        # Run feature extraction (safely) if enabled
         if settings.enable_feature_extraction:
             print("Running feature extraction...")
             try:
                 from ..features.extractor import FeatureExtractor
                 from ..storage.feature_store import FeatureStore
                 from ..integrations.llm_gateway import LLMGatewayClient
-                
+                import asyncio
+
                 feature_store = FeatureStore()
                 llm_client = LLMGatewayClient()
-                extractor = FeatureExtractor(embedder, llm_client)
-                
-                features = await extractor.extract_features(
-                    repo_id,
-                    repo_path,
-                    parsed_data,
-                    vector_store
-                )
-                
+                extractor = FeatureExtractor(self.embedder, llm_client)
+
+                # Execute async extractor inside this sync method
+                try:
+                    features = asyncio.run(
+                        extractor.extract_features(repo_id, repo_path, parsed_data, self.vector_store)
+                    )
+                except RuntimeError:
+                    # If we're already in an event loop (rare here), create a new one
+                    loop = asyncio.new_event_loop()
+                    try:
+                        features = loop.run_until_complete(
+                            extractor.extract_features(repo_id, repo_path, parsed_data, self.vector_store)
+                        )
+                    finally:
+                        loop.close()
+
                 feature_store.save_features(features)
+                # Best-effort close LLM client
+                try:
+                    asyncio.run(llm_client.close())
+                except Exception:
+                    pass
+
                 print(f"Saved {len(features)} features")
-                
+
             except Exception as e:
                 print(f"Feature extraction failed: {e}")
 

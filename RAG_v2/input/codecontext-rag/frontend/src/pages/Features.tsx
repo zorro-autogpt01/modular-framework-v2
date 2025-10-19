@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
 import { Card } from '../components/shared/Card'
 import { Button } from '../components/shared/Button'
 import { Badge } from '../components/shared/Badge'
@@ -7,11 +6,10 @@ import { LoadingSpinner } from '../components/shared/LoadingSpinner'
 import { ErrorMessage } from '../components/shared/ErrorMessage'
 import { FeatureCard } from '../components/features/FeatureCard'
 import { api } from '../services/api'
-import { Filter, RefreshCw } from 'lucide-react'
+import { RefreshCw } from 'lucide-react'
 import type { Feature, Repository } from '../types/index'
 
 export const Features: React.FC = () => {
-  const [searchParams, setSearchParams] = useSearchParams()
   const [repos, setRepos] = useState<Repository[]>([])
   const [selectedRepo, setSelectedRepo] = useState<string>('')
   const [features, setFeatures] = useState<Feature[]>([])
@@ -44,7 +42,7 @@ export const Features: React.FC = () => {
 
   const loadFeatures = async () => {
     if (!selectedRepo) return
-    
+
     try {
       setLoading(true)
       setError('')
@@ -64,7 +62,6 @@ export const Features: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <Card>
         <div className="flex items-center justify-between">
           <div>
@@ -79,7 +76,6 @@ export const Features: React.FC = () => {
         </div>
       </Card>
 
-      {/* Filters */}
       <Card>
         <div className="flex items-center gap-4 flex-wrap">
           <div className="flex-1 min-w-[200px]">
@@ -133,7 +129,6 @@ export const Features: React.FC = () => {
         </div>
       </Card>
 
-      {/* Results */}
       {error && <ErrorMessage message={error} onRetry={loadFeatures} />}
 
       {loading ? (

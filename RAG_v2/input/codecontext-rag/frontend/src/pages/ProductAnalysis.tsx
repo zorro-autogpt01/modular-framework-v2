@@ -15,7 +15,6 @@ export const ProductAnalysis: React.FC = () => {
   const [selectedRepo, setSelectedRepo] = useState<string>('')
   const [suggestions, setSuggestions] = useState<FeatureSuggestion[]>([])
   const [analyses, setAnalyses] = useState<AgentAnalysis[]>([])
-  const [selectedSuggestion, setSelectedSuggestion] = useState<string>('')
   const [conversation, setConversation] = useState<ConversationMessage[]>([])
   const [running, setRunning] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -71,8 +70,7 @@ export const ProductAnalysis: React.FC = () => {
       setRunning(true)
       setError('')
       await api.triggerProductAnalysis(selectedRepo, false)
-      
-      // Poll for results
+
       setTimeout(() => {
         loadData()
         setRunning(false)
@@ -87,7 +85,6 @@ export const ProductAnalysis: React.FC = () => {
     try {
       const data = await api.getSuggestionDetail(selectedRepo, suggestionId)
       setConversation(data.conversation || [])
-      setSelectedSuggestion(suggestionId)
     } catch (err: any) {
       setError(err.message || 'Failed to load conversation')
     }
@@ -109,7 +106,6 @@ export const ProductAnalysis: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <Card>
         <div className="flex items-center justify-between">
           <div>
@@ -149,11 +145,10 @@ export const ProductAnalysis: React.FC = () => {
         <LoadingSpinner text="Loading analysis results..." />
       ) : (
         <>
-          {/* Agent Analyses */}
           {(pmAnalysis || marketerAnalysis) && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {pmAnalysis && (
-                <Card 
+                <Card
                   title="Product Manager Analysis"
                   actions={<Badge variant="info">PM Agent</Badge>}
                 >
@@ -176,7 +171,7 @@ export const ProductAnalysis: React.FC = () => {
               )}
 
               {marketerAnalysis && (
-                <Card 
+                <Card
                   title="Growth Marketer Analysis"
                   actions={<Badge variant="success">Marketer Agent</Badge>}
                 >
@@ -200,7 +195,6 @@ export const ProductAnalysis: React.FC = () => {
             </div>
           )}
 
-          {/* Suggestions */}
           {suggestions.length > 0 && (
             <>
               <div className="flex items-center justify-between">
@@ -226,12 +220,10 @@ export const ProductAnalysis: React.FC = () => {
             </>
           )}
 
-          {/* Conversation */}
           {conversation.length > 0 && (
             <ConversationThread messages={conversation} />
           )}
 
-          {/* Empty State */}
           {!loading && suggestions.length === 0 && analyses.length === 0 && (
             <Card>
               <div className="text-center py-12">

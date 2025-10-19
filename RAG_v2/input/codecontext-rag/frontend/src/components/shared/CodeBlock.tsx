@@ -1,4 +1,4 @@
-import type React from 'react'
+import React, { useState } from 'react'
 import { Copy, Check } from 'lucide-react'
 
 interface CodeBlockProps {
@@ -7,12 +7,12 @@ interface CodeBlockProps {
   maxHeight?: string
 }
 
-export const CodeBlock: React.FC<CodeBlockProps> = ({ 
-  code, 
+export const CodeBlock: React.FC<CodeBlockProps> = ({
+  code,
   language = 'text',
-  maxHeight = '400px'
+  maxHeight = '400px',
 }) => {
-  const [copied, setCopied] = React.useState(false)
+  const [copied, setCopied] = useState(false)
 
   const handleCopy = () => {
     navigator.clipboard.writeText(code)
@@ -25,10 +25,11 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
       <button
         onClick={handleCopy}
         className="absolute top-2 right-2 p-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+        aria-label="Copy code"
       >
         {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
       </button>
-      <pre 
+      <pre
         className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-auto text-sm"
         style={{ maxHeight }}
       >

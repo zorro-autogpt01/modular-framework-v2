@@ -95,11 +95,11 @@ services:
         condition: service_healthy
     networks:
       - codecontext-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:80"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+    #healthcheck:
+    #  test: ["CMD", "curl", "-f", "http://localhost:80"]
+    #  interval: 30s
+    #  timeout: 10s
+    #  retries: 3
 
 volumes:
   lancedb_data:

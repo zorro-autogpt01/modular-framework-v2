@@ -16,6 +16,7 @@ from .api.routes import trace as trace_routes
 from .api.routes import tests as tests_routes
 from .api.routes import segment as segment_routes
 from .api.routes import features as features_routes
+from .api.routes import diagnostics as diagnostics_routes
 from .storage.inmemory import InMemoryRepositoryStore, InMemoryJobStore
 from .core.parser import CodeParser
 from .core.embedder import LLMGatewayEmbedder
@@ -101,6 +102,8 @@ app.include_router(trace_routes.router)
 app.include_router(tests_routes.router)
 app.include_router(segment_routes.router)
 app.include_router(features_routes.router)
+app.include_router(diagnostics_routes.router)
+
 
 @app.exception_handler(404)
 async def not_found_handler(request: Request, exc):

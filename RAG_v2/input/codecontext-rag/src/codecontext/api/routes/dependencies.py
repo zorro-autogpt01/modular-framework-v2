@@ -18,8 +18,19 @@ def get_file_dependencies(
     indexer = request.app.state.indexer
     dep_graph = indexer.graphs.get(repository_id)
 
+    # Lazy-load metadata if not present in memory
     if not dep_graph:
-        raise HTTPException(status_code=404, detail="Dependency graph not available for this repository")
+        try:
+            if indexer.load_metadata_for_repo(repository_id):
+                dep_graph = indexer.graphs.get(repository_id)
+        except Exception:
+            dep_graph = None
+
+    if not dep_graph or not getattr(dep_graph, "graph", None):
+        raise HTTPException(
+            status_code=404,
+            detail="Dependency graph not available for this repository. Please reindex the repository."
+        )
 
     # Decode URL-encoded path if needed (FastAPI path already decoded)
     target = file_path
@@ -102,7 +113,7 @@ def get_file_dependencies(
         "statistics": {
             "total_dependencies": len(imports) + len(imported_by),
             "depth": depth,
-            "circular_dependencies": cycles[:10]  # limit for payload
+            "circular_dependencies": cycles[:10]
         },
     }
     return success_response(request, data)

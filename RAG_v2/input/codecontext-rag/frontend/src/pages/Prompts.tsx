@@ -3,7 +3,6 @@ import { Card } from '../components/shared/Card'
 import { Button } from '../components/shared/Button'
 import { LoadingSpinner } from '../components/shared/LoadingSpinner'
 import { ErrorMessage } from '../components/shared/ErrorMessage'
-import { CodeBlock } from '../components/shared/CodeBlock'
 import { api } from '../services/api'
 import { MessageSquare, Copy, Check } from 'lucide-react'
 import type { Repository } from '../types/index'
@@ -166,22 +165,10 @@ export const Prompts: React.FC = () => {
                     {msg.role.toUpperCase()}
                   </p>
                   <pre className="text-sm text-gray-800 whitespace-pre-wrap font-mono">
-                    {msg.content.length > 1000 
-                      ? msg.content.substring(0, 1000) + '...' 
+                    {msg.content.length > 1000
+                      ? msg.content.substring(0, 1000) + '...'
                       : msg.content}
                   </pre>
-                  {msg.content.length > 1000 && (
-                    <button
-                      onClick={() => {
-                        const newMessages = [...messages]
-                        newMessages[idx].content = msg.content
-                        setMessages(newMessages)
-                      }}
-                      className="text-xs text-primary-600 hover:text-primary-700 mt-2"
-                    >
-                      Show full content
-                    </button>
-                  )}
                 </div>
               ))}
             </div>
