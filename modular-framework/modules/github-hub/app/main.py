@@ -1,3 +1,4 @@
+# modular-framework/modules/github-hub/app/main.py
 from __future__ import annotations
 import os
 import asyncio
@@ -40,9 +41,13 @@ except ImportError:
 
 app = FastAPI(title="GitHub Hub", version="0.6.0")
 
+# ✅ pass the class + kwargs (not an instance)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.mount("/ui", StaticFiles(directory="public", html=True), name="ui")
@@ -194,6 +199,25 @@ def _valid_https_url(u: str) -> bool:
     except Exception:
         return False
 
+def _ensure_branch_watch(conn_id: str, branches: List[str]) -> None:
+    """
+    Ensure the given branches are being watched for this connection.
+    This is a no-op if the connection doesn't exist.
+    """
+    try:
+        conn = get_connection(conn_id)
+        if not conn:
+            return
+        existing = set((conn.get("watch_branches") or []) + [conn.get("default_branch") or "main"])
+        add = {b for b in branches if isinstance(b, str) and b.strip()}
+        merged = sorted(existing | add)
+        # Idempotent upsert: only write when needed
+        if set(conn.get("watch_branches") or []) != set(merged):
+            upsert_connection({"id": conn_id, "watch_branches": merged})
+            logger.info(f"Updated watch_branches for {conn_id}: now watching {', '.join(merged)}")
+    except Exception as e:
+        logger.warning(f"Failed to ensure watch branches for {conn_id}: {e}")
+
 # ===== Polling Implementation =====
 
 async def polling_loop():
@@ -276,7 +300,11 @@ async def check_branch(conn: Dict[str, Any], client: GHClient, owner: str, repo:
             if GHH_EMIT_ON_FIRST_SEEN:
                 await emit_change_event(conn, branch, None, current_sha, None)
             else:
-                logger.info(f"First observation of {owner}/{repo}#{branch}: {current_sha[:7]}")
+                logger.info(
+                    f"First observation of {owner}/{repo}#{branch}: {current_sha[:7]} "
+                    f"(no event sent). Push a new commit or set GHH_EMIT_ON_FIRST_SEEN=true "
+                    f"to emit on first sighting."
+                )
             return
 
         if current_sha != last_sha:
@@ -414,7 +442,7 @@ async def send_notification(client: httpx.AsyncClient, sub: Dict[str, Any],
             record_delivery(sub["id"])
             return True
 
-        logger.warning(f"Delivery error to {sub['id']}: HTTP {resp.status_code}")
+        logger.warning(f"Delivery error to {sub['id']} ({url}): HTTP {resp.status_code}")
         if resp.status_code >= 500 and retry_count < GHH_NOTIFY_RETRIES:
             backoff = GHH_NOTIFY_BACKOFF_BASE_SEC * (2 ** retry_count)
             await asyncio.sleep(backoff)
@@ -422,7 +450,7 @@ async def send_notification(client: httpx.AsyncClient, sub: Dict[str, Any],
         return False
 
     except Exception as e:
-        logger.warning(f"Delivery exception to {sub['id']}: {e}")
+        logger.warning(f"Delivery exception to {sub['id']} ({url}): {e}")
         if retry_count < GHH_NOTIFY_RETRIES:
             backoff = GHH_NOTIFY_BACKOFF_BASE_SEC * (2 ** retry_count)
             await asyncio.sleep(backoff)
@@ -490,6 +518,7 @@ class SubscriptionIn(BaseModel):
 
 class SubscriptionUpdate(BaseModel):
     active: Optional[bool] = None
+    branches: Optional[List[str]] = None
 
 # ----- basic -----
 @app.get("/")
@@ -575,6 +604,11 @@ async def create_subscription(body: SubscriptionIn):
 
     data = body.model_dump(exclude_unset=True, exclude_none=True)
     sub = upsert_subscription(data)
+
+    # Proactively make the poller watch the requested branches for this connection
+    if data.get("conn_id") and data.get("branches"):
+        _ensure_branch_watch(data["conn_id"], data["branches"])
+
     sub.pop("secret", None)
     sub.pop("secret_enc", None)
     sub.pop("secret_plain", None)
@@ -649,6 +683,9 @@ async def update_subscription(sub_id: str, body: SubscriptionUpdate):
     if updates:
         updates["id"] = sub_id
         sub = upsert_subscription(updates)
+        # If branches were updated and a conn filter is set, ensure we watch them
+        if sub.get("conn_id") and updates.get("branches"):
+            _ensure_branch_watch(sub["conn_id"], updates["branches"])
     sub.pop("secret", None)
     sub.pop("secret_enc", None)
     sub.pop("secret_plain", None)

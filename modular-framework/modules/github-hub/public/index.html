@@ -75,6 +75,10 @@
       <input id="repoUrl" placeholder="https://github.com/owner/repo" />
       <label>Branch</label>
       <select id="branchSelect"></select>
+      <div id="watchHint" class="hidden" style="margin:8px 0; padding:6px; background:#2a2c31; border-radius:6px;">
+        👁️ <span data-branch></span> is not being watched.
+        <button id="watchThisBranchBtn" class="ghost">Watch this branch</button>
+      </div>
       <div class="row">
         <button id="saveCfgBtn">Save</button>
         <button class="ghost" id="testCfgBtn" title="Test connection without saving">Test</button>

@@ -24,6 +24,9 @@ function slugify(s){
     .replace(/^-|-$/g,'');
 }
 
+function openModal(id){ document.getElementById(id)?.classList.add('show'); }
+function closeModal(id){ document.getElementById(id)?.classList.remove('show'); }
+
 function isHttpUrl(u){ return typeof u === 'string' && (u.startsWith('http://') || u.startsWith('https://')); }
 function looksLikeRepoUrl(u){
   if (!u || typeof u !== 'string') return false;
@@ -80,6 +83,69 @@ async function countTokensFor(text) {
   }
   return Math.ceil(text.length / 4);
 }
+
+// Toast helper
+function toast(msg, ok = true) {
+  const t = document.getElementById('toast');
+  if (!t) { alert(msg); return; }
+  t.textContent = msg;
+  t.style.borderColor = ok ? '#2d7d46' : '#a1260d';
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+// Multi-connection loader
+async function loadConnections() {
+  const sel = document.getElementById('connSelect');
+  const manageBtn = document.getElementById('manageConnsBtn');
+
+  let multi = false;
+  try {
+    const r = await api('/connections');
+    const conns = r.connections || [];
+    const def = r.default_id || r.defaultId || null;
+
+    sel.innerHTML = '';
+    conns.forEach(c => sel.appendChild(new Option(c.name || c.id || c.repo_url, c.id)));
+
+    // choose active connection (default or first)
+    window.ACTIVE_CONN = def || (conns[0] && conns[0].id) || null;
+    if (window.ACTIVE_CONN) sel.value = window.ACTIVE_CONN;
+
+    // prefill repo/base URL fields for the active one
+    const active = conns.find(c => c.id === (window.ACTIVE_CONN || def)) || conns[0];
+    if (active) {
+      document.getElementById('repoUrl').value = (active.repo_url || '').replace(/\/+$/,'');
+      document.getElementById('baseUrl').value = active.base_url || 'https://api.github.com';
+    }
+
+    manageBtn.disabled = false;
+    window.HAS_MULTI = true;
+    multi = true;
+  } catch {
+    // fall back to single-connection mode
+    try {
+      const c = await api('/config', undefined, { noConn: true });
+      const defId = c.default_id || c.defaultId || null;
+      const d = (c.connections || []).find(x => x.id === defId) || (c.connections || [])[0] || {};
+      document.getElementById('repoUrl').value = (d.repo_url || c.repo_url || '').replace(/\/+$/,'');
+      document.getElementById('baseUrl').value = d.base_url || c.base_url || 'https://api.github.com';
+
+      sel.innerHTML = '';
+      sel.appendChild(new Option((d.name || d.id || d.repo_url || 'Default').replace(/\/+$/,''), 'default'));
+      window.ACTIVE_CONN = null;            // signals single-connection mode to the API helper
+      sel.value = 'default';
+      manageBtn.disabled = true;
+      window.HAS_MULTI = false;
+    } catch (e) {
+      console.warn(e);
+    }
+  }
+
+  // hide Manage button if single-connection mode
+  if (!multi) manageBtn.classList.add('hidden'); else manageBtn.classList.remove('hidden');
+}
+
 
 async function getFileContent(path, branch) {
   const key = `${branch}:${path}`;
@@ -138,63 +204,51 @@ async function api(path, init, opts) {
   try { return JSON.parse(t); } catch { return { ok: true, raw: t }; }
 }
 
-async function loadConnections() {
-  const sel = $('connSelect');
-  const manageBtn = $('manageConnsBtn');
+/* === NEW: branch watch awareness === */
+async function getPollStatus(){
+  try { return await api('/poll/status'); } catch { return null; }
+}
 
-  let multi = false;
-  try {
-    const r = await api('/connections');
-    const conns = r.connections || [];
-    const def = r.default_id || r.defaultId || null;
-
-    sel.innerHTML = '';
-    conns.forEach(c => {
-      const o = new Option(c.name || c.id || c.repo_url, c.id);
-      sel.appendChild(o);
-    });
-    ACTIVE_CONN = def || conns[0]?.id || null;
-    if (ACTIVE_CONN) sel.value = ACTIVE_CONN;
-
-    manageBtn.disabled = false;
-    HAS_MULTI = true;
-    const active = conns.find(c => c.id === (ACTIVE_CONN || def)) || conns[0];
-    if (active) {
-      $('repoUrl').value = (active.repo_url || '').replace(/\/+$/,'');
-      $('baseUrl').value = active.base_url || 'https://api.github.com';
-    }
-    multi = true;
-  } catch {
-    try {
-      const c = await api('/config', undefined, { noConn: true });
-      const defId = c.default_id || c.defaultId || null;
-      const d = (c.connections || []).find(x => x.id === defId) || (c.connections || [])[0] || {};
-      $('repoUrl').value = (d.repo_url || c.repo_url || '').replace(/\/+$/,'');
-      $('baseUrl').value = d.base_url || c.base_url || 'https://api.github.com';
-      sel.innerHTML = '';
-      const o = new Option((d.name || d.id || d.repo_url || 'Default').replace(/\/+$/,''), 'default');
-      sel.appendChild(o);
-      ACTIVE_CONN = null;
-      sel.value = 'default';
-      manageBtn.disabled = true;
-      HAS_MULTI = false;
-    } catch (e) {
-      console.warn(e);
+async function ensureCurrentBranchWatchedBanner(){
+  const hint = $('watchHint');
+  if (!hint) return;
+  hint.classList.add('hidden');
+  const status = await getPollStatus();
+  if (!status) return;
+  const conn = (status.connections||[]).find(c => c.id === (ACTIVE_CONN || status.default_id || 'default'));
+  if (!conn) return;
+  const branch = $('branchSelect').value || (conn.watch_branches?.[0] || conn.default_branch || 'main');
+  const watched = new Set(conn.watch_branches || [conn.default_branch || 'main']);
+  if (!watched.has(branch)) {
+    const span = hint.querySelector('[data-branch]');
+    if (span) span.textContent = branch;
+    hint.classList.remove('hidden');
+    const btn = $('watchThisBranchBtn');
+    if (btn) {
+      btn.onclick = async () => {
+        try {
+          const merged = Array.from(new Set([...(conn.watch_branches||[]), (conn.default_branch||'main'), branch]));
+          await api('/connections', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: conn.id,
+              repo_url: conn.repo_url,
+              base_url: conn.base_url || 'https://api.github.com',
+              default_branch: conn.default_branch || 'main',
+              watch_branches: merged
+            })
+          });
+          toast(`Now watching '${branch}' on ${conn.id}`);
+          await showPollStatus();
+          hint.classList.add('hidden');
+        } catch (e) {
+          toast(`Failed to watch branch: ${e.message}`, false);
+        }
+      };
     }
   }
-  if (!multi) manageBtn.classList.add('hidden'); else manageBtn.classList.remove('hidden');
 }
-
-function toast(msg, ok = true) {
-  const t = $('toast'); if (!t) { alert(msg); return; }
-  t.textContent = msg;
-  t.style.borderColor = ok ? '#2d7d46' : '#a1260d';
-  t.classList.add('show');
-  setTimeout(()=> t.classList.remove('show'), 2200);
-}
-
-function openModal(id){ $(id)?.classList.add('show'); }
-function closeModal(id){ $(id)?.classList.remove('show'); }
 
 /* Subscription manager */
 async function openSubManager() {
@@ -313,7 +367,7 @@ async function showPollStatus(){
   } catch (e) { toast(e.message, false); }
 }
 
-/* Existing UI code remains, with minor tweaks */
+/* Existing UI code (enhanced) */
 export async function loadConfig(){
   try{
     const c = await api('/config', undefined, { noConn: true });
@@ -669,49 +723,16 @@ export async function loadTree(){
       });
     };
 
+    // Show hint if current branch isn't watched by poller
+    await ensureCurrentBranchWatchedBanner();
+
   }catch(e){
     $('tree').innerHTML = `<div class="muted">Failed to load tree: ${e.message}</div>`;
   }
   applyFilter();
 }
 
-/* Wire UI */
-let _wired = false;
-function wireUIOnce(){
-  if (_wired) return;
-  _wired = true;
-
-  $('saveCfgBtn')?.addEventListener('click', saveConfig);
-  $('testCfgBtn')?.addEventListener('click', testCurrentConfig);
-  $('reloadBtn')?.addEventListener('click', loadTree);
-  $('saveFileBtn')?.addEventListener('click', saveFile);
-  $('branchSelect')?.addEventListener('change', loadTree);
-  $('connSelect')?.addEventListener('change', async (e) => {
-    ACTIVE_CONN = (e.target.value === 'default') ? null : e.target.value;
-    await loadBranches();
-    await loadTree();
-  });
-
-  $('manageConnsBtn')?.addEventListener('click', openConnManager);
-  $('openPrBtn')?.addEventListener('click', ()=> openModal('prModal'));
-  $('closePrBtn')?.addEventListener('click', ()=> closeModal('prModal'));
-  $('createPrBtn')?.addEventListener('click', createPR);
-
-  $('filterInput')?.addEventListener('input', () => {
-    if (window._filterTimer) cancelAnimationFrame(window._filterTimer);
-    window._filterTimer = requestAnimationFrame(applyFilter);
-  });
-
-  // Polling + Subscriptions
-  $('pollGlobalBtn')?.addEventListener('click', triggerGlobalPoll);
-  $('pollConnBtn')?.addEventListener('click', triggerConnPoll);
-  $('pollStatusBtn')?.addEventListener('click', showPollStatus);
-  $('closePollBtn')?.addEventListener('click', () => closeModal('pollModal'));
-
-  $('manageSubsBtn')?.addEventListener('click', openSubManager);
-  $('closeSubsBtn')?.addEventListener('click', () => closeModal('subsModal'));
-}
-
+/* Connections manager (modal) */
 async function openConnManager() {
   try {
     const r = await api('/connections');
@@ -769,10 +790,93 @@ async function openConnManager() {
       $('mTok').value = '';
     });
 
+    // Wire modal controls (save/test/close)
+    $('saveConnBtn').onclick = async () => {
+      const payload = {
+        id: $('mId').value.trim(),
+        name: $('mName').value.trim() || undefined,
+        repo_url: $('mRepo').value.trim(),
+        default_branch: $('mBranch').value.trim() || undefined,
+        base_url: $('mBase').value.trim() || 'https://api.github.com',
+        token: $('mTok').value.trim() || undefined
+      };
+      const errs = validateConnInput(payload);
+      if (errs.length) { toast(errs[0], false); return; }
+      try {
+        // validate first
+        await testConnectionPayload({ repo_url: payload.repo_url, base_url: payload.base_url, token: payload.token });
+        await api('/connections', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+        toast('Connection saved');
+        $('mTok').value = '';
+        await loadConnections();
+        await loadBranches();
+        await loadTree();
+      } catch (e) {
+        toast(e.message, false);
+      }
+    };
+
+    $('testConnModalBtn').onclick = async () => {
+      const payload = {
+        repo_url: $('mRepo').value.trim(),
+        base_url: $('mBase').value.trim() || 'https://api.github.com',
+        token: $('mTok').value.trim() || undefined
+      };
+      const errs = validateConnInput({ id: 'tmp', ...payload });
+      if (errs.length) { toast(errs[0], false); return; }
+      try {
+        const res = await testConnectionPayload(payload);
+        toast(`OK • ${res.branches?.length || 0} branches`);
+      } catch (e) {
+        toast(e.message, false);
+      }
+    };
+
+    $('closeConnBtn').onclick = () => closeModal('connModal');
+
     openModal('connModal');
   } catch {
     toast('Multi-connection API not available', false);
   }
+}
+
+/* Wire UI */
+let _wired = false;
+function wireUIOnce(){
+  if (_wired) return;
+  _wired = true;
+
+  $('saveCfgBtn')?.addEventListener('click', saveConfig);
+  $('testCfgBtn')?.addEventListener('click', testCurrentConfig);
+  $('reloadBtn')?.addEventListener('click', async ()=>{ await loadTree(); });
+
+  $('saveFileBtn')?.addEventListener('click', saveFile);
+  $('branchSelect')?.addEventListener('change', async ()=>{ await loadTree(); await ensureCurrentBranchWatchedBanner(); });
+
+  $('connSelect')?.addEventListener('change', async (e) => {
+    ACTIVE_CONN = (e.target.value === 'default') ? null : e.target.value;
+    await loadBranches();
+    await loadTree();
+  });
+
+  $('manageConnsBtn')?.addEventListener('click', openConnManager);
+  $('openPrBtn')?.addEventListener('click', ()=> openModal('prModal'));
+  $('closePrBtn')?.addEventListener('click', ()=> closeModal('prModal'));
+  $('createPrBtn')?.addEventListener('click', createPR);
+
+  $('filterInput')?.addEventListener('input', () => {
+    if (window._filterTimer) cancelAnimationFrame(window._filterTimer);
+    window._filterTimer = requestAnimationFrame(applyFilter);
+  });
+
+  // Polling + Subscriptions
+  $('pollGlobalBtn')?.addEventListener('click', triggerGlobalPoll);
+  $('pollConnBtn')?.addEventListener('click', triggerConnPoll);
+  $('pollStatusBtn')?.addEventListener('click', showPollStatus);
+  $('closePollBtn')?.addEventListener('click', () => closeModal('pollModal'));
+
+  $('manageSubsBtn')?.addEventListener('click', openSubManager);
+  $('closeSubsBtn')?.addEventListener('click', () => closeModal('subsModal'));
 }
 
 window.addEventListener('DOMContentLoaded', async ()=>{
