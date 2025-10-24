@@ -1,3 +1,5 @@
+//import { initAnalysis } from './analysis.js';
+
 const $ = (id)=>document.getElementById(id);
 const isSide = new URLSearchParams(location.search).get('embed') === 'side';
 
@@ -368,7 +370,7 @@ async function showPollStatus(){
 }
 
 /* Existing UI code (enhanced) */
-export async function loadConfig(){
+async function loadConfig(){
   try{
     const c = await api('/config', undefined, { noConn: true });
     const defId = c.default_id || c.defaultId || null;
@@ -395,7 +397,7 @@ async function testCurrentConfig(){
   }
 }
 
-export async function saveConfig(){
+async function saveConfig(){
   const repo_url = $('repoUrl').value.trim();
   const default_branch = $('branchSelect').value || '';
   const base_url = $('baseUrl').value.trim() || 'https://api.github.com';
@@ -426,7 +428,7 @@ export async function saveConfig(){
   await loadTree();
 }
 
-export async function loadBranches(prefetched = null){
+async function loadBranches(prefetched = null){
   const sel = $('branchSelect');
   sel.innerHTML = '';
   try{
@@ -450,7 +452,7 @@ export async function loadBranches(prefetched = null){
 let currentFile = null;
 let currentSha  = null;
 
-export async function openFile(path){
+async function openFile(path){
   const branch = $('branchSelect').value || 'main';
   const data = await api(`/file?path=${encodeURIComponent(path)}&branch=${encodeURIComponent(branch)}`);
   currentFile = path;
@@ -459,7 +461,7 @@ export async function openFile(path){
   $('fileView').textContent = data.decoded_content || '';
 }
 
-export async function saveFile(){
+async function saveFile(){
   if (!currentFile) return alert('No file open');
   const branch = $('branchSelect').value || 'main';
   const message = $('commitMsg').value.trim() || `Update ${currentFile}`;
@@ -519,7 +521,7 @@ async function createPR(){
   }
 }
 
-export async function loadTree(){
+async function loadTree(){
   const treeEl = $('tree');
   treeEl.innerHTML = '<div class="muted">Loading…</div>';
 
@@ -730,6 +732,11 @@ export async function loadTree(){
     $('tree').innerHTML = `<div class="muted">Failed to load tree: ${e.message}</div>`;
   }
   applyFilter();
+  const analysisPanel = $('analysisPanel');
+  if (analysisPanel) {
+    analysisPanel.style.display = 'block';
+    tryLoadCachedAnalysis();
+}
 }
 
 /* Connections manager (modal) */
@@ -886,3 +893,258 @@ window.addEventListener('DOMContentLoaded', async ()=>{
   await loadBranches();
   await loadTree();
 });
+
+
+
+let currentAnalysis = null;
+// Initialize analysis features
+function initAnalysis() {
+  const analyzeBtn = $('analyzeBtn');
+  const forceAnalyzeBtn = $('forceAnalyzeBtn');
+  
+  if (analyzeBtn) {
+    analyzeBtn.addEventListener('click', () => runAnalysis(false));
+    console.log('✅ Analyze button initialized');
+  } else {
+    console.warn('⚠️ Analyze button not found');
+  }
+  
+  if (forceAnalyzeBtn) {
+    forceAnalyzeBtn.addEventListener('click', () => runAnalysis(true));
+    console.log('✅ Force analyze button initialized');
+  } else {
+    console.warn('⚠️ Force analyze button not found');
+  }
+  
+  console.log('✅ Analysis module initialized');
+}
+
+// Try to load cached analysis if it exists
+async function tryLoadCachedAnalysis() {
+  const repoUrl = $('repoUrl')?.value;
+  if (!repoUrl) return;
+  
+  const { owner, repo } = parseRepoFromUrl(repoUrl);
+  if (!owner || !repo) return;
+  
+  try {
+    const data = await api(`/cache/${owner}/${repo}`, undefined, { noConn: true });
+    displayAnalysisResults(data);
+    enhanceTreeWithAnalysis(data);
+  } catch (err) {
+    // Silently fail - no cached analysis available
+  }
+}
+
+// Run repository analysis
+async function runAnalysis(force = false) {
+  const repoUrl = $('repoUrl')?.value;
+  if (!repoUrl) {
+    toast('No repository loaded', false);
+    return;
+  }
+  
+  const { owner, repo } = parseRepoFromUrl(repoUrl);
+  if (!owner || !repo) {
+    toast('Invalid repository URL', false);
+    return;
+  }
+  
+  const analyzeBtn = $('analyzeBtn');
+  const forceAnalyzeBtn = $('forceAnalyzeBtn');
+  const analysisPanel = $('analysisPanel');
+  
+  if (analysisPanel) analysisPanel.style.display = 'block';
+  if (analyzeBtn) {
+    analyzeBtn.disabled = true;
+    analyzeBtn.textContent = 'Analyzing...';
+  }
+  if (forceAnalyzeBtn) forceAnalyzeBtn.disabled = true;
+  
+  try {
+    const data = await api(`/analyze/${owner}/${repo}?force=${force}`, {
+      method: 'POST'
+    }, { noConn: true });
+    
+    currentAnalysis = data;
+    displayAnalysisResults(data);
+    enhanceTreeWithAnalysis(data);
+    
+    toast(data.cached ? 'Loaded from cache ✓' : 'Analysis complete ✓', true);
+    
+  } catch (err) {
+    toast(`Analysis failed: ${err.message}`, false);
+    console.error('Analysis error:', err);
+  } finally {
+    if (analyzeBtn) {
+      analyzeBtn.disabled = false;
+      analyzeBtn.textContent = 'Analyze Repository';
+    }
+    if (forceAnalyzeBtn) forceAnalyzeBtn.disabled = false;
+  }
+}
+
+// Display analysis results in the UI
+function displayAnalysisResults(data) {
+  const resultsDiv = $('analysisResults');
+  if (!resultsDiv) return;
+  
+  resultsDiv.style.display = 'block';
+  
+  // Update stats
+  const statFiles = $('statFiles');
+  const statDeps = $('statDeps');
+  const statTokens = $('statTokens');
+  const statLines = $('statLines');
+  
+  if (statFiles) statFiles.textContent = (data.dependencies?.stats?.total_files || 0).toLocaleString();
+  if (statDeps) statDeps.textContent = (data.dependencies?.stats?.total_dependencies || 0).toLocaleString();
+  if (statTokens) statTokens.textContent = (data.tokens?.totals?.tokens || 0).toLocaleString();
+  if (statLines) statLines.textContent = (data.tokens?.totals?.lines || 0).toLocaleString();
+  
+  // Show circular dependencies if any
+  const circularDeps = data.circular_dependencies || [];
+  const circularDiv = $('circularDeps');
+  const circularList = $('circularList');
+  
+  if (circularDiv && circularList && circularDeps.length > 0) {
+    circularDiv.style.display = 'block';
+    
+    const displayCount = Math.min(3, circularDeps.length);
+    circularList.innerHTML = circularDeps
+      .slice(0, displayCount)
+      .map(circle => circle.join(' → '))
+      .join('<br>');
+    
+    if (circularDeps.length > 3) {
+      circularList.innerHTML += `<br><span style="opacity: 0.7;">... and ${circularDeps.length - 3} more</span>`;
+    }
+  } else if (circularDiv) {
+    circularDiv.style.display = 'none';
+  }
+  
+  // Show analysis time
+  const analysisTime = $('analysisTime');
+  if (analysisTime && data.metadata?.analyzed_at) {
+    const time = new Date(data.metadata.analyzed_at).toLocaleString();
+    analysisTime.textContent = `Last analyzed: ${time}${data.cached ? ' (cached)' : ''}`;
+  }
+}
+
+// Enhance tree with analysis data (tokens and dependencies)
+function enhanceTreeWithAnalysis(data) {
+  if (!data) return;
+  
+  const treeDiv = $('tree');
+  if (!treeDiv) return;
+  
+  // Find all file items in the tree
+  const fileItems = treeDiv.querySelectorAll('li[data-path]');
+  
+  fileItems.forEach(item => {
+    const path = item.getAttribute('data-path');
+    if (!path) return;
+    
+    // Skip if it's a directory
+    const row = item.querySelector('.row');
+    if (!row) return;
+    
+    // Remove existing badges
+    row.querySelectorAll('.token-badge, .dep-indicator').forEach(el => el.remove());
+    
+    // Add token badge
+    const tokenData = data.tokens?.files?.[path];
+    if (tokenData && tokenData.tokens) {
+      const badge = document.createElement('span');
+      badge.className = 'token-badge ' + getTokenCategory(tokenData.tokens);
+      badge.textContent = tokenData.tokens.toLocaleString();
+      badge.title = `${tokenData.tokens.toLocaleString()} tokens\n${tokenData.lines.toLocaleString()} lines\n${tokenData.chars.toLocaleString()} chars`;
+      row.appendChild(badge);
+    }
+    
+    // Add dependency indicator
+    const deps = data.dependencies?.dependencies?.[path] || [];
+    const usedBy = data.dependencies?.reverse_dependencies?.[path] || [];
+    
+    if (deps.length > 0 || usedBy.length > 0) {
+      const indicator = document.createElement('span');
+      indicator.className = 'dep-indicator';
+      
+      let title = [];
+      if (deps.length > 0) {
+        indicator.innerHTML += `<span style="color:#60a5fa">→${deps.length}</span>`;
+        title.push(`Imports ${deps.length} file${deps.length !== 1 ? 's' : ''}`);
+      }
+      if (usedBy.length > 0) {
+        if (deps.length > 0) indicator.innerHTML += ' ';
+        indicator.innerHTML += `<span style="color:#34d399">←${usedBy.length}</span>`;
+        title.push(`Used by ${usedBy.length} file${usedBy.length !== 1 ? 's' : ''}`);
+      }
+      
+      indicator.title = title.join('\n');
+      row.appendChild(indicator);
+    }
+  });
+}
+
+// Get token category for styling
+function getTokenCategory(tokens) {
+  if (tokens < 500) return 'small';
+  if (tokens < 2000) return 'medium';
+  if (tokens < 8000) return 'large';
+  return 'very-large';
+}
+
+// Parse owner/repo from GitHub URL
+function parseRepoFromUrl(url) {
+  if (!url) return { owner: null, repo: null };
+  
+  // Handle HTTPS URLs
+  const httpsMatch = url.match(/github\.com[/:]([\w-]+)\/([\w.-]+)/);
+  if (httpsMatch) {
+    return {
+      owner: httpsMatch[1],
+      repo: httpsMatch[2].replace(/\.git$/, '')
+    };
+  }
+  
+  // Handle SSH URLs
+  const sshMatch = url.match(/git@[^:]+:([\w-]+)\/([\w.-]+)/);
+  if (sshMatch) {
+    return {
+      owner: sshMatch[1],
+      repo: sshMatch[2].replace(/\.git$/, '')
+    };
+  }
+  
+  return { owner: null, repo: null };
+}
+
+// Auto-initialize when script loads
+setTimeout(() => {
+  initAnalysis();
+}, 100);
+
+// Initialize analysis when page loads
+document.addEventListener('DOMContentLoaded', () => {
+  initAnalysis();
+  
+  // Show analysis panel when a repo is loaded
+  const reloadBtn = $('reloadBtn');
+  if (reloadBtn) {
+    const originalReload = reloadBtn.onclick;
+    reloadBtn.addEventListener('click', async () => {
+      if (originalReload) await originalReload();
+      
+      // Show analysis panel and try to load cache after reload
+      const analysisPanel = $('analysisPanel');
+      if (analysisPanel) analysisPanel.style.display = 'block';
+      
+      setTimeout(tryLoadCachedAnalysis, 1000);
+    });
+  }
+});
+
+// ============================================================================
+// 🆕 END OF ANALYSIS FUNCTIONALITY
+// ============================================================================

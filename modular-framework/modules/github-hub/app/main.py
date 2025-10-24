@@ -11,7 +11,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
-from fastapi import FastAPI, HTTPException, Query, Header
+from fastapi import FastAPI, HTTPException, Query, Header, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse, JSONResponse
@@ -20,6 +20,9 @@ from loguru import logger
 from pathlib import Path
 import requests
 import httpx
+
+from app.analysis import DependencyAnalyzer, TokenCounter, CacheManager
+import asyncio
 
 # Support both package and flat module imports
 try:
@@ -111,6 +114,19 @@ async def shutdown_event_handler():
     logger.info("GitHub Hub shutdown complete")
 
 # ----- helpers -----
+
+
+# Add this function after your imports and before the endpoints
+
+def get_gh_client() -> GHClient:
+    """Dependency to get GitHub client."""
+    # You might need to adjust this based on how you currently handle tokens
+    # Option 1: If you have a global token
+    token = os.getenv('GITHUB_TOKEN')
+    return GHClient(token=token)
+    
+    # Option 2: If you get token from request context
+    # You'll need to adapt this to your existing auth mechanism
 
 def _utcnow_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -967,3 +983,441 @@ def api_get_clone_url(conn_id: str):
     else:
         raise HTTPException(400, "Only HTTPS/HTTP repo_urls can be used for authenticated cloning via this endpoint.")
     return {"clone_url": authenticated_repo_url}
+
+
+
+# Add these endpoints to app/main.py
+
+# Replace the analyze endpoints in app/main.py with this:
+
+@app.post("/api/analyze/{owner}/{repo}")
+async def analyze_repository(
+    owner: str, 
+    repo: str, 
+    force: bool = False,
+    conn_id: Optional[str] = None
+):
+    """Analyze repository dependencies and tokens."""
+    try:
+        from app.github_api import GHClient
+        from app.analysis import DependencyAnalyzer, TokenCounter, CacheManager
+        
+        # Get connection config
+        # Use your existing method to get connection details
+        # This is a simplified version - adjust based on your actual config loading
+        token = os.getenv('GITHUB_TOKEN')
+        base_url = os.getenv('GITHUB_BASE_URL', 'https://api.github.com')
+        
+        # If you have a connections system, use it here instead
+        # For now, fallback to environment variables
+        
+        gh = GHClient(token=token, base_url=base_url)
+        cache = CacheManager()
+        
+        # Get latest commit
+        try:
+            branches = gh.get_branches(owner, repo)
+            if not branches:
+                raise HTTPException(status_code=404, detail="No branches found")
+            
+            default_branch = branches[0] if branches else "main"
+            commit_sha = gh.get_branch_sha(owner, repo, default_branch)
+        except Exception as e:
+            logger.error(f"Failed to get branches: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to access repository: {str(e)}")
+        
+        # Get file tree
+        tree_data = gh.get_tree(owner, repo, default_branch, recursive=True)
+        file_list = [
+            item['path'] for item in tree_data.get('tree', [])
+            if item['type'] == 'blob'
+        ]
+        
+        # Check cache
+        cache_key = cache.generate_cache_key(commit_sha, file_list)
+        
+        if not force and await cache.is_cache_valid(owner, repo, cache_key):
+            logger.info(f"✅ Using cached analysis for {owner}/{repo}")
+            cached = await cache.load_analysis(owner, repo)
+            return {**cached, "cached": True}
+        
+        logger.info(f"🔄 Running fresh analysis for {owner}/{repo}...")
+        
+        # Function to get file content
+        def get_content(path: str) -> str:
+            file_data = gh.get_file(owner, repo, path, ref=commit_sha)
+            return file_data.get('decoded_content', '')
+        
+        # Run dependency analysis
+        dep_analyzer = DependencyAnalyzer(file_list)
+        dep_results = dep_analyzer.analyze_all(get_content)
+        
+        # Run token analysis
+        token_counter = TokenCounter()
+        token_results = await token_counter.analyze_files(file_list, get_content)
+        
+        # Find circular dependencies
+        circular_deps = dep_analyzer.find_circular_dependencies()
+        
+        results = {
+            "dependencies": dep_results,
+            "tokens": token_results,
+            "circular_dependencies": circular_deps,
+            "cache_key": cache_key,
+            "commit_sha": commit_sha,
+            "stats": {
+                **dep_results["stats"],
+                **token_results["totals"]
+            }
+        }
+        
+        # Save to cache
+        await cache.save_analysis(owner, repo, results)
+        
+        return {**results, "cached": False}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Analysis failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/cache/{owner}/{repo}")
+async def get_cached_analysis(owner: str, repo: str):
+    """Get cached analysis results."""
+    try:
+        from app.analysis import CacheManager
+        
+        cache = CacheManager()
+        data = await cache.load_analysis(owner, repo)
+        
+        if not data:
+            raise HTTPException(status_code=404, detail="No cached analysis found")
+        
+        return data
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to load cache: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Add these endpoints to app/main.py
+
+@app.post("/api/map-openapi/{owner}/{repo}")
+async def map_openapi_endpoints(owner: str, repo: str, force: bool = False):
+    """Map OpenAPI specification to code files."""
+    try:
+        from app.analysis import DependencyAnalyzer, TokenCounter
+        from app.analysis.endpoint_mapper import EndpointMapper
+        from app.analysis.fastapi_parser import parse_fastapi_routes
+        from datetime import datetime
+        import json
+        
+        # Get GitHub client
+        gh = GHClient(
+            token=os.getenv('GITHUB_TOKEN'),
+            base_url=os.getenv('GITHUB_API_URL', 'https://api.github.com')
+        )
+        
+        # Get repo info
+        try:
+            branches = gh.get_branches(owner, repo)
+        except Exception as e:
+            logger.error(f"Failed to get branches: {e}")
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Could not access repository {owner}/{repo}"
+            )
+        
+        if not branches:
+            raise HTTPException(status_code=404, detail="No branches found")
+        
+        default_branch = branches[0]
+        
+        try:
+            commit_sha = gh.get_branch_sha(owner, repo, default_branch)
+        except Exception:
+            commit_sha = 'HEAD'
+        
+        logger.info(f"🔄 Mapping OpenAPI for {owner}/{repo} on {default_branch}...")
+        
+        # Get file tree
+        try:
+            tree_data = gh.get_tree(owner, repo, default_branch, recursive=True)
+            file_list = [item['path'] for item in tree_data.get('tree', []) if item['type'] == 'blob']
+        except Exception as e:
+            logger.error(f"Failed to get tree: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to get repository tree: {str(e)}")
+        
+        # Get content function
+        def get_content(path: str) -> str:
+            try:
+                file_data = gh.get_file(owner, repo, path, ref=commit_sha)
+                return file_data.get('decoded_content', '')
+            except Exception as e:
+                logger.error(f"Failed to get {path}: {e}")
+                return ''
+        
+        openapi_content = None
+        openapi_source = None
+        
+        # ========================================================================
+        # STRATEGY 1: Check if this is a FastAPI app (look for FastAPI imports)
+        # ========================================================================
+        logger.info("🔍 Checking if this is a FastAPI application...")
+        
+        # Check main.py or app/main.py for FastAPI
+        main_files = [f for f in file_list if f.endswith('main.py') or f.endswith('app.py')]
+        is_fastapi = False
+        
+        for main_file in main_files[:3]:  # Check first 3 main files
+            content = get_content(main_file)
+            if 'from fastapi import' in content or 'import fastapi' in content:
+                is_fastapi = True
+                logger.info(f"✅ Detected FastAPI app in {main_file}")
+                break
+        
+        if is_fastapi:
+            try:
+                logger.info("🚀 Parsing FastAPI routes from Python code...")
+                openapi_spec = parse_fastapi_routes(file_list, get_content)
+                openapi_content = json.dumps(openapi_spec, indent=2)
+                openapi_source = "FastAPI routes parsed from code"
+                
+                endpoint_count = len(openapi_spec.get('paths', {}))
+                logger.info(f"✅ Extracted {endpoint_count} FastAPI endpoints from code")
+                
+            except Exception as e:
+                logger.warning(f"Failed to parse FastAPI routes: {e}")
+                is_fastapi = False
+        
+        # ========================================================================
+        # STRATEGY 2: Look for openapi.yaml/swagger.yaml in repository
+        # ========================================================================
+        if not openapi_content:
+            logger.info("🔍 Looking for OpenAPI spec file in repository...")
+            
+            openapi_patterns = [
+                'openapi.yaml', 'openapi.yml', 'openapi.json',
+                'swagger.yaml', 'swagger.yml', 'swagger.json',
+                'api.yaml', 'api.yml'
+            ]
+            
+            openapi_files = []
+            for pattern in openapi_patterns:
+                openapi_files.extend([f for f in file_list if f.endswith(pattern)])
+            
+            # Also check in docs/ directory
+            if not openapi_files:
+                openapi_files = [f for f in file_list 
+                               if ('openapi' in f.lower() or 'swagger' in f.lower()) 
+                               and (f.endswith('.yaml') or f.endswith('.yml') or f.endswith('.json'))]
+            
+            if openapi_files:
+                openapi_path = openapi_files[0]
+                logger.info(f"✅ Found OpenAPI spec: {openapi_path}")
+                openapi_content = get_content(openapi_path)
+                openapi_source = openapi_path
+        
+        # ========================================================================
+        # STRATEGY 3: If this is GitHub Hub itself, use running app's spec
+        # ========================================================================
+        if not openapi_content and 'github-hub' in repo.lower():
+            try:
+                logger.info("🎯 This is GitHub Hub - using running app's OpenAPI spec")
+                from app.main import app as fastapi_app
+                openapi_spec = fastapi_app.openapi()
+                openapi_content = json.dumps(openapi_spec, indent=2)
+                openapi_source = "FastAPI running app"
+                logger.info("✅ Using GitHub Hub's auto-generated spec")
+            except Exception as e:
+                logger.warning(f"Could not get running app OpenAPI: {e}")
+        
+        # ========================================================================
+        # No OpenAPI spec found
+        # ========================================================================
+        if not openapi_content:
+            hint = "This repository doesn't have an OpenAPI specification."
+            
+            if is_fastapi:
+                hint = "FastAPI app detected but couldn't parse routes. Check Python syntax."
+            
+            return {
+                'error': 'No OpenAPI specification found',
+                'hint': hint,
+                'suggestions': [
+                    '✅ For FastAPI: Routes are auto-detected from @app.get/post decorators',
+                    '✅ For other APIs: Add openapi.yaml to repository root',
+                    '✅ Check that your Python files are valid'
+                ],
+                'repo': f"{owner}/{repo}",
+                'is_fastapi': is_fastapi,
+                'main_files': main_files[:3]
+            }
+        
+        logger.info(f"📄 Using OpenAPI spec from: {openapi_source}")
+        
+        # Create endpoint mapper
+        mapper = EndpointMapper(openapi_content, file_list)
+        endpoints = mapper.extract_endpoints()
+        
+        if not endpoints:
+            return {
+                'error': 'No endpoints found in OpenAPI spec',
+                'openapi_source': openapi_source,
+                'hint': 'The OpenAPI spec has no paths defined'
+            }
+        
+        logger.info(f"📊 Found {len(endpoints)} endpoints")
+        
+        # Run dependency analysis
+        dep_analyzer = DependencyAnalyzer(file_list)
+        dep_results = dep_analyzer.analyze_all(get_content)
+        dependency_graph = dep_results['dependencies']
+        
+        # Token counter
+        token_counter = TokenCounter()
+        
+        def count_tokens_sync(text: str) -> int:
+            try:
+                import asyncio
+                try:
+                    loop = asyncio.get_event_loop()
+                except RuntimeError:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                
+                if loop.is_running():
+                    return len(text) // 4
+                else:
+                    return loop.run_until_complete(token_counter.count_tokens(text))
+            except Exception:
+                return len(text) // 4
+        
+        # Map all endpoints
+        logger.info(f"🗺️ Mapping {len(endpoints)} endpoints to code...")
+        mappings = mapper.map_all_endpoints(
+            dependency_graph,
+            get_content,
+            count_tokens_sync
+        )
+        
+        # Calculate summary stats
+        total_files = sum(m.get('stats', {}).get('total_files', 0) for m in mappings if 'stats' in m)
+        total_tokens = sum(m.get('stats', {}).get('total_tokens', 0) for m in mappings if 'stats' in m)
+        
+        # Group by tags
+        tags_summary = {}
+        for mapping in mappings:
+            for tag in mapping.get('tags', ['Other']):
+                if tag not in tags_summary:
+                    tags_summary[tag] = {'count': 0, 'endpoints': []}
+                tags_summary[tag]['count'] += 1
+                tags_summary[tag]['endpoints'].append(f"{mapping['method']} {mapping['path']}")
+        
+        result = {
+            'openapi_spec': openapi_source,
+            'openapi_method': openapi_source,
+            'is_fastapi': is_fastapi,
+            'total_endpoints': len(endpoints),
+            'endpoints_with_handlers': len([m for m in mappings if 'error' not in m]),
+            'endpoints_without_handlers': len([m for m in mappings if 'error' in m]),
+            'mappings': mappings,
+            'tags': tags_summary,
+            'stats': {
+                'total_files_referenced': total_files,
+                'total_tokens': total_tokens,
+                'average_tokens_per_endpoint': total_tokens // len(mappings) if mappings else 0
+            },
+            'commit_sha': commit_sha,
+            'cached': False
+        }
+        
+        logger.info(f"✅ Successfully mapped {len(mappings)} endpoints")
+        logger.info(f"   📁 {result['endpoints_with_handlers']} with handlers")
+        logger.info(f"   ⚠️ {result['endpoints_without_handlers']} without handlers")
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"OpenAPI mapping failed: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/endpoint/{owner}/{repo}/{method}/{path:path}")
+async def get_single_endpoint(owner: str, repo: str, method: str, path: str):
+    """Get code for a specific endpoint."""
+    try:
+        # Redirect to full mapping for now
+        result = await map_openapi_endpoints(owner, repo, force=False)
+        
+        if 'error' in result:
+            raise HTTPException(status_code=404, detail=result['error'])
+        
+        # Find matching endpoint
+        endpoint_key = f"{method.upper()} /{path}"
+        
+        for mapping in result.get('mappings', []):
+            if mapping['endpoint'] == endpoint_key or mapping['path'] == f"/{path}":
+                return mapping
+        
+        raise HTTPException(status_code=404, detail=f"Endpoint {endpoint_key} not found")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get endpoint: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/export-endpoint-context")
+async def export_endpoint_context(request: dict):
+    """Export selected files as LLM context."""
+    try:
+        files = request.get('files', [])
+        format_type = request.get('format', 'concatenated')
+        
+        if not files:
+            raise HTTPException(status_code=400, detail="No files provided")
+        
+        if format_type == 'xml':
+            # XML format for Claude
+            parts = ['<documents>']
+            for i, file_data in enumerate(files):
+                parts.append(f'<document index="{i+1}">')
+                parts.append(f'<source>{file_data["path"]}</source>')
+                parts.append(f'<document_content>')
+                parts.append(file_data['content'])
+                parts.append('</document_content>')
+                parts.append('</document>')
+            parts.append('</documents>')
+            
+            return {
+                'format': 'xml',
+                'content': '\n'.join(parts),
+                'token_estimate': sum(len(f['content']) // 4 for f in files)
+            }
+        else:
+            # Concatenated format
+            parts = []
+            for file_data in files:
+                parts.append(f"# {file_data['path']}")
+                parts.append(file_data['content'])
+                parts.append('\n')
+            
+            return {
+                'format': 'concatenated',
+                'content': '\n'.join(parts),
+                'token_estimate': sum(len(f['content']) // 4 for f in files)
+            }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Export failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

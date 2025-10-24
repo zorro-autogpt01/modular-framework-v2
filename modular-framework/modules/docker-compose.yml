@@ -23,6 +23,43 @@ services:
       - app-network
     restart: unless-stopped
 
+  code-slicer:
+    build: ./code-slicer-service
+    container_name: code-slicer
+    restart: unless-stopped
+    ports:
+      - "3012:3012"
+    environment:
+      - NODE_ENV=production
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=llm_gateway
+      - PORT=3012
+      - GITHUB_HUB_URL=http://github-hub-module:3002
+      - LLM_GATEWAY_URL=http://llm-gateway:3010
+      - POSTGRES_URL=postgresql://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-framework}
+      - DATA_DIR=/data
+      - CACHE_DIR=/cache
+    volumes:
+      - code-slicer-data:/data
+      - code-slicer-cache:/cache
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      #postgres:
+       # condition: service_healthy
+      github-hub-module:
+        condition: service_started
+      llm-gateway:
+        condition: service_started
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3012/health', (r) => { process.exit(r.statusCode === 200 ? 0 : 1); })"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
   # Framework static website (served behind edge-nginx)
   framework-web:
     build: ./framework
@@ -444,6 +481,10 @@ volumes:
   runner-artifacts:
     driver: local
   runner-workspace:
+    driver: local
+  code-slicer-data:
+    driver: local
+  code-slicer-cache:
     driver: local
 
 networks:
