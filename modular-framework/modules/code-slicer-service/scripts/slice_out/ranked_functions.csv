@@ -1,0 +1,11 @@
+node,distance,out_degree,in_degree
+app.main._client_for_conn,0,0,1
+app.main._client_for_input,0,0,1
+app.main._default_branch_from,0,0,1
+app.main._map_github_error,0,0,1
+app.main._owner_repo,0,0,1
+app.main._resolve_conn,0,0,1
+app.main._validate_connection_inputs,0,0,1
+app.main.create_branch,0,4,0
+app.main.get_cfg,0,0,0
+app.main.legacy_set_cfg,0,3,0

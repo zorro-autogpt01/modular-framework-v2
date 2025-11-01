@@ -1,0 +1,56 @@
+// app/main.py:196-250
+            data = resp.json()
+            gh_msg = data.get("message")
+        except Exception:
+            gh_msg = resp.text or ""
+        if status == 403 and resp.headers.get("x-ratelimit-remaining") == "0":
+            return HTTPException(429, "GitHub rate limit exceeded (unauthenticated). Add a PAT or wait and retry.")
+        if status in (401,):
+            return HTTPException(401, "GitHub rejected the request (unauthorized). Provide a valid PAT.")
+        if status in (403,):
+            return HTTPException(403, "Forbidden by GitHub: token lacks required scope or no access to repo.")
+        if status in (404,):
+            return HTTPException(404, "Repo not found or no access (private repo?).")
+        return HTTPException(502, f"GitHub error {status}: {gh_msg or 'Unknown error'}")
+    return HTTPException(400, f"Validation failed: {e}")
+
+def _valid_https_url(u: str) -> bool:
+    try:
+        p = urlparse(u)
+        return p.scheme in ("https",) and bool(p.netloc)
+    except Exception:
+        return False
+
+def _ensure_branch_watch(conn_id: str, branches: List[str]) -> None:
+    """
+    Ensure the given branches are being watched for this connection.
+    This is a no-op if the connection doesn't exist.
+    """
+    try:
+        conn = get_connection(conn_id)
+        if not conn:
+            return
+        existing = set((conn.get("watch_branches") or []) + [conn.get("default_branch") or "main"])
+        add = {b for b in branches if isinstance(b, str) and b.strip()}
+        merged = sorted(existing | add)
+        # Idempotent upsert: only write when needed
+        if set(conn.get("watch_branches") or []) != set(merged):
+            upsert_connection({"id": conn_id, "watch_branches": merged})
+            logger.info(f"Updated watch_branches for {conn_id}: now watching {', '.join(merged)}")
+    except Exception as e:
+        logger.warning(f"Failed to ensure watch branches for {conn_id}: {e}")
+
+# ===== Polling Implementation =====
+
+async def polling_loop():
+    """Background task that polls connections for changes."""
+    while not shutdown_event.is_set():
+        try:
+            interval = GHH_POLL_INTERVAL_SEC
+            jitter = interval * GHH_POLL_JITTER_FRACTION * random.random()
+            sleep_time = interval + jitter
+
+            try:
+                await asyncio.wait_for(manual_poll_event.wait(), timeout=sleep_time)
+                manual_poll_event.clear()
+                logger.info("Manual poll triggered")

@@ -1,478 +1,562 @@
-// code-slicer-service/server.js
+// modular-framework/modules/code-slicer-service/server.js
+// Enhanced with GitHub branch support
+
 const express = require('express');
-const cors = require('cors');
-const morgan = require('morgan');
-const { Pool } = require('pg');
-const axios = require('axios');
 const { spawn } = require('child_process');
-const fs = require('fs').promises;
 const path = require('path');
-const crypto = require('crypto');
+const fs = require('fs').promises;
+const { v4: uuidv4 } = require('uuid');
+const axios = require('axios');
 
 const app = express();
-const PORT = process.env.PORT || 3012;
+app.use(express.json({ limit: '50mb' }));
 
-// Environment configuration
-const GITHUB_HUB_URL = process.env.GITHUB_HUB_URL || 'http://github-hub-module:3005';
-const LLM_GATEWAY_URL = process.env.LLM_GATEWAY_URL || 'http://llm-gateway:3010';
-const DATA_DIR = process.env.DATA_DIR || '/data';
-const CACHE_DIR = process.env.CACHE_DIR || '/cache';
+// Configuration
+const PORT = process.env.PORT || 3025;
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
+const CACHE_DIR = process.env.CACHE_DIR || path.join(__dirname, 'cache');
+const GITHUB_HUB_URL = process.env.GITHUB_HUB_URL || 'http://github-hub-module:3005/api';
+const LLM_GATEWAY_URL = process.env.LLM_GATEWAY_URL || 'http://llm-gateway:3010/api';
 const POSTGRES_URL = process.env.POSTGRES_URL;
 
-// Middleware
-app.use(cors());
-app.use(express.json({ limit: '50mb' }));
-app.use(morgan('combined'));
-
-// Database pool
-const pool = POSTGRES_URL ? new Pool({ connectionString: POSTGRES_URL }) : null;
+// Database connection (optional)
+let pool = null;
+if (POSTGRES_URL) {
+  const { Pool } = require('pg');
+  pool = new Pool({ connectionString: POSTGRES_URL });
+}
 
 // Ensure directories exist
 async function ensureDirectories() {
   await fs.mkdir(DATA_DIR, { recursive: true });
   await fs.mkdir(CACHE_DIR, { recursive: true });
-  await fs.mkdir(path.join(DATA_DIR, 'repos'), { recursive: true });
   await fs.mkdir(path.join(DATA_DIR, 'slices'), { recursive: true });
+  await fs.mkdir(path.join(DATA_DIR, 'repos'), { recursive: true });
 }
 
-// ============= GitHub Hub Client =============
+// ============= GitHub Hub Client with Branch Support =============
 class GitHubHubClient {
-  constructor(baseURL) {
-    this.baseURL = baseURL;
-    this.axios = axios.create({
-      baseURL: `${baseURL}/api`,
-      timeout: 60000
-    });
+  constructor(baseUrl) {
+    this.baseUrl = baseUrl;
   }
 
-  async cloneRepo(owner, repo, branch = 'main') {
-    const repoPath = path.join(DATA_DIR, 'repos', `${owner}-${repo}`);
-    
+  /**
+   * Clone repository with optional branch support
+   * @param {string} owner - Repository owner
+   * @param {string} repo - Repository name
+   * @param {string} branch - Optional branch name (defaults to repo's default branch)
+   * @param {string} connId - Optional connection ID
+   * @returns {Promise<string>} Path to cloned repository
+   */
+  async cloneRepo(owner, repo, branch = null, connId = null) {
     try {
-      // Check if already cloned
-      await fs.access(repoPath);
-      console.log(`Repository ${owner}/${repo} already exists, updating...`);
-      
-      // Pull latest changes
-      return await this.executeCommand('git', ['pull'], repoPath);
-    } catch (error) {
-      // Clone fresh
-      console.log(`Cloning ${owner}/${repo}...`);
-      
-      const response = await this.axios.post('/repos/clone', {
+      const payload = {
         owner,
         repo,
-        branch,
-        destination: repoPath
-      });
+        conn_id: connId
+      };
       
-      return repoPath;
-    }
-  }
-
-  async getFileContent(owner, repo, path, ref = 'main') {
-    const response = await this.axios.get(`/repos/${owner}/${repo}/contents/${path}`, {
-      params: { ref }
-    });
-    return response.data;
-  }
-
-  async getPRFiles(owner, repo, prNumber) {
-    const response = await this.axios.get(`/repos/${owner}/${repo}/pulls/${prNumber}/files`);
-    return response.data;
-  }
-
-  async getIssue(owner, repo, issueNumber) {
-    const response = await this.axios.get(`/repos/${owner}/${repo}/issues/${issueNumber}`);
-    return response.data;
-  }
-
-  async createComment(owner, repo, issueNumber, body) {
-    const response = await this.axios.post(
-      `/repos/${owner}/${repo}/issues/${issueNumber}/comments`,
-      { body }
-    );
-    return response.data;
-  }
-
-  executeCommand(command, args, cwd) {
-    return new Promise((resolve, reject) => {
-      const proc = spawn(command, args, { cwd, shell: true });
-      let stdout = '';
-      let stderr = '';
-
-      proc.stdout.on('data', data => stdout += data);
-      proc.stderr.on('data', data => stderr += data);
-
-      proc.on('close', code => {
-        if (code === 0) resolve({ stdout, stderr });
-        else reject(new Error(`Command failed: ${stderr}`));
-      });
-    });
-  }
-}
-
-// ============= LLM Gateway Client =============
-class LLMGatewayClient {
-  constructor(baseURL) {
-    this.baseURL = baseURL;
-    this.axios = axios.create({
-      baseURL: `${baseURL}/api`,
-      timeout: 120000
-    });
-  }
-
-  async chat(messages, conversationId, metadata = {}) {
-    const response = await this.axios.post('/compat/llm-workflows', {
-      model_id: 1, // Claude
-      conversation_id: conversationId,
-      messages,
-      metadata: {
-        service: 'code-slicer',
-        ...metadata
+      if (branch) {
+        payload.branch = branch;
       }
-    });
-    return response.data;
-  }
 
-  async extractKeywords(text, conversationId) {
-    const messages = [{
-      role: 'user',
-      content: `Extract API endpoints, function names, and key technical terms from this text. Return as a JSON array of strings.\n\nText: ${text}`
-    }];
-
-    const response = await this.chat(messages, conversationId, { action: 'extract_keywords' });
-    
-    try {
-      // Parse JSON from response
-      const match = response.content.match(/\[.*\]/s);
-      return match ? JSON.parse(match[0]) : [];
-    } catch {
-      // Fallback: split by lines and filter
-      return response.content
-        .split('\n')
-        .map(line => line.trim())
-        .filter(line => line && !line.startsWith('#'));
+      const response = await axios.post(`${this.baseUrl}/clone`, payload);
+      
+      if (response.data && response.data.path) {
+        return response.data.path;
+      }
+      
+      throw new Error('Clone response missing path');
+    } catch (error) {
+      console.error('Clone error:', error.response?.data || error.message);
+      throw new Error(`Failed to clone ${owner}/${repo}${branch ? `@${branch}` : ''}: ${error.message}`);
     }
   }
 
-  async analyzeCode(code, prompt, conversationId) {
-    const messages = [{
-      role: 'user',
-      content: `${prompt}\n\n\`\`\`\n${code}\n\`\`\``
-    }];
+  /**
+   * List all branches for a repository
+   * @param {string} owner - Repository owner
+   * @param {string} repo - Repository name
+   * @param {string} connId - Optional connection ID
+   * @returns {Promise<Array>} List of branch names
+   */
+  async listBranches(owner, repo, connId = null) {
+    try {
+      const params = { owner, repo };
+      if (connId) params.conn_id = connId;
 
-    return await this.chat(messages, conversationId, { action: 'analyze_code' });
+      const response = await axios.get(`${this.baseUrl}/branches`, { params });
+      
+      if (response.data && Array.isArray(response.data.branches)) {
+        return response.data.branches;
+      }
+      
+      return response.data || [];
+    } catch (error) {
+      console.error('List branches error:', error.response?.data || error.message);
+      throw new Error(`Failed to list branches for ${owner}/${repo}: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get branch details including commit SHA
+   * @param {string} owner - Repository owner
+   * @param {string} repo - Repository name
+   * @param {string} branch - Branch name
+   * @param {string} connId - Optional connection ID
+   * @returns {Promise<Object>} Branch details
+   */
+  async getBranchInfo(owner, repo, branch, connId = null) {
+    try {
+      const params = { owner, repo, branch };
+      if (connId) params.conn_id = connId;
+
+      const response = await axios.get(`${this.baseUrl}/branch-info`, { params });
+      return response.data;
+    } catch (error) {
+      console.error('Get branch info error:', error.response?.data || error.message);
+      throw new Error(`Failed to get info for branch ${branch}: ${error.message}`);
+    }
+  }
+
+  /**
+   * Compare two branches
+   * @param {string} owner - Repository owner
+   * @param {string} repo - Repository name
+   * @param {string} base - Base branch name
+   * @param {string} head - Head branch name
+   * @param {string} connId - Optional connection ID
+   * @returns {Promise<Object>} Comparison details
+   */
+  async compareBranches(owner, repo, base, head, connId = null) {
+    try {
+      const params = { owner, repo, base, head };
+      if (connId) params.conn_id = connId;
+
+      const response = await axios.post(`${this.baseUrl}/compare`, params);
+      return response.data;
+    } catch (error) {
+      console.error('Compare branches error:', error.response?.data || error.message);
+      throw new Error(`Failed to compare ${base}...${head}: ${error.message}`);
+    }
+  }
+
+  async getPRFiles(owner, repo, prNumber, connId = null) {
+    try {
+      const params = { owner, repo, pr_number: prNumber };
+      if (connId) params.conn_id = connId;
+
+      const response = await axios.get(`${this.baseUrl}/pr-files`, { params });
+      return response.data.files || [];
+    } catch (error) {
+      console.error('Get PR files error:', error.response?.data || error.message);
+      throw new Error(`Failed to get PR files: ${error.message}`);
+    }
+  }
+
+  async getIssue(owner, repo, issueNumber, connId = null) {
+    try {
+      const params = { owner, repo, issue_number: issueNumber };
+      if (connId) params.conn_id = connId;
+
+      const response = await axios.get(`${this.baseUrl}/issue`, { params });
+      return response.data;
+    } catch (error) {
+      console.error('Get issue error:', error.response?.data || error.message);
+      throw new Error(`Failed to get issue: ${error.message}`);
+    }
   }
 }
 
-// ============= Code Slicer Service =============
-class CodeSlicerService {
-  constructor() {
-    this.scriptPath = path.join(__dirname, 'scripts', 'api_code_slicer.py');
+const githubHub = new GitHubHubClient(GITHUB_HUB_URL);
+
+// ============= Code Slicer Wrapper =============
+class CodeSlicerWrapper {
+  constructor(scriptPath) {
+    this.scriptPath = scriptPath || path.join(__dirname, 'scripts', 'api_code_slicer.py');
   }
 
   async analyze(options) {
     const {
       repoPath,
-      targets,
+      targets = [],
       context = 10,
       hints = [],
-      language = 'auto',
-      apiType = 'http',
+      outputDir = null,
       promptPack = false,
-      copyFiles = false
+      maxFiles = null
     } = options;
 
-    const sliceId = crypto.randomUUID();
-    const outputDir = path.join(DATA_DIR, 'slices', sliceId);
+    const sliceId = outputDir ? path.basename(outputDir) : uuidv4();
+    const actualOutputDir = outputDir || path.join(DATA_DIR, 'slices', sliceId);
 
-    // Build command
+    await fs.mkdir(actualOutputDir, { recursive: true });
+
     const args = [
       this.scriptPath,
-      '--repo', repoPath,
-      '--out', outputDir,
-      '--context', context.toString(),
-      '--language', language,
-      '--api-type', apiType
+      '--repo-path', repoPath,
+      '--output-dir', actualOutputDir,
+      '--context', context.toString()
     ];
 
-    // Add targets
-    targets.forEach(target => {
-      args.push('--target', target);
-    });
-
-    // Add hints
-    hints.forEach(hint => {
-      args.push('--hint', hint);
-    });
-
-    // Add optional flags
-    if (promptPack) args.push('--prompt-pack');
-    if (copyFiles) args.push('--copy-files');
-
-    console.log('Running code slicer:', args.join(' '));
-
-    // Execute
-    const startTime = Date.now();
-    try {
-      await this.executePython(args);
-      const duration = Date.now() - startTime;
-
-      // Read results
-      const results = await this.parseResults(outputDir);
-
-      return {
-        sliceId,
-        success: true,
-        duration,
-        outputDir,
-        ...results
-      };
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      console.error('Code slicer failed:', error);
-
-      return {
-        sliceId,
-        success: false,
-        duration,
-        error: error.message
-      };
-    }
-  }
-
-  async parseResults(outputDir) {
-    const results = {
-      markdown: null,
-      snippets: [],
-      graph: null,
-      meta: null,
-      files: []
-    };
-
-    try {
-      // Read markdown
-      const markdownPath = path.join(outputDir, 'slice.md');
-      results.markdown = await fs.readFile(markdownPath, 'utf-8');
-
-      // Read snippets JSONL
-      const snippetsPath = path.join(outputDir, 'snippets.jsonl');
-      const snippetsContent = await fs.readFile(snippetsPath, 'utf-8');
-      results.snippets = snippetsContent
-        .split('\n')
-        .filter(line => line.trim())
-        .map(line => JSON.parse(line));
-
-      // Read meta
-      const metaPath = path.join(outputDir, 'meta.json');
-      const metaContent = await fs.readFile(metaPath, 'utf-8');
-      results.meta = JSON.parse(metaContent);
-
-      results.files = results.meta.files || [];
-
-      // Read graph (optional)
-      try {
-        const graphPath = path.join(outputDir, 'graph.dot');
-        results.graph = await fs.readFile(graphPath, 'utf-8');
-      } catch {}
-
-    } catch (error) {
-      console.error('Error parsing results:', error);
+    if (targets.length > 0) {
+      args.push('--targets', ...targets);
     }
 
-    return results;
-  }
+    if (hints.length > 0) {
+      args.push('--hints', ...hints);
+    }
 
-  executePython(args) {
+    if (promptPack) {
+      args.push('--prompt-pack');
+    }
+
+    if (maxFiles) {
+      args.push('--max-files', maxFiles.toString());
+    }
+
     return new Promise((resolve, reject) => {
-      const proc = spawn('python3', args, {
-        env: { ...process.env, PYTHONUNBUFFERED: '1' }
+      const process = spawn('python3', args, {
+        cwd: path.dirname(this.scriptPath)
       });
 
       let stdout = '';
       let stderr = '';
 
-      proc.stdout.on('data', data => {
-        const text = data.toString();
-        stdout += text;
-        console.log('[Python]', text);
+      process.stdout.on('data', (data) => {
+        stdout += data.toString();
       });
 
-      proc.stderr.on('data', data => {
-        const text = data.toString();
-        stderr += text;
-        console.error('[Python Error]', text);
+      process.stderr.on('data', (data) => {
+        stderr += data.toString();
       });
 
-      proc.on('close', code => {
-        if (code === 0) {
-          resolve({ stdout, stderr });
-        } else {
-          reject(new Error(`Python script failed with code ${code}: ${stderr}`));
+      process.on('close', async (code) => {
+        if (code !== 0) {
+          console.error('Slicer stderr:', stderr);
+          reject(new Error(`Code slicer failed with code ${code}: ${stderr}`));
+          return;
         }
+
+        try {
+          const results = await this.parseResults(actualOutputDir);
+          resolve({
+            success: true,
+            sliceId,
+            outputDir: actualOutputDir,
+            ...results
+          });
+        } catch (error) {
+          reject(new Error(`Failed to parse results: ${error.message}`));
+        }
+      });
+
+      process.on('error', (error) => {
+        reject(new Error(`Failed to start slicer: ${error.message}`));
       });
     });
   }
-}
 
-// Initialize services
-const githubHub = new GitHubHubClient(GITHUB_HUB_URL);
-const llmGateway = new LLMGatewayClient(LLM_GATEWAY_URL);
-const codeSlicer = new CodeSlicerService();
-
-// ============= Cache Manager =============
-class CacheManager {
-  constructor() {
-    this.cacheDir = CACHE_DIR;
-  }
-
-  getCacheKey(repo, targets, context) {
-    const data = JSON.stringify({ repo, targets: targets.sort(), context });
-    return crypto.createHash('sha256').update(data).digest('hex');
-  }
-
-  async get(cacheKey) {
+  async parseResults(outputDir) {
     try {
-      const cachePath = path.join(this.cacheDir, `${cacheKey}.json`);
-      const data = await fs.readFile(cachePath, 'utf-8');
-      const cached = JSON.parse(data);
+      const markdownPath = path.join(outputDir, 'slice.md');
+      const markdown = await fs.readFile(markdownPath, 'utf-8');
 
-      // Check if cache is still valid (24 hours)
-      const age = Date.now() - cached.timestamp;
-      if (age < 24 * 60 * 60 * 1000) {
-        console.log('Cache hit:', cacheKey);
-        return cached.data;
+      const metaPath = path.join(outputDir, 'metadata.json');
+      let metadata = {};
+      try {
+        const metaContent = await fs.readFile(metaPath, 'utf-8');
+        metadata = JSON.parse(metaContent);
+      } catch (e) {
+        // Metadata file might not exist
       }
 
-      console.log('Cache expired:', cacheKey);
-      return null;
-    } catch {
-      return null;
-    }
-  }
-
-  async set(cacheKey, data) {
-    try {
-      const cachePath = path.join(this.cacheDir, `${cacheKey}.json`);
-      await fs.writeFile(cachePath, JSON.stringify({
-        timestamp: Date.now(),
-        data
-      }));
-      console.log('Cache set:', cacheKey);
+      return {
+        markdown,
+        metadata,
+        files: metadata.files || [],
+        snippets: metadata.snippets || [],
+        stats: metadata.stats || {}
+      };
     } catch (error) {
-      console.error('Cache set failed:', error);
+      throw new Error(`Failed to parse results: ${error.message}`);
     }
   }
 }
 
-const cache = new CacheManager();
+const codeSlicer = new CodeSlicerWrapper();
 
-// ============= API Routes =============
+// ============= Helper Functions =============
+
+/**
+ * Extract targets from issue or PR body using simple heuristics
+ */
+function extractTargetsFromText(text) {
+  const targets = [];
+  const hints = [];
+
+  // Look for code references in backticks
+  const codeMatches = text.match(/`([^`]+)`/g);
+  if (codeMatches) {
+    codeMatches.forEach(match => {
+      const cleaned = match.replace(/`/g, '');
+      if (cleaned.includes('.') && !cleaned.includes(' ')) {
+        targets.push(cleaned);
+      }
+    });
+  }
+
+  // Look for file paths
+  const pathMatches = text.match(/([a-zA-Z0-9_-]+\/)+[a-zA-Z0-9_-]+\.[a-zA-Z]{2,4}/g);
+  if (pathMatches) {
+    targets.push(...pathMatches);
+  }
+
+  // Extract technical terms as hints
+  const technicalWords = text.match(/\b[A-Z][a-zA-Z0-9]*(?:[A-Z][a-z0-9]+)+\b/g);
+  if (technicalWords) {
+    hints.push(...new Set(technicalWords));
+  }
+
+  return {
+    targets: [...new Set(targets)],
+    hints: [...new Set(hints)]
+  };
+}
+
+// ============= API Endpoints =============
 
 // Health check
 app.get('/health', (req, res) => {
   res.json({
-    status: 'ok',
-    service: 'code-slicer',
-    version: '1.0.0',
-    github_hub: GITHUB_HUB_URL,
-    llm_gateway: LLM_GATEWAY_URL
+    status: 'healthy',
+    service: 'code-slicer-service',
+    version: '2.0.0',
+    features: ['branch-support', 'branch-comparison', 'issue-analysis', 'pr-analysis']
   });
 });
 
-// Main analysis endpoint
-app.post('/api/slice/analyze', async (req, res) => {
+// ============= BRANCH MANAGEMENT ENDPOINTS =============
+
+/**
+ * GET /api/slice/branches/:owner/:repo
+ * List all branches for a repository
+ */
+app.get('/api/slice/branches/:owner/:repo', async (req, res) => {
+  try {
+    const { owner, repo } = req.params;
+    const { conn_id } = req.query;
+
+    const branches = await githubHub.listBranches(owner, repo, conn_id);
+
+    res.json({
+      success: true,
+      owner,
+      repo,
+      branches,
+      count: branches.length
+    });
+
+  } catch (error) {
+    console.error('List branches error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /api/slice/branch-info/:owner/:repo/:branch
+ * Get detailed information about a specific branch
+ */
+app.get('/api/slice/branch-info/:owner/:repo/:branch', async (req, res) => {
+  try {
+    const { owner, repo, branch } = req.params;
+    const { conn_id } = req.query;
+
+    const branchInfo = await githubHub.getBranchInfo(owner, repo, branch, conn_id);
+
+    res.json({
+      success: true,
+      owner,
+      repo,
+      branch,
+      ...branchInfo
+    });
+
+  } catch (error) {
+    console.error('Get branch info error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/slice/compare
+ * Compare two branches and analyze the differences
+ */
+app.post('/api/slice/compare', async (req, res) => {
   try {
     const {
-      repo, // Format: "owner/repo"
-      branch = 'main',
-      targets,
-      context = 10,
-      hints = [],
-      language = 'auto',
-      api_type = 'http',
-      prompt_pack = false,
-      copy_files = false,
-      use_cache = true
+      repo,
+      base_branch,
+      compare_branch,
+      targets = [],
+      context = 15,
+      conn_id = null,
+      analyze_changes = true
     } = req.body;
 
-    if (!repo || !targets || targets.length === 0) {
+    if (!repo || !base_branch || !compare_branch) {
       return res.status(400).json({
-        error: 'Missing required fields: repo and targets'
+        error: 'Missing required fields: repo, base_branch, compare_branch'
       });
     }
 
-    // Check cache
-    if (use_cache) {
-      const cacheKey = cache.getCacheKey(repo, targets, context);
-      const cached = await cache.get(cacheKey);
-      if (cached) {
-        return res.json({ ...cached, from_cache: true });
-      }
+    const [owner, repoName] = repo.split('/');
+
+    // Get comparison from GitHub
+    const comparison = await githubHub.compareBranches(
+      owner,
+      repoName,
+      base_branch,
+      compare_branch,
+      conn_id
+    );
+
+    if (!analyze_changes) {
+      return res.json({
+        success: true,
+        comparison,
+        base_branch,
+        compare_branch
+      });
     }
 
-    // Clone repository
-    const [owner, repoName] = repo.split('/');
-    const repoPath = await githubHub.cloneRepo(owner, repoName, branch);
+    // Clone the compare branch for analysis
+    const repoPath = await githubHub.cloneRepo(owner, repoName, compare_branch, conn_id);
 
-    // Run analysis
+    // Extract changed files from comparison
+    const changedFiles = comparison.files?.map(f => f.filename) || [];
+    const analysisTargets = targets.length > 0 ? targets : changedFiles;
+
+    // Analyze the code
+    const result = await codeSlicer.analyze({
+      repoPath,
+      targets: analysisTargets,
+      context,
+      promptPack: true
+    });
+
+    res.json({
+      success: true,
+      base_branch,
+      compare_branch,
+      comparison: {
+        ahead_by: comparison.ahead_by,
+        behind_by: comparison.behind_by,
+        total_commits: comparison.total_commits,
+        files_changed: comparison.files?.length || 0
+      },
+      analysis: {
+        sliceId: result.sliceId,
+        files_analyzed: result.files?.length || 0,
+        snippets_found: result.snippets?.length || 0
+      },
+      changed_files: changedFiles,
+      markdown: result.markdown
+    });
+
+  } catch (error) {
+    console.error('Branch comparison error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============= ENHANCED ANALYSIS ENDPOINTS WITH BRANCH SUPPORT =============
+
+/**
+ * POST /api/slice/analyze
+ * Analyze repository code with optional branch support
+ * NOW SUPPORTS: branch parameter
+ */
+app.post('/api/slice/analyze', async (req, res) => {
+  try {
+    const {
+      repo,
+      branch = null,  // NEW: Optional branch parameter
+      targets = [],
+      context = 10,
+      hints = [],
+      max_files = null,
+      promptPack = false,
+      conn_id = null
+    } = req.body;
+
+    if (!repo) {
+      return res.status(400).json({
+        error: 'Missing required field: repo'
+      });
+    }
+
+    if (!targets || targets.length === 0) {
+      return res.status(400).json({
+        error: 'At least one target is required'
+      });
+    }
+
+    const [owner, repoName] = repo.split('/');
+
+    // Clone with branch support
+    const repoPath = await githubHub.cloneRepo(owner, repoName, branch, conn_id);
+
     const result = await codeSlicer.analyze({
       repoPath,
       targets,
       context,
       hints,
-      language,
-      apiType: api_type,
-      promptPack: prompt_pack,
-      copyFiles: copy_files
+      maxFiles: max_files,
+      promptPack
     });
-
-    if (!result.success) {
-      return res.status(500).json({
-        error: 'Analysis failed',
-        details: result.error
-      });
-    }
 
     // Store in database if available
     if (pool) {
-      await pool.query(
-        `INSERT INTO code_slices (slice_id, repo, targets, context_lines, hints, markdown_output, metadata, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
-        [
-          result.sliceId,
-          repo,
-          targets,
-          context,
-          hints,
-          result.markdown,
-          JSON.stringify(result.meta)
-        ]
-      );
+      try {
+        await pool.query(
+          `INSERT INTO code_slices (id, repo, branch, targets, context_lines, created_at)
+           VALUES ($1, $2, $3, $4, $5, NOW())`,
+          [result.sliceId, repo, branch || 'default', targets, context]
+        );
+      } catch (dbError) {
+        console.error('Database insert error:', dbError);
+      }
     }
 
-    // Cache result
-    if (use_cache) {
-      const cacheKey = cache.getCacheKey(repo, targets, context);
-      await cache.set(cacheKey, result);
-    }
-
-    res.json(result);
+    res.json({
+      success: true,
+      repo,
+      branch: branch || 'default',
+      ...result
+    });
 
   } catch (error) {
     console.error('Analysis error:', error);
-    res.status(500).json({
-      error: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
+    res.status(500).json({ error: error.message });
   }
 });
 
-// Extract context from GitHub issue
+/**
+ * POST /api/slice/from-issue
+ * Extract context from GitHub issue with branch support
+ * NOW SUPPORTS: branch parameter
+ */
 app.post('/api/slice/from-issue', async (req, res) => {
   try {
-    const { repo, issue_number, context = 15, use_llm = true } = req.body;
+    const {
+      repo,
+      branch = null,  // NEW: Optional branch parameter
+      issue_number,
+      context = 15,
+      extract_targets = true,
+      conn_id = null
+    } = req.body;
 
     if (!repo || !issue_number) {
       return res.status(400).json({
@@ -483,40 +567,31 @@ app.post('/api/slice/from-issue', async (req, res) => {
     const [owner, repoName] = repo.split('/');
 
     // Get issue details
-    const issue = await githubHub.getIssue(owner, repoName, issue_number);
+    const issue = await githubHub.getIssue(owner, repoName, issue_number, conn_id);
 
-    // Extract keywords using LLM
+    // Extract targets from issue if requested
     let targets = [];
     let hints = [];
 
-    if (use_llm) {
-      const conversationId = `issue_${repo.replace('/', '_')}_${issue_number}`;
-      const keywords = await llmGateway.extractKeywords(
-        `${issue.title}\n\n${issue.body}`,
-        conversationId
-      );
-
-      // Separate into targets (looks like routes/functions) and hints
-      keywords.forEach(keyword => {
-        if (keyword.startsWith('/') || keyword.includes('::') || keyword.includes('.')) {
-          targets.push(keyword);
-        } else {
-          hints.push(keyword);
-        }
-      });
+    if (extract_targets) {
+      const issueText = `${issue.title}\n\n${issue.body || ''}`;
+      const extracted = extractTargetsFromText(issueText);
+      targets = extracted.targets;
+      hints = extracted.hints;
     }
 
-    // If no targets found, return error with suggestions
     if (targets.length === 0) {
       return res.status(400).json({
         error: 'No targets found in issue',
         suggestion: 'Please specify targets manually or improve issue description',
+        issue_title: issue.title,
         extracted_hints: hints
       });
     }
 
-    // Clone and analyze
-    const repoPath = await githubHub.cloneRepo(owner, repoName);
+    // Clone with branch support
+    const repoPath = await githubHub.cloneRepo(owner, repoName, branch, conn_id);
+
     const result = await codeSlicer.analyze({
       repoPath,
       targets,
@@ -526,10 +601,14 @@ app.post('/api/slice/from-issue', async (req, res) => {
     });
 
     res.json({
-      ...result,
+      success: true,
+      repo,
+      branch: branch || 'default',
       issue_number,
+      issue_title: issue.title,
       extracted_targets: targets,
-      extracted_hints: hints
+      extracted_hints: hints,
+      ...result
     });
 
   } catch (error) {
@@ -538,10 +617,21 @@ app.post('/api/slice/from-issue', async (req, res) => {
   }
 });
 
-// Extract context from Pull Request
+/**
+ * POST /api/slice/from-pr
+ * Extract context from Pull Request with branch support
+ * NOW SUPPORTS: Automatically uses PR head branch
+ */
 app.post('/api/slice/from-pr', async (req, res) => {
   try {
-    const { repo, pr_number, context = 15, analyze_impact = true } = req.body;
+    const {
+      repo,
+      pr_number,
+      branch = null,  // NEW: Optional branch override (defaults to PR head branch)
+      context = 15,
+      analyze_impact = true,
+      conn_id = null
+    } = req.body;
 
     if (!repo || !pr_number) {
       return res.status(400).json({
@@ -552,24 +642,28 @@ app.post('/api/slice/from-pr', async (req, res) => {
     const [owner, repoName] = repo.split('/');
 
     // Get PR files
-    const files = await githubHub.getPRFiles(owner, repoName, pr_number);
+    const prData = await githubHub.getPRFiles(owner, repoName, pr_number, conn_id);
+    const files = prData.files || prData;
 
-    // Extract function names from changed files
+    // Determine branch: use override, PR head branch, or default
+    const targetBranch = branch || prData.head_branch || null;
+
+    // Extract targets from changed files
     const targets = [];
     files.forEach(file => {
-      // Simple heuristic: look for function definitions in the patch
       const patch = file.patch || '';
-      const functionMatches = patch.match(/^\+\s*(?:def|function|func|public|private)\s+(\w+)/gm);
+      const functionMatches = patch.match(/^\+\s*(?:def|function|func|public|private|const|let|var)\s+(\w+)/gm);
       if (functionMatches) {
         functionMatches.forEach(match => {
-          const functionName = match.replace(/^\+\s*(?:def|function|func|public|private)\s+/, '');
+          const functionName = match.replace(/^\+\s*(?:def|function|func|public|private|const|let|var)\s+/, '');
           targets.push(`${file.filename}:${functionName}`);
         });
       }
     });
 
-    // Analyze repository
-    const repoPath = await githubHub.cloneRepo(owner, repoName);
+    // Clone with branch support
+    const repoPath = await githubHub.cloneRepo(owner, repoName, targetBranch, conn_id);
+
     const result = await codeSlicer.analyze({
       repoPath,
       targets: targets.length > 0 ? targets : files.map(f => f.filename),
@@ -578,10 +672,13 @@ app.post('/api/slice/from-pr', async (req, res) => {
     });
 
     res.json({
-      ...result,
+      success: true,
+      repo,
+      branch: targetBranch || 'default',
       pr_number,
       changed_files: files.length,
-      extracted_targets: targets
+      extracted_targets: targets,
+      ...result
     });
 
   } catch (error) {
@@ -590,7 +687,12 @@ app.post('/api/slice/from-pr', async (req, res) => {
   }
 });
 
-// Get slice result
+// ============= EXISTING ENDPOINTS (UNCHANGED) =============
+
+/**
+ * GET /api/slice/result/:sliceId
+ * Get slice result
+ */
 app.get('/api/slice/result/:sliceId', async (req, res) => {
   try {
     const { sliceId } = req.params;
@@ -598,7 +700,6 @@ app.get('/api/slice/result/:sliceId', async (req, res) => {
 
     const outputDir = path.join(DATA_DIR, 'slices', sliceId);
 
-    // Check if exists
     try {
       await fs.access(outputDir);
     } catch {
@@ -610,7 +711,6 @@ app.get('/api/slice/result/:sliceId', async (req, res) => {
       res.type('text/markdown').send(markdown);
     } else if (format === 'html') {
       const markdown = await fs.readFile(path.join(outputDir, 'slice.md'), 'utf-8');
-      // Simple conversion (you might want to use a proper markdown parser)
       const html = `
         <!DOCTYPE html>
         <html>
@@ -637,10 +737,20 @@ app.get('/api/slice/result/:sliceId', async (req, res) => {
   }
 });
 
-// Enrich prompt with code context
+/**
+ * POST /api/slice/enrich-prompt
+ * Enrich prompt with code context
+ */
 app.post('/api/slice/enrich-prompt', async (req, res) => {
   try {
-    const { prompt, repo, targets, context = 10 } = req.body;
+    const {
+      prompt,
+      repo,
+      branch = null,  // NEW: Optional branch parameter
+      targets,
+      context = 10,
+      conn_id = null
+    } = req.body;
 
     if (!prompt || !repo || !targets) {
       return res.status(400).json({
@@ -648,9 +758,8 @@ app.post('/api/slice/enrich-prompt', async (req, res) => {
       });
     }
 
-    // Analyze code
     const [owner, repoName] = repo.split('/');
-    const repoPath = await githubHub.cloneRepo(owner, repoName);
+    const repoPath = await githubHub.cloneRepo(owner, repoName, branch, conn_id);
     
     const result = await codeSlicer.analyze({
       repoPath,
@@ -662,11 +771,10 @@ app.post('/api/slice/enrich-prompt', async (req, res) => {
       return res.status(500).json({ error: 'Code analysis failed' });
     }
 
-    // Build enriched prompt
     const enrichedPrompt = `
 ${prompt}
 
-## Code Context
+## Code Context${branch ? ` (branch: ${branch})` : ''}
 
 ${result.markdown}
 
@@ -676,10 +784,13 @@ Please analyze the code above and provide your response.
     `.trim();
 
     res.json({
+      success: true,
       original_prompt: prompt,
       enriched_prompt: enrichedPrompt,
-      code_snippets: result.snippets.length,
-      affected_files: result.files.length
+      repo,
+      branch: branch || 'default',
+      code_snippets: result.snippets?.length || 0,
+      affected_files: result.files?.length || 0
     });
 
   } catch (error) {
@@ -688,7 +799,10 @@ Please analyze the code above and provide your response.
   }
 });
 
-// Get statistics
+/**
+ * GET /api/slice/stats
+ * Get statistics
+ */
 app.get('/api/slice/stats', async (req, res) => {
   if (!pool) {
     return res.status(503).json({ error: 'Database not configured' });
@@ -699,6 +813,7 @@ app.get('/api/slice/stats', async (req, res) => {
       SELECT 
         COUNT(*) as total_slices,
         COUNT(DISTINCT repo) as unique_repos,
+        COUNT(DISTINCT branch) as unique_branches,
         AVG(array_length(targets, 1)) as avg_targets,
         AVG(context_lines) as avg_context
       FROM code_slices
@@ -718,12 +833,17 @@ async function start() {
   await ensureDirectories();
 
   app.listen(PORT, () => {
-    console.log(`🚀 Code Slicer Service running on port ${PORT}`);
+    console.log(`🚀 Code Slicer Service v2.0 running on port ${PORT}`);
     console.log(`📂 Data directory: ${DATA_DIR}`);
     console.log(`💾 Cache directory: ${CACHE_DIR}`);
     console.log(`🔗 GitHub Hub: ${GITHUB_HUB_URL}`);
     console.log(`🤖 LLM Gateway: ${LLM_GATEWAY_URL}`);
     console.log(`🗄️  Database: ${POSTGRES_URL ? 'Connected' : 'Not configured'}`);
+    console.log(`\n✨ New Features:`);
+    console.log(`   - Branch support on all endpoints`);
+    console.log(`   - GET /api/slice/branches/:owner/:repo`);
+    console.log(`   - GET /api/slice/branch-info/:owner/:repo/:branch`);
+    console.log(`   - POST /api/slice/compare (branch comparison)`);
   });
 }
 

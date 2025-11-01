@@ -1,0 +1,11 @@
+digraph Slice {
+  rankdir=LR;
+  node [shape=box, fontname="Helvetica"];
+  "app.main.legacy_set_cfg" -> "app.main._validate_connection_inputs";
+  "app.main.legacy_set_cfg" -> "app.main._default_branch_from";
+  "app.main.legacy_set_cfg" -> "app.main._client_for_input";
+  "app.main.create_branch" -> "app.main._owner_repo";
+  "app.main.create_branch" -> "app.main._map_github_error";
+  "app.main.create_branch" -> "app.main._resolve_conn";
+  "app.main.create_branch" -> "app.main._client_for_conn";
+}

@@ -1,0 +1,99 @@
+// app/main.py:771-868
+    gh = _client_for_conn(conn)
+    owner, repo = _owner_repo(conn)
+    try:
+        branches = gh.get_branches(owner, repo)
+        st = load_all()
+        for cc in st.get("connections", []):
+            if cc.get("id") == conn_id:
+                cc["branches"] = branches
+        save_all(st)
+        return {"ok": True, "branches": branches}
+    except Exception as e:
+        raise _map_github_error(e)
+
+# ----- legacy "config" view -----
+@app.get("/api/config")
+def get_cfg():
+    st = load_all()
+    default_id = st.get("default_id")
+    conns = list_connections(redact=True)
+    default_conn = next((c for c in conns if c.get("id") == default_id), conns[0] if conns else None)
+    return {
+        "default_id": default_id,
+        "connections": conns,
+        "repo_url": (default_conn or {}).get("repo_url"),
+        "base_url": (default_conn or {}).get("base_url") or "https://api.github.com",
+    }
+
+@app.post("/api/config")
+def legacy_set_cfg(body: ConfigLegacyIn):
+    _validate_connection_inputs(body.repo_url, body.base_url)
+    client = _client_for_input(body.token, body.base_url)
+    owner, repo = GHClient.parse_repo(body.repo_url)
+    branches = client.get_branches(owner, repo)
+
+    data = {
+        "id": "default",
+        "repo_url": body.repo_url,
+        "default_branch": body.default_branch or _default_branch_from(branches),
+        "base_url": body.base_url,
+    }
+    if body.token:
+        data["token"] = body.token
+    upsert_connection(data)
+    set_default("default")
+    st = load_all()
+    for cc in st["connections"]:
+        if cc["id"] == "default":
+            cc["branches"] = branches
+    save_all(st)
+    return {"ok": True, "branches": branches, "default_id": "default"}
+
+# ----- GitHub operations (conn-aware) -----
+@app.get("/api/branches")
+def branches(
+    conn_id: Optional[str] = Query(None),
+    x_conn: Optional[str] = Header(None, alias="X-GH-Conn"),
+):
+    conn = _resolve_conn(conn_id, x_conn)
+    gh = _client_for_conn(conn)
+    owner, repo = _owner_repo(conn)
+    return {"branches": gh.get_branches(owner, repo)}
+
+@app.post("/api/branch")
+def create_branch(
+    body: Optional[BranchCreateIn] = None,
+    new_q: Optional[str] = Query(None, alias="new"),
+    from_q: Optional[str] = Query(None, alias="from"),
+    conn_id: Optional[str] = Query(None),
+    x_conn: Optional[str] = Header(None, alias="X-GH-Conn"),
+):
+    new = (body.new if body and body.new else new_q)
+    base = (body.from_branch if body and body.from_branch else from_q)
+    if not new or not base:
+        raise HTTPException(400, "Both 'new' and 'from' are required (query or JSON body).")
+
+    conn = _resolve_conn(conn_id, x_conn)
+    gh = _client_for_conn(conn)
+    owner, repo = _owner_repo(conn)
+
+    try:
+        return gh.create_branch(owner, repo, new, base)
+    except Exception as e:
+        raise _map_github_error(e)
+
+@app.get("/api/tree")
+def tree(
+    path: Optional[str] = None,
+    branch: Optional[str] = None,
+    recursive: bool = True,
+    conn_id: Optional[str] = Query(None),
+    x_conn: Optional[str] = Header(None, alias="X-GH-Conn"),
+):
+    conn = _resolve_conn(conn_id, x_conn)
+    gh = _client_for_conn(conn); owner, repo = _owner_repo(conn)
+    b = branch or conn.get("default_branch") or "main"
+    t = gh.get_tree(owner, repo, b, recursive=bool(recursive))
+    items = t.get("tree", [])
+    if path:

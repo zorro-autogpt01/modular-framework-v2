@@ -60,6 +60,22 @@ services:
       retries: 3
       start_period: 40s
 
+  code-slicer-ui:
+    build: ./code-slicer-ui
+    container_name: code-slicer-ui
+    ports:
+      - "3035:3035"
+    environment:
+      - PORT=3035
+      - CODE_SLICER_URL=http://code-slicer-service:3012/api
+      - LLM_GATEWAY_URL=http://llm-gateway:3010/api
+      - GITHUB_HUB_URL=http://github-hub-module:3002/api
+    depends_on:
+      - code-slicer
+      - llm-gateway
+    networks:
+      - app-network
+
   # Framework static website (served behind edge-nginx)
   framework-web:
     build: ./framework

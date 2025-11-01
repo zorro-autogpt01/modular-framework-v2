@@ -1,0 +1,508 @@
+{
+  "repo_root": "/home/tux/project/modular-framework/modules/github-hub",
+  "ignore_globs_effective": [
+    "**/.git/**",
+    "**/.hg/**",
+    "**/.svn/**",
+    "**/.venv/**",
+    "**/venv/**",
+    "**/env/**",
+    "**/__pycache__/**",
+    "**/site-packages/**",
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/build/**",
+    "**/out/**",
+    "**/.next/**",
+    "**/.turbo/**",
+    "**/.mypy_cache/**",
+    "**/.pytest_cache/**",
+    "**/.tox/**",
+    "**/.idea/**",
+    "**/.vscode/**"
+  ],
+  "languages": [
+    "py",
+    "js"
+  ],
+  "counts": {
+    "py": 11,
+    "js": 3,
+    "java": 0,
+    "go": 0,
+    "rb": 0,
+    "php": 0,
+    "cs": 0
+  },
+  "services": [
+    {
+      "name": "default",
+      "root": ".",
+      "entrypoints": [
+        "app/main.py"
+      ],
+      "frameworks": [
+        "fastapi"
+      ],
+      "http_base_prefixes": [
+        "/api",
+        "/ui",
+        "/.well-known"
+      ],
+      "routes_index_hint": {
+        "/ui": [
+          "app.mount()"
+        ],
+        "/": [
+          "app/main.py:root"
+        ],
+        "/.well-known/module.json": [
+          "app/main.py:module_manifest_root"
+        ],
+        "/api/.well-known/module.json": [
+          "app/main.py:module_manifest_api"
+        ],
+        "/api/health": [
+          "app/main.py:health"
+        ],
+        "/api/poll/run": [
+          "app/main.py:trigger_global_poll"
+        ],
+        "/api/connections/{conn_id}/poll/run": [
+          "app/main.py:trigger_connection_poll"
+        ],
+        "/api/poll/status": [
+          "app/main.py:get_poll_status"
+        ],
+        "/api/subscriptions": [
+          "app/main.py:create_subscription",
+          "app/main.py:get_subscriptions"
+        ],
+        "/api/subscriptions/{sub_id}": [
+          "app/main.py:delete_subscription_endpoint",
+          "app/main.py:get_subscription_by_id",
+          "app/main.py:update_subscription"
+        ],
+        "/api/subscriptions/{sub_id}/test": [
+          "app/main.py:test_subscription"
+        ],
+        "/api/subscriptions/{sub_id}/pause": [
+          "app/main.py:pause_subscription"
+        ],
+        "/api/subscriptions/{sub_id}/resume": [
+          "app/main.py:resume_subscription"
+        ],
+        "/api/connections": [
+          "app/main.py:api_list_conns",
+          "app/main.py:api_upsert_conn"
+        ],
+        "/api/connections/validate": [
+          "app/main.py:api_validate_conn"
+        ],
+        "/api/connections/{conn_id}": [
+          "app/main.py:api_delete_conn",
+          "app/main.py:api_get_connection"
+        ],
+        "/api/connections/{conn_id}/default": [
+          "app/main.py:api_set_default",
+          "app/main.py:api_set_default_put"
+        ],
+        "/api/connections/{conn_id}/health": [
+          "app/main.py:api_conn_health"
+        ],
+        "/api/config": [
+          "app/main.py:get_cfg",
+          "app/main.py:legacy_set_cfg"
+        ],
+        "/api/branches": [
+          "app/main.py:branches"
+        ],
+        "/api/branch": [
+          "app/main.py:create_branch"
+        ],
+        "/api/tree": [
+          "app/main.py:tree"
+        ],
+        "/api/file": [
+          "app/main.py:delete_file",
+          "app/main.py:get_file",
+          "app/main.py:put_file"
+        ],
+        "/api/batch/commit": [
+          "app/main.py:batch_commit"
+        ],
+        "/api/pr": [
+          "app/main.py:create_pr"
+        ],
+        "/api/compare": [
+          "app/main.py:compare"
+        ],
+        "/api/commits": [
+          "app/main.py:list_commits"
+        ],
+        "/api/connections/{conn_id}/clone_url": [
+          "app/main.py:api_get_clone_url"
+        ],
+        "/api/analyze/{owner}/{repo}": [
+          "app/main.py:analyze_repository"
+        ],
+        "/api/cache/{owner}/{repo}": [
+          "app/main.py:get_cached_analysis"
+        ],
+        "/api/map-openapi/{owner}/{repo}": [
+          "app/main.py:map_openapi_endpoints"
+        ],
+        "/api/endpoint/{owner}/{repo}/{method}/{path:path}": [
+          "app/main.py:get_single_endpoint"
+        ],
+        "/api/export-endpoint-context": [
+          "app/main.py:export_endpoint_context"
+        ]
+      },
+      "artifacts": {
+        "openapi": [],
+        "graphql": [],
+        "grpc_protos": []
+      },
+      "python": {
+        "endpoint_first_callees": {
+          "/:app/main.py:root": [],
+          "/.well-known/module.json:app/main.py:module_manifest_root": [],
+          "/api/.well-known/module.json:app/main.py:module_manifest_api": [
+            "app.main.module_manifest_root"
+          ],
+          "/api/health:app/main.py:health": [
+            "app.store.load_all"
+          ],
+          "/api/poll/run:app/main.py:trigger_global_poll": [],
+          "/api/connections/{conn_id}/poll/run:app/main.py:trigger_connection_poll": [
+            "app.main.check_connection",
+            "app.store.get_connection"
+          ],
+          "/api/poll/status:app/main.py:get_poll_status": [
+            "app.store.list_connections"
+          ],
+          "/api/subscriptions:app/main.py:create_subscription": [
+            "app.main._ensure_branch_watch",
+            "app.main._valid_https_url",
+            "app.store.upsert_subscription"
+          ],
+          "/api/subscriptions:app/main.py:get_subscriptions": [
+            "app.store.list_subscriptions"
+          ],
+          "/api/subscriptions/{sub_id}:app/main.py:update_subscription": [
+            "app.main._ensure_branch_watch",
+            "app.store.get_subscription",
+            "app.store.upsert_subscription"
+          ],
+          "/api/subscriptions/{sub_id}:app/main.py:get_subscription_by_id": [
+            "app.store.get_subscription"
+          ],
+          "/api/subscriptions/{sub_id}:app/main.py:delete_subscription_endpoint": [
+            "app.store.delete_subscription",
+            "app.store.get_subscription"
+          ],
+          "/api/subscriptions/{sub_id}/test:app/main.py:test_subscription": [
+            "app.main.build_ping_event",
+            "app.main.send_notification",
+            "app.store.get_subscription"
+          ],
+          "/api/subscriptions/{sub_id}/pause:app/main.py:pause_subscription": [
+            "app.store.get_subscription",
+            "app.store.upsert_subscription"
+          ],
+          "/api/subscriptions/{sub_id}/resume:app/main.py:resume_subscription": [
+            "app.store.get_subscription",
+            "app.store.upsert_subscription"
+          ],
+          "/api/connections:app/main.py:api_list_conns": [
+            "app.store.list_connections",
+            "app.store.load_all"
+          ],
+          "/api/connections:app/main.py:api_upsert_conn": [
+            "app.github_api.GHClient.get_branches",
+            "app.github_api.GHClient.parse_repo",
+            "app.main._client_for_input",
+            "app.main._default_branch_from",
+            "app.main._map_github_error"
+          ],
+          "/api/connections/validate:app/main.py:api_validate_conn": [
+            "app.github_api.GHClient.get_branches",
+            "app.github_api.GHClient.parse_repo",
+            "app.main._client_for_input",
+            "app.main._default_branch_from",
+            "app.main._map_github_error"
+          ],
+          "/api/connections/{conn_id}:app/main.py:api_delete_conn": [
+            "app.store.delete_connection"
+          ],
+          "/api/connections/{conn_id}:app/main.py:api_get_connection": [
+            "app.store.get_connection"
+          ],
+          "/api/connections/{conn_id}/default:app/main.py:api_set_default": [
+            "app.store.set_default"
+          ],
+          "/api/connections/{conn_id}/default:app/main.py:api_set_default_put": [
+            "app.main.api_set_default"
+          ],
+          "/api/connections/{conn_id}/health:app/main.py:api_conn_health": [
+            "app.github_api.GHClient.get_branches",
+            "app.main._client_for_conn",
+            "app.main._map_github_error",
+            "app.main._owner_repo",
+            "app.main._resolve_conn"
+          ],
+          "/api/config:app/main.py:get_cfg": [
+            "app.store.list_connections",
+            "app.store.load_all"
+          ],
+          "/api/config:app/main.py:legacy_set_cfg": [
+            "app.github_api.GHClient.get_branches",
+            "app.github_api.GHClient.parse_repo",
+            "app.main._client_for_input",
+            "app.main._default_branch_from",
+            "app.main._validate_connection_inputs"
+          ],
+          "/api/branches:app/main.py:branches": [
+            "app.github_api.GHClient.get_branches",
+            "app.main._client_for_conn",
+            "app.main._owner_repo",
+            "app.main._resolve_conn"
+          ],
+          "/api/branch:app/main.py:create_branch": [
+            "app.github_api.GHClient.create_branch",
+            "app.main._client_for_conn",
+            "app.main._map_github_error",
+            "app.main._owner_repo",
+            "app.main._resolve_conn"
+          ],
+          "/api/tree:app/main.py:tree": [
+            "app.github_api.GHClient.get_tree",
+            "app.main._client_for_conn",
+            "app.main._owner_repo",
+            "app.main._resolve_conn"
+          ],
+          "/api/file:app/main.py:get_file": [
+            "app.github_api.GHClient.get_file",
+            "app.main._client_for_conn",
+            "app.main._owner_repo",
+            "app.main._resolve_conn"
+          ],
+          "/api/file:app/main.py:delete_file": [
+            "app.github_api.GHClient.delete_file",
+            "app.main._client_for_conn",
+            "app.main._owner_repo",
+            "app.main._resolve_conn"
+          ],
+          "/api/file:app/main.py:put_file": [
+            "app.github_api.GHClient.put_file",
+            "app.main._client_for_conn",
+            "app.main._owner_repo",
+            "app.main._resolve_conn"
+          ],
+          "/api/batch/commit:app/main.py:batch_commit": [
+            "app.github_api.GHClient.batch_commit",
+            "app.main._client_for_conn",
+            "app.main._owner_repo",
+            "app.main._resolve_conn"
+          ],
+          "/api/pr:app/main.py:create_pr": [
+            "app.github_api.GHClient.create_pull_request",
+            "app.main._client_for_conn",
+            "app.main._owner_repo",
+            "app.main._resolve_conn"
+          ],
+          "/api/compare:app/main.py:compare": [
+            "app.github_api.GHClient.compare_commits",
+            "app.main._client_for_conn",
+            "app.main._owner_repo",
+            "app.main._resolve_conn"
+          ],
+          "/api/commits:app/main.py:list_commits": [
+            "app.github_api.GHClient.list_commits",
+            "app.main._client_for_conn",
+            "app.main._owner_repo",
+            "app.main._resolve_conn"
+          ],
+          "/api/connections/{conn_id}/clone_url:app/main.py:api_get_clone_url": [
+            "app.main._resolve_conn"
+          ],
+          "/api/analyze/{owner}/{repo}:app/main.py:analyze_repository": [
+            "app.analysis.cache_manager.CacheManager.generate_cache_key",
+            "app.analysis.cache_manager.CacheManager.is_cache_valid",
+            "app.analysis.cache_manager.CacheManager.load_analysis",
+            "app.analysis.cache_manager.CacheManager.save_analysis",
+            "app.analysis.dependency_analyzer.DependencyAnalyzer.analyze_all"
+          ],
+          "/api/cache/{owner}/{repo}:app/main.py:get_cached_analysis": [
+            "app.analysis.cache_manager.CacheManager.load_analysis"
+          ],
+          "/api/map-openapi/{owner}/{repo}:app/main.py:map_openapi_endpoints": [
+            "app.analysis.dependency_analyzer.DependencyAnalyzer.analyze_all",
+            "app.analysis.endpoint_mapper.EndpointMapper.extract_endpoints",
+            "app.analysis.endpoint_mapper.EndpointMapper.map_all_endpoints",
+            "app.analysis.fastapi_parser.parse_fastapi_routes",
+            "app.analysis.token_counter.TokenCounter.count_tokens"
+          ],
+          "/api/endpoint/{owner}/{repo}/{method}/{path:path}:app/main.py:get_single_endpoint": [
+            "app.main.map_openapi_endpoints"
+          ],
+          "/api/export-endpoint-context:app/main.py:export_endpoint_context": []
+        },
+        "fastapi_apps": [
+          "app/main.py"
+        ],
+        "mounts": [
+          "/ui"
+        ],
+        "import_aliases": {
+          "os": "os",
+          "json": "json",
+          "base64": "base64",
+          "uuid": "uuid",
+          "requests": "requests",
+          "argparse": "argparse",
+          "ast": "ast",
+          "re": "re",
+          "sys": "sys",
+          "shutil": "shutil",
+          "fnmatch": "fnmatch",
+          "difflib": "difflib",
+          "logging": "logging",
+          "yaml": "yaml",
+          "asyncio": "asyncio",
+          "hmac": "hmac",
+          "hashlib": "hashlib",
+          "random": "random",
+          "httpx": "httpx",
+          "traceback": "traceback"
+        }
+      },
+      "routes_by_method": {
+        "GET /": [
+          "app/main.py:root"
+        ],
+        "GET /.well-known/module.json": [
+          "app/main.py:module_manifest_root"
+        ],
+        "GET /api/.well-known/module.json": [
+          "app/main.py:module_manifest_api"
+        ],
+        "GET /api/health": [
+          "app/main.py:health"
+        ],
+        "POST /api/poll/run": [
+          "app/main.py:trigger_global_poll"
+        ],
+        "POST /api/connections/{conn_id}/poll/run": [
+          "app/main.py:trigger_connection_poll"
+        ],
+        "GET /api/poll/status": [
+          "app/main.py:get_poll_status"
+        ],
+        "POST /api/subscriptions": [
+          "app/main.py:create_subscription"
+        ],
+        "GET /api/subscriptions": [
+          "app/main.py:get_subscriptions"
+        ],
+        "GET /api/subscriptions/{sub_id}": [
+          "app/main.py:get_subscription_by_id"
+        ],
+        "DELETE /api/subscriptions/{sub_id}": [
+          "app/main.py:delete_subscription_endpoint"
+        ],
+        "POST /api/subscriptions/{sub_id}/test": [
+          "app/main.py:test_subscription"
+        ],
+        "POST /api/subscriptions/{sub_id}/pause": [
+          "app/main.py:pause_subscription"
+        ],
+        "POST /api/subscriptions/{sub_id}/resume": [
+          "app/main.py:resume_subscription"
+        ],
+        "PATCH /api/subscriptions/{sub_id}": [
+          "app/main.py:update_subscription"
+        ],
+        "GET /api/connections": [
+          "app/main.py:api_list_conns"
+        ],
+        "POST /api/connections/validate": [
+          "app/main.py:api_validate_conn"
+        ],
+        "POST /api/connections": [
+          "app/main.py:api_upsert_conn"
+        ],
+        "DELETE /api/connections/{conn_id}": [
+          "app/main.py:api_delete_conn"
+        ],
+        "POST /api/connections/{conn_id}/default": [
+          "app/main.py:api_set_default"
+        ],
+        "PUT /api/connections/{conn_id}/default": [
+          "app/main.py:api_set_default_put"
+        ],
+        "GET /api/connections/{conn_id}/health": [
+          "app/main.py:api_conn_health"
+        ],
+        "GET /api/config": [
+          "app/main.py:get_cfg"
+        ],
+        "POST /api/config": [
+          "app/main.py:legacy_set_cfg"
+        ],
+        "GET /api/branches": [
+          "app/main.py:branches"
+        ],
+        "POST /api/branch": [
+          "app/main.py:create_branch"
+        ],
+        "GET /api/tree": [
+          "app/main.py:tree"
+        ],
+        "GET /api/file": [
+          "app/main.py:get_file"
+        ],
+        "PUT /api/file": [
+          "app/main.py:put_file"
+        ],
+        "DELETE /api/file": [
+          "app/main.py:delete_file"
+        ],
+        "POST /api/batch/commit": [
+          "app/main.py:batch_commit"
+        ],
+        "POST /api/pr": [
+          "app/main.py:create_pr"
+        ],
+        "GET /api/compare": [
+          "app/main.py:compare"
+        ],
+        "GET /api/commits": [
+          "app/main.py:list_commits"
+        ],
+        "GET /api/connections/{conn_id}": [
+          "app/main.py:api_get_connection"
+        ],
+        "GET /api/connections/{conn_id}/clone_url": [
+          "app/main.py:api_get_clone_url"
+        ],
+        "POST /api/analyze/{owner}/{repo}": [
+          "app/main.py:analyze_repository"
+        ],
+        "GET /api/cache/{owner}/{repo}": [
+          "app/main.py:get_cached_analysis"
+        ],
+        "POST /api/map-openapi/{owner}/{repo}": [
+          "app/main.py:map_openapi_endpoints"
+        ],
+        "GET /api/endpoint/{owner}/{repo}/{method}/{path:path}": [
+          "app/main.py:get_single_endpoint"
+        ],
+        "POST /api/export-endpoint-context": [
+          "app/main.py:export_endpoint_context"
+        ]
+      }
+    }
+  ]
+}

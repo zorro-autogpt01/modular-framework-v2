@@ -14,7 +14,10 @@
     "code-analysis",
     "context-extraction",
     "ai-assisted-development",
-    "github-integration"
+    "github-integration",
+    "ai",
+    "llm",
+    "code-slicer"
   ],
   "author": "Your Name",
   "license": "MIT",
@@ -23,7 +26,8 @@
     "cors": "^2.8.5",
     "express": "^4.18.2",
     "morgan": "^1.10.0",
-    "pg": "^8.11.0"
+    "pg": "^8.11.0",
+    "uuid": "^9.0.0" 
   },
   "devDependencies": {
     "eslint": "^8.50.0",

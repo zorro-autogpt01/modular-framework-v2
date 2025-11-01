@@ -1,0 +1,12 @@
+{
+  "files": [
+    "/home/tux/project/modular-framework/modules/github-hub/app/main.py"
+  ],
+  "context": 15,
+  "routes": {},
+  "roots": [
+    "app.main.create_branch",
+    "app.main.get_cfg",
+    "app.main.legacy_set_cfg"
+  ]
+}

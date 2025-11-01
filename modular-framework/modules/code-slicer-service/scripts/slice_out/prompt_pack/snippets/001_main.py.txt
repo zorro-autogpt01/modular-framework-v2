@@ -1,0 +1,107 @@
+// app/main.py:119-224
+# Add this function after your imports and before the endpoints
+
+def get_gh_client() -> GHClient:
+    """Dependency to get GitHub client."""
+    # You might need to adjust this based on how you currently handle tokens
+    # Option 1: If you have a global token
+    token = os.getenv('GITHUB_TOKEN')
+    return GHClient(token=token)
+    
+    # Option 2: If you get token from request context
+    # You'll need to adapt this to your existing auth mechanism
+
+def _utcnow_iso() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+def _client_for_conn(conn: Dict[str, Any]) -> GHClient:
+    tok = conn.get("token")
+    if not tok:
+        token_file = os.getenv("GITHUB_TOKEN_FILE")
+        if token_file and Path(token_file).exists():
+            tok = Path(token_file).read_text(encoding="utf-8").strip()
+        tok = tok or os.getenv("GITHUB_TOKEN")
+    if not tok:
+        raise HTTPException(400, "No token available for this connection and no fallback provided.")
+    base_url = conn.get("base_url") or os.getenv("GITHUB_API_BASE", "https://api.github.com")
+    return GHClient(token=tok, base_url=base_url)
+
+def _client_for_input(token: Optional[str], base_url: Optional[str]) -> GHClient:
+    tok = token
+    if not tok:
+        token_file = os.getenv("GITHUB_TOKEN_FILE")
+        if token_file and Path(token_file).exists():
+            tok = Path(token_file).read_text(encoding="utf-8").strip()
+        tok = tok or os.getenv("GITHUB_TOKEN")
+    base = base_url or os.getenv("GITHUB_API_BASE", "https://api.github.com")
+    return GHClient(token=tok or None, base_url=base)
+
+def _owner_repo(conn: Dict[str, Any]) -> tuple[str, str]:
+    url = conn.get("repo_url")
+    if not url:
+        raise HTTPException(400, "Connection has no repo_url.")
+    try:
+        return GHClient.parse_repo(url)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+def _resolve_conn(conn_id: Optional[str], x_conn: Optional[str]) -> Dict[str, Any]:
+    cid = conn_id or x_conn
+    conn = get_connection(cid)
+    if not conn:
+        raise HTTPException(404, "Connection not found (or default unset).")
+    return conn
+
+def _default_branch_from(branches: List[str]) -> str:
+    if not branches:
+        return "main"
+    if "main" in branches:
+        return "main"
+    if "master" in branches:
+        return "master"
+    return branches[0]
+
+def _validate_connection_inputs(repo_url: str, base_url: Optional[str]) -> None:
+    try:
+        GHClient.parse_repo(repo_url)
+    except ValueError as e:
+        raise HTTPException(400, f"Invalid repo_url: {e}")
+    if base_url:
+        base_url = base_url.strip()
+        if not (base_url.startswith("http://") or base_url.startswith("https://")):
+            raise HTTPException(400, "base_url must start with http:// or https://")
+
+def _map_github_error(e: Exception) -> HTTPException:
+    if isinstance(e, requests.HTTPError) and e.response is not None:
+        resp = e.response
+        status = resp.status_code
+        try:
+            data = resp.json()
+            gh_msg = data.get("message")
+        except Exception:
+            gh_msg = resp.text or ""
+        if status == 403 and resp.headers.get("x-ratelimit-remaining") == "0":
+            return HTTPException(429, "GitHub rate limit exceeded (unauthenticated). Add a PAT or wait and retry.")
+        if status in (401,):
+            return HTTPException(401, "GitHub rejected the request (unauthorized). Provide a valid PAT.")
+        if status in (403,):
+            return HTTPException(403, "Forbidden by GitHub: token lacks required scope or no access to repo.")
+        if status in (404,):
+            return HTTPException(404, "Repo not found or no access (private repo?).")
+        return HTTPException(502, f"GitHub error {status}: {gh_msg or 'Unknown error'}")
+    return HTTPException(400, f"Validation failed: {e}")
+
+def _valid_https_url(u: str) -> bool:
+    try:
+        p = urlparse(u)
+        return p.scheme in ("https",) and bool(p.netloc)
+    except Exception:
+        return False
+
+def _ensure_branch_watch(conn_id: str, branches: List[str]) -> None:
+    """
+    Ensure the given branches are being watched for this connection.
+    This is a no-op if the connection doesn't exist.
+    """
+    try:
+        conn = get_connection(conn_id)

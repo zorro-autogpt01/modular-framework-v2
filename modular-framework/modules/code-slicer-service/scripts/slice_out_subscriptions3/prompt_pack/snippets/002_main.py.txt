@@ -1,0 +1,56 @@
+// app/main.py:598-652
+        "connections": []
+    }
+    for conn in conns:
+        status["connections"].append({
+            "id": conn["id"],
+            "repo_url": conn.get("repo_url"),
+            "poll_interval_sec": conn.get("poll_interval_sec", GHH_POLL_INTERVAL_SEC),
+            "watch_branches": conn.get("watch_branches", [conn.get("default_branch", "main")]),
+            "seen": conn.get("seen", {})
+        })
+    return status
+
+# ===== Subscription Endpoints =====
+
+@app.post("/api/subscriptions")
+async def create_subscription(body: SubscriptionIn):
+    if not GHH_ALLOW_HTTP_SUBSCRIBERS and not _valid_https_url(body.url):
+        raise HTTPException(400, "Only HTTPS URLs are allowed for subscriptions")
+    valid_events = {"repo.push", "ping"}
+    for event in body.events or ["repo.push"]:
+        if event not in valid_events:
+            raise HTTPException(400, f"Invalid event: {event}")
+
+    data = body.model_dump(exclude_unset=True, exclude_none=True)
+    sub = upsert_subscription(data)
+
+    # Proactively make the poller watch the requested branches for this connection
+    if data.get("conn_id") and data.get("branches"):
+        _ensure_branch_watch(data["conn_id"], data["branches"])
+
+    sub.pop("secret", None)
+    sub.pop("secret_enc", None)
+    sub.pop("secret_plain", None)
+    if data.get("secret"):
+        sub["secret"] = "[REDACTED]"
+    return sub
+
+@app.get("/api/subscriptions")
+async def get_subscriptions():
+    return {"subscriptions": list_subscriptions(redact=True)}
+
+@app.get("/api/subscriptions/{sub_id}")
+async def get_subscription_by_id(sub_id: str):
+    sub = get_subscription(sub_id)
+    if not sub:
+        raise HTTPException(404, "Subscription not found")
+    sub.pop("secret", None)
+    sub.pop("secret_enc", None)
+    sub.pop("secret_plain", None)
+    sub["secret"] = "[REDACTED]" if ("secret_enc" in sub or "secret_plain" in sub) else None
+    return sub
+
+@app.delete("/api/subscriptions/{sub_id}")
+async def delete_subscription_endpoint(sub_id: str):
+    sub = get_subscription(sub_id)

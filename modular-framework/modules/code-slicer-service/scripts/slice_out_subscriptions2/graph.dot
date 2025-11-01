@@ -1,0 +1,6 @@
+digraph Slice {
+  rankdir=LR;
+  node [shape=box, fontname="Helvetica"];
+  "app.main.create_subscription" -> "app.main._valid_https_url";
+  "app.main.create_subscription" -> "app.main._ensure_branch_watch";
+}

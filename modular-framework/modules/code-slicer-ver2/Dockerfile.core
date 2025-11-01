@@ -1,0 +1,18 @@
+FROM python:3.11-slim
+
+# system deps (graphviz optional for DOT rendering)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git graphviz \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY api_code_slicer.py /app/api_code_slicer.py
+
+# optional dependency used by --rewrite
+RUN pip install --no-cache-dir pyyaml
+
+# run as non-root
+RUN useradd -m appuser
+USER appuser
+
+ENTRYPOINT ["python", "/app/api_code_slicer.py"]
