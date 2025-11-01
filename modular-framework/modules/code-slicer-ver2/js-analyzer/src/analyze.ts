@@ -1,10 +1,11 @@
 import path from "path";
 import fg from "fast-glob";
-import { Project, Nod, SourceFile, FunctionLikeDeclaration, syntaxKind } from "ts-morph";
-import { collectRoutes, inferBasePrefixes } from "./routes.js";
-import { firstHopCalleesForHandlers, buildProjectEdges } from "./callgraph.js";
-import { makeIgnoreMatcher, relTo, loadTsconfigAliases, fromPackageJson, normApiPath } from "./utils.js";
-import { extractBlocks, reachable, writeSlice, writeGraph, writeMeta, writeRanking } from "./slice.js";
+ import fs from "fs";
+import { Project} from "ts-morph";
+import { collectRoutes, inferBasePrefixes } from "./routes";
+import { firstHopCalleesForHandlers, buildProjectEdges } from "./callgraph";
+import { makeIgnoreMatcher, relTo, loadTsconfigAliases, fromPackageJson, normApiPath } from "./utils";
+import { extractBlocks, reachable, writeSlice, writeGraph, writeMeta, writeRanking } from "./slice";
 
 export interface AnalyzeOptions {
   repo: string;
@@ -31,7 +32,7 @@ export async function runAnalyze(opts: AnalyzeOptions) {
   for (const abs of entries) project.addSourceFileAtPath(abs);
 
   // ROUTES
-  const { routes, frameworks } = collectRoutes(project, opts.repo, (p) => ignore(p), opts.maxFiles);
+  const { routes, frameworks } = collectRoutes(project, opts.repo, (p: string) => ignore(p), opts.maxFiles);
 
   const routesByPath: Record<string, string[]> = {};
   const routesByMethod: Record<string, string[]> = {};

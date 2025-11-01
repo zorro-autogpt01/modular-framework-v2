@@ -1,9 +1,15 @@
+
 import fs from "fs";
 import path from "path";
-import { Project, Node, SyntaxKind, FunctionLikeDeclaration, SourceFile } from "ts-morph";
-import { relTo } from "./utils.js";
+import {
+  Project, Node, SyntaxKind, SourceFile,
+  FunctionDeclaration, MethodDeclaration, FunctionExpression,
+  ArrowFunction as MorphArrowFunction
+} from "ts-morph";
+import { relTo } from "./utils";
 
 export type Edges = Record<string, Set<string>>;
+type FnLike = FunctionDeclaration | MethodDeclaration | FunctionExpression | MorphArrowFunction;
 
 export function reachable(edges: Edges, roots: Set<string>): Set<string> {
   const seen = new Set<string>();
@@ -51,16 +57,16 @@ export function extractBlocks(
   // map from id -> function node
   const sfCache = new Map<string, SourceFile>();
 
-  function findFnById(id: string): FunctionLikeDeclaration | undefined {
+  function findFnById(id: string): FnLike | undefined {
     const [fileRel, tag] = [id.split(":")[0], id.split(":").slice(1).join(":")];
-    const sf = (sfCache.get(fileRel) || project.getSourceFile((p) => p.endsWith(fileRel)));
+    const sf = (sfCache.get(fileRel) || project.getSourceFile((s) => s.getFilePath().endsWith(fileRel)));
     if (!sf) return undefined;
     sfCache.set(fileRel, sf);
 
-    const fns: FunctionLikeDeclaration[] = [];
-    sf.forEachDescendant((n) => {
-      if (Node.isFunctionDeclaration(n) || Node.isMethodDeclaration(n) || Node.isArrowFunction(n) || Node.isFunctionExpression(n)) {
-        fns.push(n as any);
+    const fns: FnLike[] = [];
+    sf.forEachDescendant((n: Node) => {
+      if (Node.isFunctionDeclaration(n) || Node.isMethodDeclaration(n) || Node.isFunctionExpression(n) || Node.isArrowFunction(n)) {
+        fns.push(n as FnLike);
       }
     });
 
@@ -107,7 +113,7 @@ export function extractBlocks(
 
   // hints
   if (hints.length) {
-    for (const [abs, ranges] of byFile) {
+    for (const [abs] of byFile) {
       const lines = getLines(abs);
       const hits: Array<[number, number, string]> = [];
       for (let i = 0; i < lines.length; i++) {
@@ -247,7 +253,7 @@ export function writeRanking(outDir: string, edges: Edges, roots: Set<string>) {
     outdeg.set(a, bs.size);
     for (const b of bs) indeg.set(b, (indeg.get(b) || 0) + 1);
   }
-  const allnodes = new Set<string>([...Object.keys(edges), ...Object.values(edges).flatMap((s)=>[...s])]);
+  const allnodes = new Set<string>([...Object.keys(edges), ...Object.values(edges).flatMap((s) => [...s])]);
   const csv = ["node,distance,out_degree,in_degree"];
   for (const n of [...allnodes].sort()) {
     csv.push(`${n},${dist.has(n) ? dist.get(n) : ""},${outdeg.get(n) || 0},${indeg.get(n) || 0}`);

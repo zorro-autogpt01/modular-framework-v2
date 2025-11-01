@@ -1,8 +1,12 @@
 import path from "path";
 import fs from "fs";
 import fg from "fast-glob";
-import { Project, Node, SyntaxKind, SourceFile, CallExpression, FunctionLikeDeclaration, Identifier, PropertyAccessExpression, VariableDeclaration, ArrowFunction, FunctionDeclaration, MethodDeclaration, ClassDeclaration, ExportedDeclarations, Symbol as TsSymbol } from "ts-morph";
-import { IgnoreMatcher, normApiPath, relTo, safePush, uniq } from "./utils.js";
+import {
+  Project, Node, SyntaxKind, SourceFile, CallExpression, Identifier, PropertyAccessExpression,
+  VariableDeclaration, FunctionDeclaration, MethodDeclaration, ClassDeclaration,
+  ExportedDeclarations, Symbol as TsSymbol, FunctionExpression, ArrowFunction as MorphArrowFunction
+} from "ts-morph";
+import { IgnoreMatcher, normApiPath, relTo, safePush, uniq } from "./utils";
 
 export interface RouteHit {
   method: string;       // GET/POST/etc or "" for unknown
@@ -17,12 +21,12 @@ export interface RouteIndex {
 }
 
 type RouterMount = { base: string; symbol: TsSymbol };
-
+type FnLike = FunctionDeclaration | MethodDeclaration | FunctionExpression | MorphArrowFunction;
 function isHttpVerb(name: string) {
   return /^(get|post|put|delete|patch|options|head|all)$/i.test(name);
 }
 
-function anonName(sf: SourceFile, fn: ArrowFunction | FunctionDeclaration | MethodDeclaration, tag = "<anon>") {
+function anonName(sf: SourceFile, fn: MorphArrowFunction | FunctionDeclaration | MethodDeclaration, tag = "<anon>")  {
   const pos = fn.getPos();
   const { line, column } = sf.getLineAndColumnAtPos(pos);
   const rel = sf.getFilePath();
@@ -30,7 +34,7 @@ function anonName(sf: SourceFile, fn: ArrowFunction | FunctionDeclaration | Meth
   return `${rel}:${id}`;
 }
 
-function fnName(sf: SourceFile, fn: FunctionLikeDeclaration) {
+function fnName(sf: SourceFile, fn: FnLike)  {
   if (Node.isFunctionDeclaration(fn) && fn.getName()) {
     return `${sf.getFilePath()}:${fn.getName()}`;
   }
@@ -62,7 +66,7 @@ function getLastHandlerArg(ce: CallExpression): Node | undefined {
   return args[args.length - 1];
 }
 
-function resolveIdentifierToFunction(sf: SourceFile, idOrPa: Identifier | PropertyAccessExpression): FunctionLikeDeclaration | undefined {
+function resolveIdentifierToFunction(sf: SourceFile, idOrPa: Identifier | PropertyAccessExpression): FnLike | undefined {
   // direct variable/function in same file
   if (Node.isIdentifier(idOrPa)) {
     const ds = idOrPa.getDefinitions();
@@ -257,7 +261,7 @@ export function collectRoutes(project: Project, repoRoot: string, ignore: Ignore
       }
       // named exports like export const GET = (req,res)=>{}
       ["GET", "POST", "PUT", "DELETE", "PATCH"].forEach((mth) => {
-        const sym = sf.getExportSymbol(mth);
+        const sym = sf.getExportSymbols().find(s => s.getName() === mth);
         if (sym) {
           const decs = sym.getDeclarations();
           const vd = decs.find(Node.isVariableDeclaration) as VariableDeclaration | undefined;
@@ -273,7 +277,7 @@ export function collectRoutes(project: Project, repoRoot: string, ignore: Ignore
     if (/\/app\/.*\/route\.(t|j)sx?$/.test(fileRel)) {
       const routeFolder = "/" + fileRel.replace(/^.*\/app\//, "").replace(/\/route\.(t|j)sx?$/, "");
       ["GET", "POST", "PUT", "DELETE", "PATCH"].forEach((mth) => {
-        const sym = sf.getExportSymbol(mth);
+        const sym = sf.getExportSymbols().find(s => s.getName() === mth);
         if (!sym) return;
         const decs = sym.getDeclarations();
         const vd = decs.find(Node.isVariableDeclaration) as VariableDeclaration | undefined;

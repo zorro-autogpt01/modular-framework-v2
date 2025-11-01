@@ -1,11 +1,14 @@
 import path from "path";
 import fs from "fs";
 import fg from "fast-glob";
-import { Project, Node, SyntaxKind, CallExpression, Identifier, PropertyAccessExpression, Decorator, FunctionDeclaration, MethodDeclaration, ArrowFunction, FunctionExpression, SourceFile, ClassDeclaration, VariableDeclaration } from "ts-morph";
-import { DEFAULT_IGNORES } from "./globIgnore.js";
-import { writeJSON, writeText, readText, rel, coalesceRanges, normApiPath } from "./utils.js";
-import type { Profile, Edges } from "./schema.js";
-import { tryBabelParse } from "./babel_fallback.js";
+import {
+  Project, Node, SyntaxKind, CallExpression, Identifier, PropertyAccessExpression, Decorator,
+  FunctionDeclaration, MethodDeclaration, ArrowFunction, FunctionExpression, SourceFile, ClassDeclaration, VariableDeclaration
+} from "ts-morph";
+import { DEFAULT_IGNORES } from "./globIgnore";
+import { writeJSON, writeText, readText, rel, coalesceRanges, normApiPath } from "./utils";
+import type { Profile, Edges } from "./schema";
+import { tryBabelParse } from "./babel_fallback";
 
 type Args = {
   repo: string;
@@ -15,12 +18,12 @@ type Args = {
   ["ignore-globs"]?: string[];
   ["max-files"]?: number;
   ["targets-file"]?: string;
-  target?: string[];          // yargs as array
-  ["api-type"]?: "http"|"function";
+  target?: string[];
+  ["api-type"]?: "http" | "function";
 };
 
-const VERBS = new Set(["get","post","put","delete","patch"]);
-const JS_EXTS = ["js","jsx","ts","tsx"];
+const VERBS = new Set(["get", "post", "put", "delete", "patch"]);
+const JS_EXTS = ["js", "jsx", "ts", "tsx"];
 
 function discoverArtifacts(repo: string, ignore: string[]) {
   const openapi: string[] = [];
@@ -28,13 +31,16 @@ function discoverArtifacts(repo: string, ignore: string[]) {
   const protos: string[] = [];
 
   const files = fg.sync(["**/*.{yaml,yml,json,graphql,gql,proto}"], {
-    cwd: repo, dot: false, ignore, followSymbolicLinks: true
+    cwd: repo,
+    dot: false,
+    ignore,
+    followSymbolicLinks: true
   });
 
   for (const f of files) {
     const lower = f.toLowerCase();
     if (/\.(ya?ml|json)$/.test(lower) &&
-        (lower.includes("openapi") || lower.includes("swagger") || lower.endsWith("/api.yaml") || lower.endsWith("/api.yml") || lower.endsWith("/api.json"))) {
+      (lower.includes("openapi") || lower.includes("swagger") || lower.endsWith("/api.yaml") || lower.endsWith("/api.yml") || lower.endsWith("/api.json"))) {
       openapi.push(f);
     } else if (/\.(graphql|gql)$/.test(lower)) {
       gql.push(f);
@@ -48,10 +54,10 @@ function discoverArtifacts(repo: string, ignore: string[]) {
 function readTargets(argv: Args): string[] {
   const t = new Set<string>();
   for (const x of argv.target || []) {
-    String(x).split(",").map(s => s.trim()).filter(Boolean).forEach(y => t.add(y));
+    String(x).split(",").map((s: string) => s.trim()).filter(Boolean).forEach((y: string) => t.add(y));
   }
   if (argv["targets-file"] && fs.existsSync(argv["targets-file"])) {
-    const lines = readText(argv["targets-file"]).split(/\r?\n/).map(s => s.trim());
+    const lines = readText(argv["targets-file"]).split(/\r?\n/).map((s: string) => s.trim());
     for (const line of lines) if (line && !line.startsWith("#")) t.add(line);
   }
   return Array.from(t);
@@ -65,7 +71,7 @@ function projectForRepo(repo: string, extraIgnore: string[]) {
     skipAddingFilesFromTsConfig: false,
     compilerOptions: { allowJs: true, checkJs: false }
   });
-  if (!project.getCompilerOptions().configFilePath) {
+  if (!(project.getCompilerOptions() as any).configFilePath) {
     const files = fg.sync(["**/*.{js,jsx,ts,tsx}"], { cwd: repo, dot: false, ignore: extraIgnore });
     project.addSourceFilesAtPaths(files.map(f => path.join(repo, f)));
   }
@@ -81,7 +87,6 @@ type RouteIndexMethod = Record<string, Set<string>>;   // "METHOD /path" -> { no
 function getNodeId(repo: string, fn: FunctionDeclaration | MethodDeclaration | ArrowFunction | FunctionExpression): string | null {
   const sf = fn.getSourceFile();
   const file = rel(repo, sf.getFilePath());
-  // name: function name or variable name or Class.method
   let name: string | null = null;
 
   if (Node.isFunctionDeclaration(fn) && fn.getName()) {
@@ -93,7 +98,6 @@ function getNodeId(repo: string, fn: FunctionDeclaration | MethodDeclaration | A
       name = `${cls.getName() || "Class"}.${methodName}`;
     }
   } else if (Node.isArrowFunction(fn) || Node.isFunctionExpression(fn)) {
-    // try to find variable declarator or property name
     const v = fn.getFirstAncestorByKind(SyntaxKind.VariableDeclaration) as VariableDeclaration | undefined;
     if (v && v.getName()) name = v.getName();
   }
@@ -107,13 +111,13 @@ function isStringLiteralLike(node: Node): boolean {
 
 function textOf(node: Node): string | null {
   const k = node.getKind();
-  if (k === SyntaxKind.StringLiteral) return (node as any).getLiteralText?.() ?? (node as any).getText()?.slice(1,-1);
-  if (k === SyntaxKind.NoSubstitutionTemplateLiteral) return node.getText().slice(1,-1);
+  if (k === SyntaxKind.StringLiteral) return (node as any).getLiteralText?.() ?? (node as any).getText()?.slice(1, -1);
+  if (k === SyntaxKind.NoSubstitutionTemplateLiteral) return node.getText().slice(1, -1);
   return null;
 }
 
 function detectExpressRoutes(repo: string, sf: SourceFile, routes: RouteIndex, routesByMethod: RouteIndexMethod) {
-  sf.forEachDescendant((node) => {
+  sf.forEachDescendant((node: Node) => {
     if (Node.isCallExpression(node)) {
       const call = node as CallExpression;
       const ex = call.getExpression();
@@ -123,24 +127,24 @@ function detectExpressRoutes(repo: string, sf: SourceFile, routes: RouteIndex, r
         if (VERBS.has(verb)) {
           const args = call.getArguments();
           if (args.length >= 1 && isStringLiteralLike(args[0])) {
-            const path = normApiPath(textOf(args[0]) || "");
-            // handler(s): subsequent args may be identifiers/arrow functions
-            const fn = call.getArguments().find(a => Node.isIdentifier(a) || Node.isArrowFunction(a) || Node.isFunctionExpression(a)) as Node | undefined;
+            const apiPath = normApiPath(textOf(args[0]) || "");
+            const fnArg = call.getArguments().find((a: Node) =>
+              Node.isIdentifier(a) || Node.isArrowFunction(a) || Node.isFunctionExpression(a)) as Node | undefined;
 
             let id: string | null = null;
-            if (fn) {
-              if (Node.isIdentifier(fn)) {
-                const decs = fn.getSymbol()?.getDeclarations() || [];
+            if (fnArg) {
+              if (Node.isIdentifier(fnArg)) {
+                const decs = fnArg.getSymbol()?.getDeclarations() || [];
                 const target = decs.find(d => Node.isFunctionDeclaration(d) || Node.isFunctionExpression(d) || Node.isArrowFunction(d) || Node.isMethodDeclaration(d));
                 if (target) id = getNodeId(repo, target as any);
-              } else if (Node.isArrowFunction(fn) || Node.isFunctionExpression(fn)) {
-                id = getNodeId(repo, fn as any);
+              } else if (Node.isArrowFunction(fnArg) || Node.isFunctionExpression(fnArg)) {
+                id = getNodeId(repo, fnArg as any);
               }
             }
-            if (path) {
-              routes[path] = routes[path] || new Set();
-              if (id) routes[path].add(id);
-              const k = `${verb.toUpperCase()} ${path}`;
+            if (apiPath) {
+              routes[apiPath] = routes[apiPath] || new Set();
+              if (id) routes[apiPath].add(id);
+              const k = `${verb.toUpperCase()} ${apiPath}`;
               routesByMethod[k] = routesByMethod[k] || new Set();
               if (id) routesByMethod[k].add(id);
             }
@@ -178,7 +182,7 @@ function detectNestRoutes(repo: string, sf: SourceFile, routes: RouteIndex, rout
     for (const m of cls.getMethods()) {
       const dec = m.getDecorators().find(d => {
         const n = getDecoratorName(d);
-        return ["Get","Post","Put","Delete","Patch"].includes(n);
+        return ["Get", "Post", "Put", "Delete", "Patch"].includes(n);
       });
       if (!dec) continue;
       const verb = getDecoratorName(dec).toUpperCase();
@@ -199,7 +203,7 @@ function detectNestRoutes(repo: string, sf: SourceFile, routes: RouteIndex, rout
 // ---------- function discovery & call graph ----------
 function collectFunctionNodes(repo: string, sf: SourceFile) {
   const out: Array<FunctionDeclaration | MethodDeclaration | ArrowFunction | FunctionExpression> = [];
-  sf.forEachDescendant((n) => {
+  sf.forEachDescendant((n: Node) => {
     if (Node.isFunctionDeclaration(n) || Node.isMethodDeclaration(n) || Node.isArrowFunction(n) || Node.isFunctionExpression(n)) {
       out.push(n as any);
     }
@@ -214,7 +218,6 @@ function resolveCalleeId(repo: string, call: CallExpression): string | null {
   if (Node.isIdentifier(expr)) {
     decls = expr.getSymbol()?.getDeclarations() || [];
   } else if (Node.isPropertyAccessExpression(expr)) {
-    // property call: foo.bar()
     const sym = expr.getSymbol() || expr.getNameNode().getSymbol();
     if (sym) decls = sym.getDeclarations() || [];
   }
@@ -241,7 +244,7 @@ function buildEdges(repo: string, files: SourceFile[]): { edges: Edges; ids: Set
       ids.add(from);
       edges[from] = edges[from] || new Set();
 
-      fn.forEachDescendant((n) => {
+      fn.forEachDescendant((n: Node) => {
         if (Node.isCallExpression(n)) {
           const to = resolveCalleeId(repo, n as CallExpression);
           if (to) edges[from].add(to);
@@ -275,12 +278,11 @@ function findFunctionLines(fn: FunctionDeclaration | MethodDeclaration | ArrowFu
 }
 
 function extractBlocks(repo: string, files: SourceFile[], selectedIds: Set<string>, context: number) {
-  // file -> ranges [s,e,[ids]]
   const byFile = new Map<string, Array<[number, number, string[]]>>();
 
   const idToNode = new Map<string, Node>();
   for (const sf of files) {
-    sf.forEachDescendant((n) => {
+    sf.forEachDescendant((n: Node) => {
       if (Node.isFunctionDeclaration(n) || Node.isMethodDeclaration(n) || Node.isFunctionExpression(n) || Node.isArrowFunction(n)) {
         const id = getNodeId(repo, n as any);
         if (id) idToNode.set(id, n);
@@ -294,15 +296,14 @@ function extractBlocks(repo: string, files: SourceFile[], selectedIds: Set<strin
     const sf = node.getSourceFile();
     const file = rel(repo, sf.getFilePath());
     const [s0, e0] = findFunctionLines(node as any);
-    const lines = sf.getLineCount();
+    const lineCount = sf.getFullText().split(/\r?\n/).length;
     const s = Math.max(1, s0 - context);
-    const e = Math.min(lines, e0 + context);
+    const e = Math.min(lineCount, e0 + context);
     const arr = byFile.get(file) || [];
     arr.push([s, e, [id]]);
     byFile.set(file, arr);
   }
 
-  // coalesce
   for (const [file, ranges] of Array.from(byFile)) {
     byFile.set(file, coalesceRanges(ranges));
   }
@@ -323,29 +324,26 @@ function writeGraphDot(outDir: string, edges: Edges, selected: Set<string>) {
 }
 
 function writeRanking(outDir: string, edges: Edges, roots: Set<string>) {
-  // BFS distances
   const dist = new Map<string, number>();
   const q: string[] = [];
   for (const r of roots) { dist.set(r, 0); q.push(r); }
-  for (let i=0; i<q.length; i++) {
+  for (let i = 0; i < q.length; i++) {
     const u = q[i];
     const du = dist.get(u)!;
-    for (const v of edges[u] || []) if (!dist.has(v)) { dist.set(v, du+1); q.push(v); }
+    for (const v of edges[u] || []) if (!dist.has(v)) { dist.set(v, du + 1); q.push(v); }
   }
-  // degrees
   const indeg = new Map<string, number>();
   const outdeg = new Map<string, number>();
   for (const [a, bs] of Object.entries(edges)) {
     outdeg.set(a, (outdeg.get(a) || 0) + (bs.size || 0));
     for (const b of bs) indeg.set(b, (indeg.get(b) || 0) + 1);
   }
-  // all nodes
   const all = new Set<string>([...Object.keys(edges)]);
   for (const bs of Object.values(edges)) for (const b of bs) all.add(b);
 
   const rows = ["node,distance,out_degree,in_degree"];
   for (const n of Array.from(all).sort()) {
-    rows.push(`${n},${dist.has(n)?dist.get(n):""},${outdeg.get(n)||0},${indeg.get(n)||0}`);
+    rows.push(`${n},${dist.has(n) ? dist.get(n) : ""},${outdeg.get(n) || 0},${indeg.get(n) || 0}`);
   }
   writeText(path.join(outDir, "ranked_functions.csv"), rows.join("\n"));
 }
@@ -357,15 +355,15 @@ function writeSlice(repo: string, outDir: string, blocks: Map<string, Array<[num
   fs.mkdirSync(outDir, { recursive: true });
   fs.writeFileSync(jlPath, "", "utf8");
 
-  for (const [file, ranges] of Array.from(blocks).sort((a,b)=>a[0].localeCompare(b[0]))) {
+  for (const [file, ranges] of Array.from(blocks).sort((a, b) => a[0].localeCompare(b[0]))) {
     const full = path.join(repo, file);
     const lines = readText(full).split(/\r?\n/);
     mdLines.push(`\n### \`${file}\`\n`);
     const lang = file.endsWith(".ts") || file.endsWith(".tsx") ? "typescript" : "javascript";
 
-    for (const [s,e,ids] of ranges) {
+    for (const [s, e, ids] of ranges) {
       idx += 1;
-      const code = lines.slice(s-1, e).join("\n");
+      const code = lines.slice(s - 1, e).join("\n");
       mdLines.push(`**Block ${idx} (lines ${s}–${e})**\n\n\`\`\`${lang}\n${code}\n\`\`\`\n`);
       const rec = {
         index: idx,
@@ -386,7 +384,7 @@ function writeMeta(outDir: string, files: Iterable<string>, context: number, rou
   const meta = {
     files: Array.from(files),
     context,
-    routes: Object.fromEntries(Object.entries(routesIndex).map(([k,v]) => [k, Array.from(v)])),
+    routes: Object.fromEntries(Object.entries(routesIndex).map(([k, v]) => [k, Array.from(v)])),
     roots: Array.from(roots).sort()
   };
   writeJSON(path.join(outDir, "meta.json"), meta);
@@ -407,7 +405,7 @@ export async function run(argv: Args) {
 
   // project
   const project = projectForRepo(repo, ignore);
-  let srcFiles = project.getSourceFiles().filter(sf => JS_EXTS.includes(sf.getExtension().replace(".","").toLowerCase()));
+  let srcFiles = project.getSourceFiles().filter(sf => JS_EXTS.includes(sf.getExtension().replace(".", "").toLowerCase()));
   if (argv["max-files"]) {
     const allow = new Set(filesLimited.map(f => path.join(repo, f)));
     srcFiles = srcFiles.filter(sf => allow.has(sf.getFilePath()));
@@ -419,14 +417,13 @@ export async function run(argv: Args) {
   const counts = { js: srcFiles.length || allFiles.length };
 
   if (argv.profile) {
-    // profile mode (same contract as before)
     const artifacts = discoverArtifacts(repo, ignore);
     const entrypoints: string[] = [];
     for (const f of filesLimited) {
       const base = path.basename(f).toLowerCase();
       const txt = readText(path.join(repo, f));
-      if (["index.js","index.ts","server.js","server.ts","app.js","app.ts"].includes(base)
-          || txt.includes("@Controller") || txt.includes("express()") || txt.includes("Router(")) {
+      if (["index.js", "index.ts", "server.js", "server.ts", "app.js", "app.ts"].includes(base)
+        || txt.includes("@Controller") || txt.includes("express()") || txt.includes("Router(")) {
         entrypoints.push(f);
       }
     }
@@ -458,7 +455,7 @@ export async function run(argv: Args) {
 
     writeJSON(path.join(out, "profile.json"), prof);
     writeText(path.join(out, "profile.md"),
-      `# Repository Profile (JS/TS)\n- Repo root: \`${prof.repo_root}\`\n- JS/TS files: ${counts.js}\n- Entrypoints: ${prof.services[0].entrypoints.join(", ")||"n/a"}\n- Frameworks: ${prof.services[0].frameworks.join(", ")||"n/a"}\`
+      `# Repository Profile (JS/TS)\n- Repo root: \`${prof.repo_root}\`\n- JS/TS files: ${counts.js}\n- Entrypoints: ${prof.services[0].entrypoints.join(", ") || "n/a"}\n- Frameworks: ${prof.services[0].frameworks.join(", ") || "n/a"}\`
 `);
     console.log(`✅ JS profile written to ${path.join(out, "profile.json")}`);
     return;
@@ -478,12 +475,11 @@ export async function run(argv: Args) {
   // roots
   const roots = new Set<string>();
   if (apiType === "http") {
-    const want = new Set(targets.map(normApiPath));
+    const want = new Set(targets.map((t) => normApiPath(t)));
     for (const [p, nodes] of Object.entries(routes)) {
       if (want.has(normApiPath(p))) for (const n of nodes) if (n) roots.add(n);
     }
   } else {
-    // function: match by exact id or unique suffix ":name"
     const allIds = new Set<string>(ids);
     const idList = Array.from(allIds);
     for (const t of targets) {
@@ -494,20 +490,12 @@ export async function run(argv: Args) {
     }
   }
 
-  // reachable set
   const selected = reachable(edges, roots);
-
-  // extract blocks
   const byFile = extractBlocks(repo, srcFiles, selected, context);
 
-  // outputs
-  // graph
   writeGraphDot(out, edges, selected);
-  // meta
   writeMeta(out, byFile.keys(), context, routes, roots);
-  // ranked csv
   writeRanking(out, edges, roots);
-  // snippets & slice.md
   writeSlice(repo, out, byFile, context);
 
   console.log(`✅ JS slice written to ${out}`);

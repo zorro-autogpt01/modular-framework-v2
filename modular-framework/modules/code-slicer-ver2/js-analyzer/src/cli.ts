@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import fs from "fs";
 import path from "path";
-import { runAnalyze } from "./analyze.js";
+import { runAnalyze } from "./analyze";
 
 function parseArgs(argv: string[]) {
   const out: any = { ignoreGlobs: [], targets: [], hints: [] };

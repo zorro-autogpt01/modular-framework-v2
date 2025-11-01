@@ -17,12 +17,29 @@ export function relTo(root: string, abs: string): string {
   return rel.startsWith("..") ? abs.replaceAll(path.sep, "/") : rel;
 }
 
+// For src/index.ts compatibility
+export function rel(root: string, abs: string): string {
+  return relTo(root, abs);
+}
+
 export function readJsonSafe<T = any>(p: string): T | undefined {
   try {
     return JSON.parse(fs.readFileSync(p, "utf-8"));
   } catch {
     return undefined;
   }
+}
+
+export function readText(p: string): string {
+  return fs.readFileSync(p, "utf-8");
+}
+
+export function writeJSON(p: string, o: any) {
+  fs.writeFileSync(p, JSON.stringify(o, null, 2), "utf-8");
+}
+
+export function writeText(p: string, s: string) {
+  fs.writeFileSync(p, s, "utf-8");
 }
 
 export function normApiPath(p: string | undefined | null): string {
@@ -60,16 +77,8 @@ export function tryRead(p: string): string | undefined {
 
 export function guessEntryPoints(repo: string): string[] {
   const cands = [
-    "src/main.ts",
-    "src/main.js",
-    "src/server.ts",
-    "src/server.js",
-    "server.ts",
-    "server.js",
-    "index.ts",
-    "index.js",
-    "app.ts",
-    "app.js"
+    "src/main.ts","src/main.js","src/server.ts","src/server.js",
+    "server.ts","server.js","index.ts","index.js","app.ts","app.js"
   ];
   return cands.filter((f) => fileExists(path.join(repo, f)));
 }
@@ -85,7 +94,6 @@ export function fromPackageJson(repo: string): { frameworks: string[]; entrypoin
   if (deps["next"]) frameworks.push("next");
   const entrypoints: string[] = [];
   if (pkg.main) entrypoints.push(relTo(repo, path.join(repo, pkg.main)));
-  // scripts start hints are messy; we just add guessed files too
   entrypoints.push(...guessEntryPoints(repo));
   return { frameworks: uniq(frameworks), entrypoints: uniq(entrypoints) };
 }
@@ -112,4 +120,20 @@ export function loadTsconfigAliases(repo: string): Record<string, string> {
 
 export function isProbablyRouterFactory(src: string): boolean {
   return /express\.Router\s*\(|require\(['"]express['"]\)\.Router\s*\(/.test(src);
+}
+
+export function coalesceRanges(ranges: Array<[number, number, string[]]>): Array<[number, number, string[]]> {
+  if (!ranges.length) return [];
+  ranges.sort((a, b) => a[0] - b[0]);
+  const out: Array<[number, number, string[]]> = [];
+  for (const [s, e, syms] of ranges) {
+    if (!out.length || s > out[out.length - 1][1] + 1) {
+      out.push([s, e, [...syms]]);
+    } else {
+      const last = out[out.length - 1];
+      last[1] = Math.max(last[1], e);
+      for (const sym of syms) if (!last[2].includes(sym)) last[2].push(sym);
+    }
+  }
+  return out;
 }

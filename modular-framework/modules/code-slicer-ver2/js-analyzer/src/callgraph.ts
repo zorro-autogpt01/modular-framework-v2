@@ -1,20 +1,30 @@
 import {
-  Node, SourceFile, FunctionLikeDeclaration, CallExpression, Identifier,
-  PropertyAccessExpression, Project, SyntaxKind, VariableDeclaration, ClassDeclaration
+  Node, SourceFile, CallExpression, Identifier, PropertyAccessExpression,
+  Project, SyntaxKind, VariableDeclaration, ClassDeclaration,
+  FunctionDeclaration, MethodDeclaration, ArrowFunction, FunctionExpression
 } from "ts-morph";
-import { relTo, uniq } from "./utils.js";
+import { relTo, uniq } from "./utils";
 
-function isFunctionLike(n: Node): n is FunctionLikeDeclaration {
+type FnLike = FunctionDeclaration | MethodDeclaration | ArrowFunction | FunctionExpression;
+
+function isFunctionLike(n: Node): n is FnLike {
   return Node.isFunctionDeclaration(n) || Node.isMethodDeclaration(n) || Node.isArrowFunction(n) || Node.isFunctionExpression(n);
 }
 
-function resolveCalleeToFunction(n: Identifier | PropertyAccessExpression): FunctionLikeDeclaration | undefined {
+function resolveCalleeToFunction(n: Identifier | PropertyAccessExpression): FnLike | undefined {
   const sym = (Node.isIdentifier(n) ? n.getSymbol() : n.getNameNode().getSymbol());
   const decs = sym?.getDeclarations() || [];
-  return decs.find(isFunctionLike) as FunctionLikeDeclaration | undefined;
+  const md = decs.find(Node.isMethodDeclaration) as MethodDeclaration | undefined;
+  if (md) return md;
+  const fd = decs.find(Node.isFunctionDeclaration) as FunctionDeclaration | undefined;
+  if (fd) return fd;
+  const vd = decs.find(Node.isVariableDeclaration) as VariableDeclaration | undefined;
+  const init = vd?.getInitializer();
+  if (init && (Node.isArrowFunction(init) || Node.isFunctionExpression(init))) return init as FnLike;
+  return undefined;
 }
 
-export function idForFn(sf: SourceFile, fn: FunctionLikeDeclaration): string {
+export function idForFn(sf: SourceFile, fn: FnLike): string {
   if (Node.isFunctionDeclaration(fn) && fn.getName()) return `${sf.getFilePath()}:${fn.getName()}`;
   if (Node.isMethodDeclaration(fn)) {
     const cls = fn.getFirstAncestorByKind(SyntaxKind.ClassDeclaration) as ClassDeclaration | undefined;
@@ -36,12 +46,12 @@ export function firstHopCalleesForHandlers(project: Project, repoRoot: string, h
   }
 
   for (const [fileRel, ids] of byFile) {
-    const sf = project.getSourceFile((p) => p.endsWith(fileRel));
+    const sf = project.getSourceFile((s) => s.getFilePath().endsWith(fileRel));
     if (!sf) continue;
-    const allFns: FunctionLikeDeclaration[] = [];
-    sf.forEachDescendant((n) => { if (isFunctionLike(n)) allFns.push(n); });
+    const allFns: FnLike[] = [];
+    sf.forEachDescendant((n: Node) => { if (isFunctionLike(n)) allFns.push(n); });
 
-    function findFnById(id: string): FunctionLikeDeclaration | undefined {
+    function findFnById(id: string): FnLike | undefined {
       const tag = id.split(":").slice(1).join(":");
       const named = tag.match(/:([A-Za-z$_][\w$.]*)$/)?.[1];
       if (named) {
@@ -62,7 +72,8 @@ export function firstHopCalleesForHandlers(project: Project, repoRoot: string, h
       const m = tag.match(/#L(\d+)C(\d+)/);
       if (m) {
         const line = Number(m[1]);
-        return allFns.find((fn) => sf.getLineAndColumnAtPos(fn.getPos()).line === line);
+        const sfl = sf!; // we already guard earlier
+        return allFns.find((fn) => sfl.getLineAndColumnAtPos(fn.getPos()).line === line);
       }
       return undefined;
     }
@@ -72,9 +83,9 @@ export function firstHopCalleesForHandlers(project: Project, repoRoot: string, h
       if (!fn) continue;
       const callees: string[] = [];
 
-      fn.forEachDescendant((n) => {
+      fn.forEachDescendant((n: Node) => {
         if (!Node.isCallExpression(n)) return;
-        const expr = n.getExpression();
+        const expr = (n as CallExpression).getExpression();
         if (Node.isIdentifier(expr) || Node.isPropertyAccessExpression(expr)) {
           const target = resolveCalleeToFunction(expr);
           if (target) {
@@ -87,7 +98,7 @@ export function firstHopCalleesForHandlers(project: Project, repoRoot: string, h
               const dn = d.getDeclarationNode();
               if (dn && isFunctionLike(dn)) {
                 const sf2 = dn.getSourceFile();
-                const label = `${relTo(repoRoot, sf2.getFilePath())}:${idForFn(sf2, dn).split(":").slice(1).join(":")}`;
+                const label = `${relTo(repoRoot, sf2.getFilePath())}:${idForFn(sf2, dn as FnLike).split(":").slice(1).join(":")}`;
                 callees.push(label);
               }
             }
@@ -102,7 +113,6 @@ export function firstHopCalleesForHandlers(project: Project, repoRoot: string, h
   return out;
 }
 
-/** Build a simple project-wide call graph: node -> set of callees. */
 export function buildProjectEdges(project: Project, repoRoot: string): Record<string, Set<string>> {
   const edges: Record<string, Set<string>> = {};
   function add(a: string, b: string) {
@@ -110,14 +120,14 @@ export function buildProjectEdges(project: Project, repoRoot: string): Record<st
   }
 
   for (const sf of project.getSourceFiles()) {
-    const fns: FunctionLikeDeclaration[] = [];
-    sf.forEachDescendant((n) => { if (isFunctionLike(n)) fns.push(n); });
+    const fns: FnLike[] = [];
+    sf.forEachDescendant((n: Node) => { if (isFunctionLike(n)) fns.push(n); });
 
     for (const fn of fns) {
       const a = `${relTo(repoRoot, sf.getFilePath())}:${idForFn(sf, fn).split(":").slice(1).join(":")}`;
-      fn.forEachDescendant((n) => {
+      fn.forEachDescendant((n: Node) => {
         if (!Node.isCallExpression(n)) return;
-        const expr = n.getExpression();
+        const expr = (n as CallExpression).getExpression();
         if (Node.isIdentifier(expr) || Node.isPropertyAccessExpression(expr)) {
           const target = resolveCalleeToFunction(expr);
           if (target) {
@@ -130,14 +140,13 @@ export function buildProjectEdges(project: Project, repoRoot: string): Record<st
               const dn = d.getDeclarationNode();
               if (dn && isFunctionLike(dn)) {
                 const sf2 = dn.getSourceFile();
-                const b = `${relTo(repoRoot, sf2.getFilePath())}:${idForFn(sf2, dn).split(":").slice(1).join(":")}`;
+                const b = `${relTo(repoRoot, sf2.getFilePath())}:${idForFn(sf2, dn as FnLike).split(":").slice(1).join(":")}`;
                 add(a, b);
               }
             }
           }
         }
       });
-      // ensure node appears even if no callees
       edges[a] ||= new Set<string>();
     }
   }
