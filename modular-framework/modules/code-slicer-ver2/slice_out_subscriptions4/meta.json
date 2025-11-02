@@ -1,0 +1,12 @@
+{
+  "files": [
+    "/home/tux/project/modular-framework/modules/github-hub/app/store.py",
+    "/home/tux/project/modular-framework/modules/github-hub/app/main.py"
+  ],
+  "context": 15,
+  "routes": {},
+  "roots": [
+    "app.main.create_subscription",
+    "app.main.get_subscriptions"
+  ]
+}

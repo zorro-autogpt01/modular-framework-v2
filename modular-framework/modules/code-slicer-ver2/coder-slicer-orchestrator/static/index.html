@@ -1,0 +1,90 @@
+<!-- modular-framework/modules/code-slicer-orchestrator/static/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Code Slicer Orchestrator</title>
+    <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🤖 Code Slicer Orchestrator</h1>
+            <p>Smart code extraction with LLM intelligence</p>
+        </header>
+
+        <main>
+            <!-- Configuration Section -->
+            <section class="card">
+                <h2>⚙️ Configuration</h2>
+                <div class="config-grid">
+                    <div>
+                        <label>LLM Gateway URL:</label>
+                        <input type="text" id="gateway-url" value="http://localhost:3010">
+                    </div>
+                    <div>
+                        <label>Default Model:</label>
+                        <select id="model-select">
+                            <option value="">Loading...</option>
+                        </select>
+                    </div>
+                    <button onclick="saveConfig()">Save Config</button>
+                </div>
+            </section>
+
+            <!-- Extraction Form -->
+            <section class="card">
+                <h2>📦 Extract Code</h2>
+                <form id="extract-form" onsubmit="return extractCode(event)">
+                    <div class="form-group">
+                        <label for="repo-path">Repository Path:</label>
+                        <input type="text" id="repo-path" placeholder="/path/to/repo" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="query">What do you want to do?</label>
+                        <textarea id="query" rows="3" placeholder="Example: Add rate limiting to user creation endpoint" required></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="model-override">Model (leave blank for default):</label>
+                        <select id="model-override">
+                            <option value="">Use default</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="force-reindex">
+                            Force profile regeneration
+                        </label>
+                    </div>
+
+                    <button type="submit" class="btn-primary">🚀 Extract Code</button>
+                </form>
+            </section>
+
+            <!-- Progress Section -->
+            <section class="card" id="progress-section" style="display: none;">
+                <h2>📊 Progress</h2>
+                <div id="progress-log"></div>
+            </section>
+
+            <!-- Results Section -->
+            <section class="card" id="results-section" style="display: none;">
+                <h2>✅ Results</h2>
+                <div id="results"></div>
+            </section>
+
+            <!-- Past Extractions -->
+            <section class="card">
+                <h2>📂 Past Extractions</h2>
+                <div id="extractions-list">Loading...</div>
+            </section>
+        </main>
+    </div>
+
+    <script src="/js/app.js"></script>
+</body>
+</html>

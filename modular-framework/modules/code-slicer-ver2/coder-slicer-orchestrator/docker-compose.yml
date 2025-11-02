@@ -1,0 +1,22 @@
+# Add to modular-framework/modules/docker-compose.yml
+
+services:
+  code-slicer-orchestrator:
+    build: ./code-slicer-orchestrator
+    container_name: code-slicer-orchestrator
+    ports:
+      - "3050:3050"
+    environment:
+      - PORT=3050
+      - LLM_GATEWAY_URL=http://llm-gateway:3010
+      - DATA_DIR=/app/data
+      - NODE_TLS_REJECT_UNAUTHORIZED=0
+    volumes:
+      - ./code-slicer-orchestrator/data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # For running analyzers
+    depends_on:
+      - llm-gateway
+      - code-slicer
+    networks:
+      - app-network
+    restart: unless-stopped

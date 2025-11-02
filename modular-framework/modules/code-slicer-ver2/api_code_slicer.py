@@ -1709,6 +1709,8 @@ Examples:
                     help="Enable verbose logging")
     ap.add_argument("--profile", action="store_true",
                 help="Generate a repository profile (languages, frameworks, route maps, artifacts) and exit")
+    ap.add_argument("--skip-js", action="store_true",
+                help="Skip JavaScript analysis in auto mode")
 
     
     args = ap.parse_args()
@@ -1732,9 +1734,7 @@ Examples:
     
     # Collect targets (not required in --profile mode)
     targets = collect_targets(args.target or [], args.targets_file)
-    if not targets and not args.profile:
-        logging.error("No targets provided. Use --target or --targets-file (or --profile).")
-        sys.exit(2)
+
         
     logging.info(f"Analyzing repository: {repo_root}")
     logging.info(f"Targets: {targets}")
@@ -1758,8 +1758,95 @@ Examples:
         roots.update(new_roots)
     
     # Determine languages to analyze
-langs = [args.language] if args.language != "auto" else ["py","js","java","go","rb","php","cs","java-webflux"]
-       
+    langs = [args.language] if args.language != "auto" else ["py","js","java","go","rb","php","cs","java-webflux"]
+    if args.skip_js:
+        langs = [l for l in langs if l != "js"]
+
+    
+    # Analyze Python
+    if "py" in langs:
+        logging.info("Analyzing Python code...")
+        py = build_python_index(repo_root, ignore, args.max_files)
+        pedges = resolve_python_calls(py)
+        proots = find_python_roots(py, targets, args.api_type)
+        psel = reachable(pedges, proots)
+        
+        # Extract snippet blocks from AST line numbers
+        for fq in psel:
+            found = None
+            for idx in py.modules.values():
+                if fq in idx.functions:
+                    found = idx.functions[fq]
+                    break
+            if not found: 
+                continue
+            
+            f = found.file
+            s = max(1, found.lineno - args.context)
+            e = found.end_lineno + args.context
+            blocks_all.setdefault(f, []).append((s, e, [fq]))
+        
+        # Coalesce Python blocks
+        for f in list(blocks_all.keys()):
+            blocks_all[f] = coalesce_ranges(blocks_all[f])
+        
+        merge_graph({k: v for k, v in pedges.items() if k in psel}, psel, py.django_url_targets, proots)
+    
+    # Analyze gRPC
+    if "grpc" in langs:
+        logging.info("Analyzing gRPC code...")
+        gedges, gsel, gindex = analyze_grpc(repo_root, targets, ignore, args.max_files)
+        merge_graph(gedges, gsel, gindex, set())
+    
+    # Analyze GraphQL
+    if "graphql" in langs:
+        logging.info("Analyzing GraphQL code...")
+        qledges, qlsel, qlindex = analyze_graphql(repo_root, targets, ignore, args.max_files)
+        merge_graph(qledges, qlsel, qlindex, set())
+    
+    # Analyze Java WebFlux
+    if "java-webflux" in langs:
+        logging.info("Analyzing Java WebFlux code...")
+        wfedges, wfsel, wfindex = analyze_java_webflux(repo_root, targets, ignore, args.max_files)
+        merge_graph(wfedges, wfsel, wfindex, set())
+    
+    # Analyze JavaScript/TypeScript
+    if "js" in langs:
+        logging.info("Analyzing JavaScript/TypeScript code...")
+        jedges, jsel, rindex = analyze_js(repo_root, targets, ignore, args.max_files)
+        merge_graph(jedges, jsel, rindex, set())
+    
+    # Analyze Java
+    if "java" in langs:
+        logging.info("Analyzing Java code...")
+        jaedges, jasel, rindex = analyze_java(repo_root, targets, ignore, args.max_files)
+        merge_graph(jaedges, jasel, rindex, set())
+    
+    # Analyze Go
+    if "go" in langs:
+        logging.info("Analyzing Go code...")
+        goedges, gosel, rindex = analyze_go(repo_root, targets, ignore, args.max_files)
+        merge_graph(goedges, gosel, rindex, set())
+    
+    # Analyze Ruby
+    if "rb" in langs:
+        logging.info("Analyzing Ruby code...")
+        rbedges, rbsel, rindex = analyze_ruby(repo_root, targets, ignore, args.max_files)
+        merge_graph(rbedges, rbsel, rindex, set())
+    
+    # Analyze PHP
+    if "php" in langs:
+        logging.info("Analyzing PHP code...")
+        phpedges, phpsel, rindex = analyze_php(repo_root, targets, ignore, args.max_files)
+        merge_graph(phpedges, phpsel, rindex, set())
+    
+    # Analyze C#
+    if "cs" in langs:
+        logging.info("Analyzing C# code...")
+        csedges, cssel, rindex = analyze_cs(repo_root, targets, ignore, args.max_files)
+        merge_graph(csedges, cssel, rindex, set())
+
+
     if args.profile:
         logging.info("Running in --profile mode")
 
@@ -2026,90 +2113,10 @@ langs = [args.language] if args.language != "auto" else ["py","js","java","go","
         print(f"\n✅ Repo profile written to: {out_dir}/profile.json")
         sys.exit(0)
 
+    if not targets and not args.profile:
+        logging.error("No targets provided. Use --target or --targets-file (or --profile).")
+        sys.exit(2)
 
-    
-    # Analyze Python
-    if "py" in langs:
-        logging.info("Analyzing Python code...")
-        py = build_python_index(repo_root, ignore, args.max_files)
-        pedges = resolve_python_calls(py)
-        proots = find_python_roots(py, targets, args.api_type)
-        psel = reachable(pedges, proots)
-        
-        # Extract snippet blocks from AST line numbers
-        for fq in psel:
-            found = None
-            for idx in py.modules.values():
-                if fq in idx.functions:
-                    found = idx.functions[fq]
-                    break
-            if not found: 
-                continue
-            
-            f = found.file
-            s = max(1, found.lineno - args.context)
-            e = found.end_lineno + args.context
-            blocks_all.setdefault(f, []).append((s, e, [fq]))
-        
-        # Coalesce Python blocks
-        for f in list(blocks_all.keys()):
-            blocks_all[f] = coalesce_ranges(blocks_all[f])
-        
-        merge_graph({k: v for k, v in pedges.items() if k in psel}, psel, py.django_url_targets, proots)
-    
-    # Analyze gRPC
-    if "grpc" in langs:
-        logging.info("Analyzing gRPC code...")
-        gedges, gsel, gindex = analyze_grpc(repo_root, targets, ignore, args.max_files)
-        merge_graph(gedges, gsel, gindex, set())
-    
-    # Analyze GraphQL
-    if "graphql" in langs:
-        logging.info("Analyzing GraphQL code...")
-        qledges, qlsel, qlindex = analyze_graphql(repo_root, targets, ignore, args.max_files)
-        merge_graph(qledges, qlsel, qlindex, set())
-    
-    # Analyze Java WebFlux
-    if "java-webflux" in langs:
-        logging.info("Analyzing Java WebFlux code...")
-        wfedges, wfsel, wfindex = analyze_java_webflux(repo_root, targets, ignore, args.max_files)
-        merge_graph(wfedges, wfsel, wfindex, set())
-    
-    # Analyze JavaScript/TypeScript
-    if "js" in langs:
-        logging.info("Analyzing JavaScript/TypeScript code...")
-        jedges, jsel, rindex = analyze_js(repo_root, targets, ignore, args.max_files)
-        merge_graph(jedges, jsel, rindex, set())
-    
-    # Analyze Java
-    if "java" in langs:
-        logging.info("Analyzing Java code...")
-        jaedges, jasel, rindex = analyze_java(repo_root, targets, ignore, args.max_files)
-        merge_graph(jaedges, jasel, rindex, set())
-    
-    # Analyze Go
-    if "go" in langs:
-        logging.info("Analyzing Go code...")
-        goedges, gosel, rindex = analyze_go(repo_root, targets, ignore, args.max_files)
-        merge_graph(goedges, gosel, rindex, set())
-    
-    # Analyze Ruby
-    if "rb" in langs:
-        logging.info("Analyzing Ruby code...")
-        rbedges, rbsel, rindex = analyze_ruby(repo_root, targets, ignore, args.max_files)
-        merge_graph(rbedges, rbsel, rindex, set())
-    
-    # Analyze PHP
-    if "php" in langs:
-        logging.info("Analyzing PHP code...")
-        phpedges, phpsel, rindex = analyze_php(repo_root, targets, ignore, args.max_files)
-        merge_graph(phpedges, phpsel, rindex, set())
-    
-    # Analyze C#
-    if "cs" in langs:
-        logging.info("Analyzing C# code...")
-        csedges, cssel, rindex = analyze_cs(repo_root, targets, ignore, args.max_files)
-        merge_graph(csedges, cssel, rindex, set())
     
 
 

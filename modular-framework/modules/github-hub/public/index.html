@@ -47,109 +47,6 @@
     button.ghost{background:#2a2c31}
 
     .hidden { display: none; }
-    .analysis-panel {
-      margin-top: 20px;
-      padding: 12px;
-      background: #1a1b1e;
-      border-radius: 8px;
-      border: 1px solid #2a2c31;
-    }
-
-    .analysis-panel h3 {
-      margin-top: 0;
-      margin-bottom: 12px;
-    }
-
-    .grid2 {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 10px;
-      margin-top: 12px;
-    }
-
-    .stat-card {
-      background: #2a2c31;
-      padding: 10px 12px;
-      border-radius: 6px;
-    }
-
-    .stat-label {
-      font-size: 0.8em;
-      color: #9ca3af;
-      margin-bottom: 4px;
-    }
-
-    .stat-value {
-      font-size: 1.4em;
-      font-weight: 600;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    }
-
-    .token-badge {
-      display: inline-block;
-      padding: 2px 6px;
-      font-size: 0.7em;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      border-radius: 4px;
-      margin-left: 8px;
-      cursor: help;
-    }
-
-    .token-badge.small {
-      background: rgba(16, 185, 129, 0.15);
-      color: #10b981;
-      border: 1px solid rgba(16, 185, 129, 0.3);
-    }
-
-    .token-badge.medium {
-      background: rgba(59, 130, 246, 0.15);
-      color: #3b82f6;
-      border: 1px solid rgba(59, 130, 246, 0.3);
-    }
-
-    .token-badge.large {
-      background: rgba(245, 158, 11, 0.15);
-      color: #f59e0b;
-      border: 1px solid rgba(245, 158, 11, 0.3);
-    }
-
-    .token-badge.very-large {
-      background: rgba(239, 68, 68, 0.15);
-      color: #ef4444;
-      border: 1px solid rgba(239, 68, 68, 0.3);
-    }
-
-    .dep-indicator {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      font-size: 0.7em;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      margin-left: 8px;
-      cursor: help;
-    }
-
-    #circularDeps {
-      margin-top: 12px;
-      padding: 10px;
-      background: rgba(245, 158, 11, 0.1);
-      border: 1px solid rgba(245, 158, 11, 0.3);
-      border-radius: 6px;
-    }
-
-    #circularDeps > div:first-child {
-      color: #f59e0b;
-      font-weight: 600;
-      margin-bottom: 8px;
-    }
-
-    #circularList {
-      font-size: 0.85em;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      color: #d1d5db;
-      line-height: 1.5;
-    }
-
   </style>
   <script>
     (function () {
@@ -163,18 +60,7 @@
 <body>
   <div class="header"><strong>GitHub Hub</strong><div class="grow"></div><span class="muted">API helper for the whole framework</span></div>
 
-  <!-- Add this to your index.html -->
-<!-- Replace the existing .wrap section with this updated layout -->
-
-<div class="view-controls">
-  <button id="treeViewBtn" class="view-btn active">📁 File Tree</button>
-  <button id="endpointViewBtn" class="view-btn">🔌 API Endpoints</button>
-  <button id="refreshViewBtn" class="view-btn ghost" onclick="location.reload()">↻</button>
-</div>
-
-<div class="wrap">
-  <!-- FILE TREE VIEW (Existing) -->
-  <div id="treeView" style="display: grid; grid-template-columns: 360px 1fr; gap: 12px; width: 100%;">
+  <div class="wrap">
     <div class="side">
       <h3>Repository</h3>
       <div class="connbar">
@@ -189,10 +75,6 @@
       <input id="repoUrl" placeholder="https://github.com/owner/repo" />
       <label>Branch</label>
       <select id="branchSelect"></select>
-      <div id="watchHint" class="hidden" style="margin:8px 0; padding:6px; background:#2a2c31; border-radius:6px;">
-        👁️ <span data-branch></span> is not being watched.
-        <button id="watchThisBranchBtn" class="ghost">Watch this branch</button>
-      </div>
       <div class="row">
         <button id="saveCfgBtn">Save</button>
         <button class="ghost" id="testCfgBtn" title="Test connection without saving">Test</button>
@@ -230,45 +112,6 @@
       </div>
 
       <div id="tree" class="tree"></div>
-      
-      <!-- Analysis Panel (keep existing) -->
-      <div id="analysisPanel" class="analysis-panel" style="display: none;">
-        <h3>Repository Analysis</h3>
-        <div class="row">
-          <button id="analyzeBtn" class="ghost">Analyze Repository</button>
-          <button id="forceAnalyzeBtn" class="ghost">Force Refresh</button>
-        </div>
-        
-        <div id="analysisResults" style="display: none; margin-top: 12px;">
-          <div class="grid2">
-            <div class="stat-card">
-              <div class="stat-label">Files Analyzed</div>
-              <div class="stat-value" id="statFiles">0</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-label">Dependencies</div>
-              <div class="stat-value" id="statDeps">0</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-label">Total Tokens</div>
-              <div class="stat-value" id="statTokens">0</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-label">Lines of Code</div>
-              <div class="stat-value" id="statLines">0</div>
-            </div>
-          </div>
-          
-          <div id="circularDeps" style="display: none;">
-            <div style="color: #f59e0b; font-weight: 600; margin-bottom: 8px;">
-              ⚠️ Circular Dependencies Found
-            </div>
-            <div id="circularList" style="font-size: 0.85em; font-family: monospace;"></div>
-          </div>
-          
-          <div class="muted" style="margin-top: 8px; font-size: 0.85em;" id="analysisTime"></div>
-        </div>
-      </div>
     </div>
 
     <div class="main">
@@ -282,47 +125,6 @@
     </div>
   </div>
 
-  <!-- ENDPOINT VIEW (New) -->
-  <div id="endpointView" style="display: none;">
-    <!-- Loading State -->
-    <div id="endpointLoading" class="endpoint-loading">
-      <div class="spinner"></div>
-      <div>Mapping API endpoints...</div>
-      <div class="loading-hint">This may take a minute for large repositories</div>
-    </div>
-
-    <!-- Main Content -->
-    <div class="endpoint-container" style="display: flex; height: calc(100vh - 100px); gap: 0;">
-      <!-- Left: Endpoint List -->
-      <div class="endpoint-sidebar">
-        <div class="endpoint-sidebar-header">
-          <h3>API Endpoints</h3>
-          <button class="btn-refresh" onclick="loadEndpointMappings(true)" title="Refresh">↻</button>
-        </div>
-
-        <input type="search" id="endpointSearch" placeholder="Search endpoints..." class="endpoint-search" />
-
-        <!-- Stats -->
-        <div id="endpointStats" class="endpoint-stats"></div>
-
-        <!-- Endpoint List -->
-        <div id="endpointListContainer" class="endpoint-list-container">
-          <!-- Populated by JavaScript -->
-        </div>
-      </div>
-
-      <!-- Right: Code View -->
-      <div class="endpoint-main">
-        <div id="endpointCodeView" class="endpoint-code-view">
-          <div class="empty-state">
-            <div class="empty-icon">🔌</div>
-            <div class="empty-title">Select an endpoint</div>
-            <div class="empty-description">Choose an API endpoint from the list to view its implementation</div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
   <div id="connModal" class="modal">
     <div class="box">
       <h3>Connections</h3>
@@ -382,6 +184,7 @@
       </div>
     </div>
   </div>
+
   <div id="subsModal" class="modal">
     <div class="box">
       <h3>Subscriptions</h3>
@@ -415,7 +218,6 @@
   </div>
 
   <div id="toast" class="toast"></div>
-  <script src="./js/app.js"></script>
-  <script src="./js/endpoints.js"></script>
+  <script type="module" src="./js/app.js"></script>
 </body>
 </html>

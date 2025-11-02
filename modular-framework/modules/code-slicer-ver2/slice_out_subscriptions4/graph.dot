@@ -1,0 +1,25 @@
+digraph Slice {
+  rankdir=LR;
+  node [shape=box, fontname="Helvetica"];
+  "app.store.load_all" -> "app.store._empty_store";
+  "app.store.load_all" -> "app.store.save_all";
+  "app.store.load_all" -> "app.store._ensure_dir";
+  "app.store.save_all" -> "app.store._ensure_dir";
+  "app.store.get_connection" -> "app.store._dec";
+  "app.store.get_connection" -> "app.store.load_all";
+  "app.store.upsert_connection" -> "app.store._dec";
+  "app.store.upsert_connection" -> "app.store._enc";
+  "app.store.upsert_connection" -> "app.store.save_all";
+  "app.store.upsert_connection" -> "app.store.load_all";
+  "app.store.list_subscriptions" -> "app.store.load_all";
+  "app.store.upsert_subscription" -> "app.store._dec";
+  "app.store.upsert_subscription" -> "app.store._enc";
+  "app.store.upsert_subscription" -> "app.store.save_all";
+  "app.store.upsert_subscription" -> "app.store.load_all";
+  "app.main._ensure_branch_watch" -> "app.store.upsert_connection";
+  "app.main._ensure_branch_watch" -> "app.store.get_connection";
+  "app.main.create_subscription" -> "app.store.upsert_subscription";
+  "app.main.create_subscription" -> "app.main._valid_https_url";
+  "app.main.create_subscription" -> "app.main._ensure_branch_watch";
+  "app.main.get_subscriptions" -> "app.store.list_subscriptions";
+}

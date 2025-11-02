@@ -1,6 +1,6 @@
 import path from "path";
 import fg from "fast-glob";
- import fs from "fs";
+import fs from "fs";
 import { Project} from "ts-morph";
 import { collectRoutes, inferBasePrefixes } from "./routes";
 import { firstHopCalleesForHandlers, buildProjectEdges } from "./callgraph";
