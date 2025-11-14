@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Code Workspace - Local Git Manager</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/components.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+    <!-- Header -->
+    <header class="app-header">
+        <div class="header-brand">
+            <i class="fas fa-code-branch"></i>
+            <h1>Code Workspace</h1>
+        </div>
+        <nav class="header-nav">
+            <button class="nav-btn active" data-view="repos">
+                <i class="fas fa-folder-tree"></i>
+                Repositories
+            </button>
+            <button class="nav-btn" data-view="workspace">
+                <i class="fas fa-code"></i>
+                Workspace
+            </button>
+            <button class="nav-btn" data-view="history">
+                <i class="fas fa-history"></i>
+                History
+            </button>
+            <button class="nav-btn" data-view="settings">
+                <i class="fas fa-cog"></i>
+                Settings
+            </button>
+        </nav>
+        <div class="header-actions">
+            <button id="sync-all-btn" class="btn btn-sm btn-secondary">
+                <i class="fas fa-sync"></i>
+                Sync All
+            </button>
+            <button id="github-hub-btn" class="btn btn-sm btn-primary">
+                <i class="fab fa-github"></i>
+                GitHub Hub
+            </button>
+            <div class="connection-status">
+                <span class="status-indicator" id="ws-status"></span>
+                <span id="ws-status-text">Connecting...</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="app-main">
+        <!-- Repositories View -->
+        <div id="repos-view" class="view-container active">
+            <div class="view-header">
+                <h2>Cloned Repositories</h2>
+                <button id="clone-repo-btn" class="btn btn-primary">
+                    <i class="fas fa-download"></i>
+                    Clone Repository
+                </button>
+            </div>
+            <div id="repos-list" class="repos-grid">
+                <!-- Repository cards will be loaded here -->
+            </div>
+        </div>
+
+        <!-- Workspace View -->
+        <div id="workspace-view" class="view-container">
+            <div class="workspace-layout">
+                <!-- File Tree Sidebar -->
+                <aside class="file-tree-sidebar">
+                    <div class="sidebar-header">
+                        <select id="repo-selector" class="form-select">
+                            <option value="">Select Repository</option>
+                        </select>
+                    </div>
+                    <div id="file-tree" class="file-tree">
+                        <!-- File tree will be loaded here -->
+                    </div>
+                </aside>
+
+                <!-- Main Editor Area -->
+                <div class="editor-area">
+                    <!-- Git Actions Bar -->
+                    <div class="git-actions-bar">
+                        <div class="git-status">
+                            <span id="branch-info">
+                                <i class="fas fa-code-branch"></i>
+                                <span id="current-branch">main</span>
+                            </span>
+                            <span id="sync-status">
+                                <span class="ahead">↑<span id="ahead-count">0</span></span>
+                                <span class="behind">↓<span id="behind-count">0</span></span>
+                            </span>
+                        </div>
+                        <div class="git-actions">
+                            <button id="pull-btn" class="btn btn-sm">
+                                <i class="fas fa-download"></i> Pull
+                            </button>
+                            <button id="commit-btn" class="btn btn-sm">
+                                <i class="fas fa-check"></i> Commit
+                            </button>
+                            <button id="push-btn" class="btn btn-sm">
+                                <i class="fas fa-upload"></i> Push
+                            </button>
+                            <button id="stash-btn" class="btn btn-sm">
+                                <i class="fas fa-archive"></i> Stash
+                            </button>
+                            <button id="branch-btn" class="btn btn-sm">
+                                <i class="fas fa-code-branch"></i> Branch
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Tabs -->
+                    <div class="editor-tabs" id="editor-tabs">
+                        <!-- Open file tabs will appear here -->
+                    </div>
+
+                    <!-- Editor Content -->
+                    <div class="editor-content" id="editor-content">
+                        <div class="welcome-screen">
+                            <i class="fas fa-folder-open fa-3x"></i>
+                            <h3>Select a repository and open a file to begin</h3>
+                        </div>
+                    </div>
+
+                    <!-- Bottom Panel -->
+                    <div class="bottom-panel">
+                        <div class="panel-tabs">
+                            <button class="panel-tab active" data-panel="changes">Changes</button>
+                            <button class="panel-tab" data-panel="terminal">Terminal</button>
+                            <button class="panel-tab" data-panel="output">Output</button>
+                        </div>
+                        <div class="panel-content">
+                            <div id="changes-panel" class="panel active">
+                                <div class="changes-list" id="changes-list">
+                                    <!-- Changed files will be listed here -->
+                                </div>
+                            </div>
+                            <div id="terminal-panel" class="panel">
+                                <div class="terminal-output" id="terminal-output"></div>
+                                <input type="text" class="terminal-input" id="terminal-input" placeholder="$ ">
+                            </div>
+                            <div id="output-panel" class="panel">
+                                <div class="output-content" id="output-content"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Sidebar (Git Info) -->
+                <aside class="git-sidebar">
+                    <div class="sidebar-section">
+                        <h4>Staged Changes</h4>
+                        <div id="staged-files" class="file-list">
+                            <!-- Staged files list -->
+                        </div>
+                    </div>
+                    <div class="sidebar-section">
+                        <h4>Modified Files</h4>
+                        <div id="modified-files" class="file-list">
+                            <!-- Modified files list -->
+                        </div>
+                    </div>
+                    <div class="sidebar-section">
+                        <h4>Recent Commits</h4>
+                        <div id="recent-commits" class="commit-list">
+                            <!-- Recent commits list -->
+                        </div>
+                    </div>
+                </aside>
+            </div>
+        </div>
+
+        <!-- History View -->
+        <div id="history-view" class="view-container">
+            <div class="view-header">
+                <h2>Snapshot History</h2>
+                <div class="history-filters">
+                    <select id="history-repo-filter" class="form-select">
+                        <option value="">All Repositories</option>
+                    </select>
+                    <select id="history-type-filter" class="form-select">
+                        <option value="">All Types</option>
+                        <option value="manual">Manual</option>
+                        <option value="auto">Automatic</option>
+                        <option value="pre-pull">Pre-Pull</option>
+                        <option value="pre-push">Pre-Push</option>
+                    </select>
+                    <button id="create-snapshot-btn" class="btn btn-primary">
+                        <i class="fas fa-camera"></i>
+                        Create Snapshot
+                    </button>
+                </div>
+            </div>
+            <div id="history-timeline" class="history-timeline">
+                <!-- Snapshot timeline will be loaded here -->
+            </div>
+        </div>
+
+        <!-- Settings View -->
+        <div id="settings-view" class="view-container">
+            <div class="settings-layout">
+                <nav class="settings-nav">
+                    <button class="settings-nav-btn active" data-section="general">General</button>
+                    <button class="settings-nav-btn" data-section="git">Git</button>
+                    <button class="settings-nav-btn" data-section="ai">AI Features</button>
+                    <button class="settings-nav-btn" data-section="snapshots">Snapshots</button>
+                    <button class="settings-nav-btn" data-section="integrations">Integrations</button>
+                </nav>
+                <div class="settings-content">
+                    <!-- Settings sections will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modals -->
+    <!-- Clone Repository Modal -->
+    <div id="clone-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Clone Repository</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="clone-form">
+                    <div class="form-group">
+                        <label for="clone-connection">Connection</label>
+                        <select id="clone-connection" class="form-control" required>
+                            <option value="">Select Connection</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="clone-url">Repository URL</label>
+                        <input type="text" id="clone-url" class="form-control" placeholder="https://github.com/owner/repo.git" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="clone-name">Local Name</label>
+                        <input type="text" id="clone-name" class="form-control" placeholder="repo-name" required>
+                    </div>
+                    <!-- ✅ CHANGED: Text input → Select dropdown -->
+                    <div class="form-group">
+                        <label for="clone-branch">Branch</label>
+                        <select id="clone-branch" class="form-control" required>
+                            <option value="">Select branch...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="clone-depth">Clone Depth (0 for full)</label>
+                        <input type="number" id="clone-depth" class="form-control" value="0" min="0">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('clone-modal')">Cancel</button>
+                <button class="btn btn-primary" id="clone-submit">Clone</button>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Commit Modal -->
+    <div id="commit-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Commit Changes</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="commit-form">
+                    <div class="form-group">
+                        <label for="commit-message">Commit Message</label>
+                        <input type="text" id="commit-message" class="form-control" placeholder="Brief description" required>
+                        <button type="button" id="generate-commit-msg" class="btn btn-sm btn-secondary mt-2">
+                            <i class="fas fa-magic"></i> Generate with AI
+                        </button>
+                    </div>
+                    <div class="form-group">
+                        <label for="commit-description">Description (optional)</label>
+                        <textarea id="commit-description" class="form-control" rows="3"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Files to Commit</label>
+                        <div id="commit-files-list" class="file-check-list">
+                            <!-- Files will be listed here with checkboxes -->
+                        </div>
+                    </div>
+                    <div class="form-check">
+                        <input type="checkbox" id="commit-amend" class="form-check-input">
+                        <label for="commit-amend" class="form-check-label">Amend previous commit</label>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('commit-modal')">Cancel</button>
+                <button class="btn btn-primary" id="commit-submit">Commit</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Diff Viewer Modal -->
+    <div id="diff-modal" class="modal modal-large">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="diff-title">File Diff</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="diff-toolbar">
+                    <button id="diff-view-split" class="btn btn-sm active">Split View</button>
+                    <button id="diff-view-unified" class="btn btn-sm">Unified View</button>
+                </div>
+                <div id="diff-content" class="diff-viewer">
+                    <!-- Diff content will be loaded here -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('diff-modal')">Close</button>
+                <button class="btn btn-primary" id="stage-from-diff">Stage Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="loading-overlay">
+        <div class="spinner"></div>
+        <p id="loading-message">Loading...</p>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markdown.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-diff.min.js"></script>
+    
+    <script src="js/api.js"></script>
+    <script src="js/websocket.js"></script>
+    <script src="js/repositories.js"></script>
+    <script src="js/workspace.js"></script>
+    <script src="js/history.js"></script>
+    <script src="js/settings.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

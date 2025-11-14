@@ -13,12 +13,13 @@ services:
 
     depends_on:
       - framework-web
-      - rag-api-module
+      #- rag-api-module
       - github-hub-module
       - llm-chat
       - llm-workflows-module
       - llm-gateway
       - llm-tester
+      - code-workspace
     networks:
       - app-network
     restart: unless-stopped
@@ -86,7 +87,7 @@ services:
       - ./framework/html:/usr/share/nginx/html
       - ./framework/nginx.conf:/etc/nginx/nginx.conf
     depends_on:
-      - rag-api-module
+      #- rag-api-module
       - github-hub-module
       - llm-chat
     networks:
@@ -214,6 +215,53 @@ services:
 #    networks:
 #      - app-network
 #    restart: unless-stopped
+  code-workspace:
+    build: ./code-workspace
+    container_name: code-workspace
+    ports:
+      - "3006:3006"
+      - "3007:3007"  # WebSocket port
+    environment:
+      - NODE_ENV=development
+      - PORT=3006
+      - WS_PORT=3007
+      - GITHUB_HUB_URL=http://github-hub-module:3002/api
+      - LLM_GATEWAY_URL=http://llm-gateway:3010
+      - MAX_SNAPSHOTS_PER_REPO=250
+      - SNAPSHOT_RETENTION_DAYS=30
+    volumes:
+      # Main workspace for cloned repos
+      - ./code-workspace/workspace-repos:/workspace/repos
+      # History snapshots
+      - ./code-workspace/workspace-history:/workspace/history
+      # Staging area for reviews
+      - ./code-workspace/workspace-staging:/workspace/staging
+      # File locks database
+      - ./code-workspace/workspace-locks:/workspace/locks
+      # App code
+      - ./code-workspace:/app
+      - /app/node_modules
+      # Shared data with github-hub
+      - ./shared-data:/app/shared-data
+    networks:
+      - app-network
+    restart: unless-stopped
+    depends_on:
+      - redis
+
+
+  # Redis for pub/sub and caching
+  redis:
+    image: redis:7-alpine
+    container_name: workspace-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./code-workspace/redis-data:/data
+    networks:
+      - app-network
+    restart: unless-stopped
+    command: redis-server --appendonly yes
 
 
   github-hub-module:
@@ -281,32 +329,32 @@ services:
     environment:
       - QDRANT__LOG_LEVEL=INFO
 
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    networks:
-        - app-network
-    volumes:
-      - ./RAG/redis_data:/data
+  #redis:
+  #  image: redis:7-alpine
+  #  ports:
+  #    - "6379:6379"
+  #  networks:
+  #      - app-network
+  #  volumes:
+  #    - ./RAG/redis_data:/data
 
-  rag-api-module:
-    build: ./RAG
-    container_name: rag-api-module
-    env_file: .env
-    ports:
-      - "8000:8000"
-    environment:
-      - QDRANT_URL=http://qdrant:6333
-      - REDIS_HOST=redis
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-    depends_on:
-      - qdrant
-      - redis
-    networks:
-        - app-network
-    volumes:
-      - ./RAG/logs:/app/logs
+  #rag-api-module:
+  #  build: ./RAG
+  #  container_name: rag-api-module
+  #  env_file: .env
+  #  ports:
+  #    - "8000:8000"
+  #  environment:
+  #    - QDRANT_URL=http://qdrant:6333
+  #    - REDIS_HOST=redis
+  #    - OPENAI_API_KEY=${OPENAI_API_KEY}
+  #  depends_on:
+  #    - qdrant
+  #    - redis
+  #  networks:
+  #      - app-network
+  #  volumes:
+  #    - ./RAG/logs:/app/logs
 
   postgres:
     image: postgres:14-alpine
@@ -357,6 +405,45 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+
+  llm-chat-ui-backend:
+    build: ./llm-chat-ui/backend
+    container_name: llm-chat-ui-backend
+    environment:
+      - PORT=3020
+      - LLM_GATEWAY_URL=http://llm-gateway:3010
+      - PGHOST=postgres
+      - PGPORT=5432
+      - PGUSER=postgres
+      - PGPASSWORD=postgres
+      - PGDATABASE=llm_gateway
+    ports:
+      - "3020:3020"
+    depends_on:
+      - postgres
+      - llm-gateway
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3020/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  llm-chat-ui-frontend:
+    build: ./llm-chat-ui/frontend
+    container_name: llm-chat-ui-frontend
+    environment:
+      - REACT_APP_API_URL=http://localhost:3020
+      - REACT_APP_GATEWAY_URL=http://localhost:3010
+    ports:
+      - "3000:3000"
+    depends_on:
+      - llm-chat-ui-backend
+    networks:
+      - app-network
+    restart: unless-stopped
 
   llm-documentor:
     build: ./llm-documentor

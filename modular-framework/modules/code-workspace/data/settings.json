@@ -1,0 +1,85 @@
+{
+  "git": {
+    "defaultBranch": "main",
+    "autoFetch": true,
+    "fetchInterval": 300,
+    "commitTemplate": "conventional",
+    "signCommits": false
+  },
+  "snapshots": {
+    "maxPerRepo": 250,
+    "retentionDays": 30,
+    "autoSnapshot": true,
+    "snapshotOnPull": true,
+    "snapshotOnPush": true,
+    "snapshotOnMerge": true
+  },
+  "ai": {
+    "enabled": true,
+    "llmGatewayUrl": "http://llm-gateway:3010",
+    "model": "gpt-4o",
+    "features": {
+      "commitMessages": true,
+      "prePushAnalysis": true,
+      "pullSummaries": true,
+      "tokenCounting": true,
+      "codeReview": false,
+      "conflictResolution": true
+    },
+    "commitStyle": "conventional",
+    "temperature": 0.7,
+    "maxTokens": 500
+  },
+  "workspace": {
+    "defaultCloneDepth": 0,
+    "cloneSubmodules": true,
+    "enableLFS": true,
+    "fileWatcherEnabled": true,
+    "lockTTL": 3600,
+    "maxFileSize": 104857600,
+    "excludePatterns": [
+      "node_modules",
+      ".git",
+      "dist",
+      "build",
+      "*.log",
+      ".env"
+    ]
+  },
+  "ui": {
+    "theme": "auto",
+    "language": "en",
+    "dateFormat": "relative",
+    "showLineNumbers": true,
+    "syntaxHighlighting": true,
+    "diffView": "split",
+    "fileTreeView": "tree",
+    "autoSave": false,
+    "autoSaveInterval": 30
+  },
+  "integrations": {
+    "githubHub": {
+      "url": "http://github-hub-module:3002",
+      "enabled": true,
+      "syncConnections": true
+    },
+    "webhooks": {
+      "enabled": false,
+      "endpoints": []
+    },
+    "notifications": {
+      "enabled": true,
+      "channels": [
+        "websocket",
+        "email"
+      ],
+      "events": {
+        "pushComplete": true,
+        "pullComplete": true,
+        "mergeConflict": true,
+        "snapshotCreated": false,
+        "lockAcquired": false
+      }
+    }
+  }
+}
