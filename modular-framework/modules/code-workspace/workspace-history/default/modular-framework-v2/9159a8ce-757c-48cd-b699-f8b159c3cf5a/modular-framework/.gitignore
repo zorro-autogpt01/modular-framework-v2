@@ -1,0 +1,11 @@
+*/*.env
+/qdrant_storage
+/redis_data
+*.env
+*/collections
+*/redis_data
+*/logs
+/modules/openvscode/workspaces
+/modules/RAG/qdrant_storage
+/modules/RAG/redis_data
+/modules/RAG/logs

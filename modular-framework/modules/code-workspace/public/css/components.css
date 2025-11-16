@@ -591,3 +591,325 @@ textarea.form-control {
 .file-icon.md::before { content: "MD"; font-size: 10px; color: #083fa1; }
 .file-icon.yml::before,
 .file-icon.yaml::before { content: "Y"; font-size: 10px; color: #cb171e; }
+/* ========================================
+   FILE SELECTION TOOLBAR STYLES
+   Add to css/components.css or css/style.css
+   ======================================== */
+
+/* Toolbar Container */
+.file-selection-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: var(--bg-secondary, #f8f9fa);
+    border-bottom: 1px solid var(--border-color, #dee2e6);
+    gap: 8px;
+    flex-wrap: wrap;
+    min-height: 44px;
+}
+
+/* Selection Controls (Left Side) */
+.selection-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.selection-controls input[type="checkbox"] {
+    margin: 0;
+    cursor: pointer;
+    width: 16px;
+    height: 16px;
+}
+
+.selection-controls label {
+    margin: 0;
+    font-size: 13px;
+    cursor: pointer;
+    user-select: none;
+    color: var(--text-primary, #212529);
+    font-weight: 500;
+}
+
+/* Selection Stats (Center) */
+.selection-stats {
+    display: flex;
+    gap: 6px;
+    flex: 1;
+    justify-content: center;
+    align-items: center;
+}
+
+/* Chip Badges */
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    background: var(--chip-bg, #e7f3ff);
+    color: var(--chip-color, #0366d6);
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.chip i {
+    font-size: 10px;
+}
+
+.chip-tokens {
+    background: var(--chip-tokens-bg, #fff4e6);
+    color: var(--chip-tokens-color, #f59e0b);
+}
+
+/* Extra Small Button Size */
+.btn-xs {
+    padding: 4px 8px;
+    font-size: 11px;
+    line-height: 1.2;
+}
+
+.btn-xs i {
+    font-size: 11px;
+}
+
+/* Copy Button Specific */
+#copy-selected-btn {
+    min-width: 32px;
+    padding: 4px 8px;
+}
+
+#copy-selected-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+#copy-selected-btn:not(:disabled):hover {
+    background: var(--primary-hover, #0056b3);
+}
+
+/* Clear Button */
+#clear-selection-btn {
+    padding: 3px 6px;
+}
+
+/* File Tree Adjustments */
+.file-tree {
+    padding: 8px 4px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.tree-item {
+    display: flex;
+    align-items: center;
+    padding: 6px 8px;
+    cursor: pointer;
+    border-radius: 4px;
+    gap: 8px;
+    user-select: none;
+    transition: background-color 0.15s ease;
+}
+
+.tree-item:hover {
+    background: var(--hover-bg, #f0f0f0);
+}
+
+.tree-item.expanded > .fa-folder:before {
+    content: "\f07c"; /* folder-open icon */
+}
+
+/* File Checkboxes */
+.file-checkbox {
+    margin: 0;
+    cursor: pointer;
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+}
+
+.file-checkbox:hover {
+    transform: scale(1.1);
+}
+
+/* Tree Item Icons */
+.tree-item i {
+    width: 16px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.tree-item span {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Tree Children Indentation */
+.tree-children {
+    margin-left: 0;
+}
+
+/* Directory Item */
+.tree-item.directory {
+    font-weight: 500;
+}
+
+.tree-item.directory:hover {
+    background: var(--hover-bg, #e9ecef);
+}
+
+/* Copy Button Animation */
+@keyframes checkmark {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.15); }
+    100% { transform: scale(1); }
+}
+
+#copy-selected-btn.copied {
+    animation: checkmark 0.3s ease;
+    background: var(--success-color, #28a745) !important;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 1200px) {
+    .file-selection-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 6px;
+    }
+    
+    .selection-stats {
+        justify-content: space-between;
+        order: 2;
+    }
+    
+    .selection-controls {
+        order: 1;
+    }
+    
+    #copy-selected-btn {
+        order: 3;
+        width: 100%;
+    }
+}
+
+/* Dark Mode Support */
+@media (prefers-color-scheme: dark) {
+    .file-selection-toolbar {
+        background: var(--bg-secondary-dark, #2d3748);
+        border-bottom-color: var(--border-color-dark, #4a5568);
+    }
+    
+    .selection-controls label {
+        color: var(--text-primary-dark, #e2e8f0);
+    }
+    
+    .tree-item:hover {
+        background: var(--hover-bg-dark, #374151);
+    }
+    
+    .chip {
+        background: var(--chip-bg-dark, #1e40af);
+        color: var(--chip-color-dark, #93c5fd);
+    }
+    
+    .chip-tokens {
+        background: var(--chip-tokens-bg-dark, #92400e);
+        color: var(--chip-tokens-color-dark, #fbbf24);
+    }
+}
+
+/* Dark theme class (if you use class-based dark mode) */
+.dark-theme .file-selection-toolbar {
+    background: #2d3748;
+    border-bottom-color: #4a5568;
+}
+
+.dark-theme .selection-controls label {
+    color: #e2e8f0;
+}
+
+.dark-theme .tree-item:hover {
+    background: #374151;
+}
+
+.dark-theme .chip {
+    background: #1e40af;
+    color: #93c5fd;
+}
+
+.dark-theme .chip-tokens {
+    background: #92400e;
+    color: #fbbf24;
+}
+
+/* Sidebar Adjustments */
+.file-tree-sidebar {
+    display: flex;
+    flex-direction: column;
+    width: 280px;
+    border-right: 1px solid var(--border-color, #dee2e6);
+    background: var(--bg-primary, #ffffff);
+}
+
+.sidebar-header {
+    padding: 12px;
+    border-bottom: 1px solid var(--border-color, #dee2e6);
+}
+
+/* Loading State for Token Count */
+#token-count-chip.loading {
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+/* Success State */
+.chip.success {
+    background: var(--success-bg, #d4edda);
+    color: var(--success-color, #155724);
+}
+
+/* Tooltip Enhancement */
+[title] {
+    position: relative;
+}
+
+/* Accessibility: Focus States */
+.file-checkbox:focus,
+#select-all-files:focus {
+    outline: 2px solid var(--primary-color, #007bff);
+    outline-offset: 2px;
+}
+
+.btn:focus {
+    outline: 2px solid var(--primary-color, #007bff);
+    outline-offset: 2px;
+}
+
+/* Selection Count Text */
+#selected-count-text,
+#token-count-text {
+    font-variant-numeric: tabular-nums;
+}
+
+/* Compact Mode for Smaller Sidebars */
+.file-tree-sidebar.compact .file-selection-toolbar {
+    padding: 6px 8px;
+}
+
+.file-tree-sidebar.compact .chip {
+    padding: 2px 6px;
+    font-size: 10px;
+}
+
+.file-tree-sidebar.compact .selection-controls label {
+    font-size: 12px;
+}

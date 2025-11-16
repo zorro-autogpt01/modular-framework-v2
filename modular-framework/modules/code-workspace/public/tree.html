@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workspace Tree</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #252526;
+            color: #e0e0e0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .sidebar-header { padding: 8px 12px; border-bottom: 1px solid #3e3e42; }
+        .form-select { width: 100%; padding: 6px; background: #1e1e1e; border: 1px solid #3e3e42; color: #e0e0e0; border-radius: 4px; font-size: 12px; }
+        .file-selection-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: #2d2d30; border-bottom: 1px solid #3e3e42; gap: 8px; min-height: 44px; }
+        .selection-controls { display: flex; align-items: center; gap: 6px; }
+        .selection-controls input[type="checkbox"] { margin: 0; cursor: pointer; width: 14px; height: 14px; }
+        .selection-controls label { margin: 0; font-size: 11px; cursor: pointer; user-select: none; font-weight: 500; }
+        .selection-stats { display: flex; gap: 6px; flex: 1; justify-content: center; align-items: center; }
+        .chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; background: #1e40af; color: #93c5fd; border-radius: 12px; font-size: 10px; font-weight: 600; white-space: nowrap; }
+        .chip i { font-size: 9px; }
+        .chip-tokens { background: #92400e; color: #fbbf24; }
+        .btn-xs { padding: 4px 8px; font-size: 11px; line-height: 1.2; background: #0e639c; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        .btn-xs:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-xs:not(:disabled):hover { background: #1177bb; }
+        .btn-secondary { background: #3e3e42; }
+        .btn-secondary:hover { background: #4e4e52; }
+        .file-tree { padding: 8px 4px; overflow-y: auto; flex: 1; }
+        .tree-item { display: flex; align-items: center; padding: 6px 8px; cursor: pointer; border-radius: 4px; gap: 8px; user-select: none; transition: background-color 0.15s ease; font-size: 12px; }
+        .tree-item:hover { background: #3e3e42; }
+        .tree-item.directory { font-weight: 500; }
+        .file-checkbox { margin: 0; cursor: pointer; width: 14px; height: 14px; flex-shrink: 0; }
+        .tree-item i { width: 16px; text-align: center; flex-shrink: 0; }
+        .tree-item span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .tree-children { margin-left: 0; }
+        .text-muted { color: #808080; padding: 20px; text-align: center; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <div class="sidebar-header">
+        <select id="repo-selector" class="form-select">
+            <option value="">Select Repository</option>
+        </select>
+    </div>
+    
+    <div class="file-selection-toolbar">
+        <div class="selection-controls">
+            <input type="checkbox" id="select-all-files" title="Select all files">
+            <label for="select-all-files">All</label>
+            <button id="clear-selection-btn" class="btn-xs btn-secondary" title="Clear selection">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="selection-stats">
+            <span id="selected-count-chip" class="chip">
+                <i class="fas fa-file"></i>
+                <span id="selected-count-text">0</span>
+            </span>
+            <span id="token-count-chip" class="chip chip-tokens">
+                <i class="fas fa-hashtag"></i>
+                <span id="token-count-text">0</span>
+            </span>
+        </div>
+        <button id="copy-selected-btn" class="btn-xs" disabled title="Copy selected files to clipboard">
+            <i class="fas fa-copy"></i>
+        </button>
+    </div>
+    
+    <div id="file-tree" class="file-tree">
+        <div class="text-muted">Select a repository to view files</div>
+    </div>
+
+    <script>
+        const selectedFiles = new Set();
+        let currentRepo = null;
+        let tokenCountTimer = null;
+
+        async function loadRepositories() {
+            try {
+                const response = await fetch('/api/v1/code-workspace/api/repos');
+                const data = await response.json();
+                const selector = document.getElementById('repo-selector');
+                selector.innerHTML = '<option value="">Select Repository</option>';
+                (data.repos || []).forEach(repo => {
+                    const option = document.createElement('option');
+                    option.value = repo.id;
+                    option.textContent = repo.name;
+                    selector.appendChild(option);
+                });
+            } catch (err) {
+                console.error('Failed to load repos:', err);
+                document.getElementById('repo-selector').innerHTML = '<option value="">Error loading repos</option>';
+            }
+        }
+
+        async function loadFileTree(connection_id, repo_name) {
+            try {
+                const response = await fetch(`/api/v1/code-workspace/api/workspace/browse/${connection_id}/${repo_name}?depth=10`);
+                const data = await response.json();
+                renderFileTree(data.items || []);
+            } catch (err) {
+                console.error('Failed to load file tree:', err);
+                document.getElementById('file-tree').innerHTML = '<div class="text-muted">Failed to load files</div>';
+            }
+        }
+
+        function collectAllFiles(item, basePath) {
+            const files = [];
+            
+            function collect(node, path) {
+                // Add both files AND folders
+                files.push(path);
+                
+                if (node.children) {
+                    node.children.forEach(child => {
+                        const childPath = `${path}/${child.name}`;
+                        collect(child, childPath);
+                    });
+                }
+            }
+            
+            if (item.children) {
+                item.children.forEach(child => {
+                    const childPath = `${basePath}/${child.name}`;
+                    collect(child, childPath);
+                });
+            }
+            
+            return files;
+        }
+
+
+        function renderFileTree(items, level = 0, parentPath = '', parentElement = null) {
+            const container = parentElement || document.getElementById('file-tree');
+            if (!container) return;
+            
+            if (level === 0) container.innerHTML = '';
+            
+            items.forEach(item => {
+                const fullPath = parentPath ? `${parentPath}/${item.name}` : item.name;
+                const isFile = item.type === 'file';
+                
+                const itemEl = document.createElement('div');
+                itemEl.className = `tree-item ${item.type}`;
+                itemEl.dataset.path = fullPath;
+                itemEl.dataset.type = item.type;
+                itemEl.style.paddingLeft = `${level * 20}px`;
+                
+                // Add checkbox to both files and directories
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = isFile ? 'file-checkbox' : 'folder-checkbox';
+                checkbox.dataset.path = fullPath;
+                checkbox.checked = selectedFiles.has(fullPath);
+                
+                if (isFile) {
+                    checkbox.addEventListener('change', (e) => {
+                        if (e.target.checked) selectedFiles.add(fullPath);
+                        else selectedFiles.delete(fullPath);
+                        updateUI();
+                    });
+                } else {
+                    // Directory checkbox: select/deselect all children
+                    checkbox.addEventListener('change', (e) => {
+                        e.stopPropagation();
+                        const allFiles = collectAllFiles(item, fullPath);
+                        if (e.target.checked) {
+                            allFiles.forEach(f => selectedFiles.add(f));
+                        } else {
+                            allFiles.forEach(f => selectedFiles.delete(f));
+                        }
+                        // Update all child checkboxes
+                        document.querySelectorAll('.file-checkbox, .folder-checkbox').forEach(cb => {
+                            if (allFiles.includes(cb.dataset.path)) {
+                                cb.checked = e.target.checked;
+                            }
+                        });
+                        updateUI();
+                    });
+                }
+                itemEl.appendChild(checkbox);
+                
+                const icon = document.createElement('i');
+                icon.className = item.type === 'directory' ? 'fas fa-folder' : 'fas fa-file';
+                itemEl.appendChild(icon);
+                
+                const span = document.createElement('span');
+                span.textContent = item.name;
+                itemEl.appendChild(span);
+                
+                if (item.type === 'directory') {
+                    itemEl.addEventListener('click', (e) => {
+                        if (e.target.type === 'checkbox') return;
+                        itemEl.classList.toggle('expanded');
+                        const children = itemEl.nextElementSibling;
+                        if (children?.classList.contains('tree-children')) {
+                            children.style.display = children.style.display === 'none' ? 'block' : 'none';
+                        }
+                    });
+                }
+                
+                container.appendChild(itemEl);
+                
+                if (item.children && item.children.length > 0) {
+                    const childrenContainer = document.createElement('div');
+                    childrenContainer.className = 'tree-children';
+                    childrenContainer.style.display = 'none';
+                    container.appendChild(childrenContainer);
+                    
+                    renderFileTree(item.children, level + 1, fullPath, childrenContainer);
+                }
+            });
+        }
+
+        document.getElementById('repo-selector').addEventListener('change', async (e) => {
+            const value = e.target.value;
+            if (!value) return;
+            const [connection_id, repo_name] = value.split('/');
+            currentRepo = { connection_id, repo_name };
+            selectedFiles.clear();
+            await loadFileTree(connection_id, repo_name);
+            updateUI();
+        });
+
+        document.getElementById('select-all-files').addEventListener('change', (e) => {
+            document.querySelectorAll('.file-checkbox').forEach(cb => {
+                cb.checked = e.target.checked;
+                if (e.target.checked) selectedFiles.add(cb.dataset.path);
+                else selectedFiles.delete(cb.dataset.path);
+            });
+            updateUI();
+        });
+
+        document.getElementById('clear-selection-btn').addEventListener('click', () => {
+            selectedFiles.clear();
+            document.querySelectorAll('.file-checkbox').forEach(cb => cb.checked = false);
+            document.getElementById('select-all-files').checked = false;
+            updateUI();
+        });
+
+        document.getElementById('copy-selected-btn').addEventListener('click', async () => {
+            if (selectedFiles.size === 0) return;
+            try {
+                const text = await buildClipboardText();
+                await navigator.clipboard.writeText(text);
+                const btn = document.getElementById('copy-selected-btn');
+                btn.innerHTML = '<i class="fas fa-check"></i>';
+                setTimeout(() => btn.innerHTML = '<i class="fas fa-copy"></i>', 2000);
+            } catch (err) {
+                console.error('Copy failed:', err);
+                alert('Failed to copy to clipboard');
+            }
+        });
+
+        function updateUI() {
+            document.getElementById('selected-count-text').textContent = selectedFiles.size.toString();
+            document.getElementById('copy-selected-btn').disabled = selectedFiles.size === 0;
+            scheduleTokenCalc();
+        }
+
+        function scheduleTokenCalc() {
+            if (tokenCountTimer) cancelAnimationFrame(tokenCountTimer);
+            tokenCountTimer = requestAnimationFrame(async () => {
+                if (selectedFiles.size === 0) {
+                    document.getElementById('token-count-text').textContent = '0';
+                    return;
+                }
+                document.getElementById('token-count-text').textContent = '…';
+                try {
+                    const text = await buildClipboardText();
+                    const tokens = Math.ceil(text.length / 4);
+                    document.getElementById('token-count-text').textContent = tokens >= 1000 ? (tokens/1000).toFixed(1)+'K' : tokens.toString();
+                } catch {
+                    document.getElementById('token-count-text').textContent = '—';
+                }
+            });
+        }
+
+        async function buildClipboardText() {
+            if (!currentRepo) return '';
+            const parts = [];
+            for (const path of Array.from(selectedFiles).sort()) {
+                // Skip folders, only process files
+                const elem = document.querySelector(`.file-checkbox[data-path="${path}"], .folder-checkbox[data-path="${path}"]`);
+                if (elem && elem.classList.contains('folder-checkbox')) continue;
+                
+                parts.push(`# ${path}\n`);
+                try {
+                    // Remove repo name prefix if present
+                    let filePath = path;
+                    const repoPrefix = `${currentRepo.connection_id}/${currentRepo.repo_name}/`;
+                    if (filePath.startsWith(repoPrefix)) {
+                        filePath = filePath.substring(repoPrefix.length);
+                    }
+                    
+                    const response = await fetch(`/api/v1/code-workspace/api/workspace/file/${currentRepo.connection_id}/${currentRepo.repo_name}/${filePath}`);
+                    const data = await response.json();
+                    const content = data.binary ? `[Binary file: ${data.size} bytes]` : data.content;
+                    parts.push(content.endsWith('\n') ? content : content + '\n');
+                    parts.push('\n');
+                } catch (err) {
+                    console.error(`Error reading ${path}:`, err);
+                    parts.push('[Error reading file]\n\n');
+                }
+            }
+            return parts.join('');
+        }
+
+        loadRepositories();
+    </script>
+</body>
+</html>

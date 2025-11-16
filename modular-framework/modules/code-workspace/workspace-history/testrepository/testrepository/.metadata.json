@@ -1,0 +1,235 @@
+{
+  "snapshots": [
+    {
+      "id": "fb0f2732-9314-4237-b247-d8168baba3a0",
+      "timestamp": "2025-11-16T12:04:16.812Z",
+      "type": "auto",
+      "size": 681,
+      "description": "Automatic periodic snapshot"
+    },
+    {
+      "id": "554f4dd7-30c0-4173-85c1-999e9864c2ec",
+      "timestamp": "2025-11-16T10:04:16.778Z",
+      "type": "auto",
+      "size": 681,
+      "description": "Automatic periodic snapshot"
+    },
+    {
+      "id": "528ac260-769f-42ff-9b83-0b1f29f30a24",
+      "timestamp": "2025-11-16T09:04:16.772Z",
+      "type": "auto",
+      "size": 681,
+      "description": "Automatic periodic snapshot"
+    },
+    {
+      "id": "c2e2658e-8958-4a5f-ba0c-e8f221ce7c96",
+      "timestamp": "2025-11-16T08:04:16.744Z",
+      "type": "auto",
+      "size": 681,
+      "description": "Automatic periodic snapshot"
+    },
+    {
+      "id": "037ee4d3-cb11-4b9d-9f52-e13d15a21fcd",
+      "timestamp": "2025-11-16T07:04:16.699Z",
+      "type": "auto",
+      "size": 681,
+      "description": "Automatic periodic snapshot"
+    },
+    {
+      "id": "94ffb9e9-532c-44c9-aeb0-23e590bb8185",
+      "timestamp": "2025-11-16T06:04:16.685Z",
+      "type": "auto",
+      "size": 681,
+      "description": "Automatic periodic snapshot"
+    },
+    {
+      "id": "742248ad-c55c-4fc9-9542-6671016fe9e1",
+      "timestamp": "2025-11-16T05:04:16.657Z",
+      "type": "auto",
+      "size": 681,
+      "description": "Automatic periodic snapshot"
+    },
+    {
+      "id": "c72d4353-c9f7-4a45-afb1-73a1b32f9358",
+      "timestamp": "2025-11-16T04:04:16.654Z",
+      "type": "auto",
+      "size": 681,
+      "description": "Automatic periodic snapshot"
+    },
+    {
+      "id": "fdff44c7-fe1a-4d09-8ac2-e625351bc148",
+      "timestamp": "2025-11-16T03:04:16.634Z",
+      "type": "auto",
+      "size": 681,
+      "description": "Automatic periodic snapshot"
+    },
+    {
+      "id": "0981de7c-cb5d-41c2-92e5-007de6bd0f73",
+      "timestamp": "2025-11-16T01:04:16.647Z",
+      "type": "auto",
+      "size": 681,
+      "description": "Automatic periodic snapshot"
+    },
+    {
+      "id": "47404d8b-9b12-4813-9247-d4ef5e61deb8",
+      "timestamp": "2025-11-16T00:04:16.644Z",
+      "type": "auto",
+      "size": 681,
+      "description": "Automatic periodic snapshot"
+    },
+    {
+      "id": "5bf070de-81f2-4829-8c86-f16dffee9e26",
+      "timestamp": "2025-11-15T22:04:16.649Z",
+      "type": "auto",
+      "size": 681,
+      "description": "Automatic periodic snapshot"
+    },
+    {
+      "id": "49581d5e-7c38-4ffc-a49c-c140db2cb886",
+      "timestamp": "2025-11-15T20:04:16.967Z",
+      "type": "auto",
+      "size": 681,
+      "description": "Automatic periodic snapshot"
+    },
+    {
+      "id": "695edfe3-4490-4a57-a109-901d70fc6c1c",
+      "timestamp": "2025-11-15T19:04:16.754Z",
+      "type": "auto",
+      "size": 681,
+      "description": "Automatic periodic snapshot"
+    },
+    {
+      "id": "5e414fd6-f29a-414a-8606-b3f1b938a3a7",
+      "timestamp": "2025-11-15T17:58:30.632Z",
+      "type": "auto",
+      "size": 681,
+      "description": "Automatic periodic snapshot"
+    },
+    {
+      "id": "4ac49165-93cc-4f45-bd0e-cb39c19de4c4",
+      "timestamp": "2025-11-15T16:58:30.614Z",
+      "type": "auto",
+      "size": 681,
+      "description": "Automatic periodic snapshot"
+    },
+    {
+      "id": "8d0f7675-a9b9-4227-8461-0679bc969817",
+      "timestamp": "2025-11-15T15:58:30.613Z",
+      "type": "auto",
+      "size": 681,
+      "description": "Automatic periodic snapshot"
+    },
+    {
+      "id": "20c68faa-7903-4a7e-867b-6d0d113561b1",
+      "timestamp": "2025-11-15T14:58:30.604Z",
+      "type": "auto",
+      "size": 681,
+      "description": "Automatic periodic snapshot"
+    },
+    {
+      "id": "968ae4e8-25e5-44d5-aa81-e8f5a09c4192",
+      "timestamp": "2025-11-15T13:58:30.595Z",
+      "type": "auto",
+      "size": 681,
+      "description": "Automatic periodic snapshot"
+    },
+    {
+      "id": "ab8782bd-7a79-4014-b063-12f916706dbf",
+      "timestamp": "2025-11-15T11:58:30.598Z",
+      "type": "auto",
+      "size": 681,
+      "description": "Automatic periodic snapshot"
+    },
+    {
+      "id": "6d607ad1-3289-4268-8b70-fd02e2dadcff",
+      "timestamp": "2025-11-15T08:26:43.441Z",
+      "type": "auto",
+      "size": 681,
+      "description": "Automatic periodic snapshot"
+    },
+    {
+      "id": "b9dda687-81a0-4ec0-9499-6030c90e2820",
+      "timestamp": "2025-11-15T06:26:43.462Z",
+      "type": "auto",
+      "size": 681,
+      "description": "Automatic periodic snapshot"
+    },
+    {
+      "id": "8f3301fc-93ff-4177-9df5-aeea7160c8b1",
+      "timestamp": "2025-11-15T04:26:43.417Z",
+      "type": "auto",
+      "size": 681,
+      "description": "Automatic periodic snapshot"
+    },
+    {
+      "id": "22b80144-8645-4204-9ff2-3c9fdfbcb96e",
+      "timestamp": "2025-11-15T03:26:43.392Z",
+      "type": "auto",
+      "size": 681,
+      "description": "Automatic periodic snapshot"
+    },
+    {
+      "id": "07141ca9-1ed0-4331-90df-4c0587d15048",
+      "timestamp": "2025-11-15T01:26:43.351Z",
+      "type": "auto",
+      "size": 681,
+      "description": "Automatic periodic snapshot"
+    },
+    {
+      "id": "02bedaa9-319f-4dc7-b70e-abf5f1c4d250",
+      "timestamp": "2025-11-15T00:26:43.296Z",
+      "type": "auto",
+      "size": 681,
+      "description": "Automatic periodic snapshot"
+    },
+    {
+      "id": "3d7dd79c-e45c-489e-ab81-f49f5411c818",
+      "timestamp": "2025-11-14T23:26:43.281Z",
+      "type": "auto",
+      "size": 681,
+      "description": "Automatic periodic snapshot"
+    },
+    {
+      "id": "879c94e9-6568-4e7e-980b-31b03d44dbc9",
+      "timestamp": "2025-11-14T21:26:43.295Z",
+      "type": "auto",
+      "size": 681,
+      "description": "Automatic periodic snapshot"
+    },
+    {
+      "id": "0baccd2b-3a7c-4447-90f7-6421b3d5327e",
+      "timestamp": "2025-11-14T19:26:43.311Z",
+      "type": "auto",
+      "size": 681,
+      "description": "Automatic periodic snapshot"
+    },
+    {
+      "id": "f1bca2ca-ca6e-4dc4-bb73-78b074b8ca5e",
+      "timestamp": "2025-11-14T17:26:43.638Z",
+      "type": "auto",
+      "size": 681,
+      "description": "Automatic periodic snapshot"
+    },
+    {
+      "id": "022d6621-d9bc-4f4b-b97a-d4774c4acf9f",
+      "timestamp": "2025-11-14T15:26:43.280Z",
+      "type": "auto",
+      "size": 681,
+      "description": "Automatic periodic snapshot"
+    },
+    {
+      "id": "3de50b88-b464-4a3d-a8be-77ddbaeb57f3",
+      "timestamp": "2025-11-14T13:26:43.271Z",
+      "type": "auto",
+      "size": 681,
+      "description": "Automatic periodic snapshot"
+    },
+    {
+      "id": "762564a2-e0c2-49ad-b607-61b56cce770d",
+      "timestamp": "2025-11-14T10:10:58.490Z",
+      "type": "auto",
+      "size": 681,
+      "description": "Automatic periodic snapshot"
+    }
+  ]
+}

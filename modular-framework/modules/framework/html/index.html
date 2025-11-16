@@ -1,6 +1,3 @@
-<!-- BEGIN:url-validation-note -->
-<!-- NOTE: URL schema validated for edge-nginx split: / (framework-web static), /api/v1/github/, /api/v1/workflows/, /api/v1/chat/, /api/v1/ssh-terminal/, /api/browser/, /api/v1/gateway/, /api/v1/gateway//, /api/v1/rag/ are all reverse-proxied by edge-nginx to their respective containers. -->
-<!-- END:url-validation-note -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -24,13 +21,14 @@
 
         .app-container {
             display: grid;
-            grid-template-columns: 250px 500px 1fr 250px 250px;
+            grid-template-columns: 400px 40px 1fr;
             grid-template-rows: 40px 1fr;
             height: 100vh;
-            gap: 1px;
+            gap: 0;
             background: #2d2d30;
         }
 
+        /* Header */
         .header {
             grid-column: 1 / -1;
             background: #252526;
@@ -38,6 +36,7 @@
             align-items: center;
             padding: 0 15px;
             border-bottom: 1px solid #3e3e42;
+            z-index: 100;
         }
 
         .header h1 {
@@ -55,99 +54,145 @@
             cursor: pointer;
             font-size: 12px;
             margin-left: 10px;
+            transition: background 0.2s;
         }
 
         .header button:hover {
             background: #1177bb;
         }
 
-        .sidebar {
-            background: #252526;
-            border-right: 1px solid #3e3e42;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .sidebar.right {
-            border-left: 1px solid #3e3e42;
-            border-right: none;
-        }
-
-        .sidebar-left-1 {
+        /* GitHub Hub - Fixed left panel */
+        .github-hub-panel {
             grid-column: 1;
             grid-row: 2;
-        }
-
-        .sidebar-left-2 {
-            grid-column: 2;
-            grid-row: 2;
-        }
-
-        .sidebar-right-1 {
-            grid-column: 4;
-            grid-row: 2 / 3;
-            display: grid;
-            grid-template-rows: 1fr 1fr;
-            gap: 1px;
-        }
-
-        .sidebar-right-2 {
-            grid-column: 5;
-            grid-row: 2 / 3;
-            display: grid;
-            grid-template-rows: 1fr 1fr;
-            gap: 1px;
-        }
-
-        .sidebar-pane {
             background: #252526;
-            overflow: auto;
-            padding: 10px;
-        }
-
-        .central-grid {
-            grid-column: 3;
-            grid-row: 2;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            grid-template-rows: 1fr 1fr;
-            gap: 1px;
-            background: #3e3e42;
-        }
-
-        .pane {
-            background: #1e1e1e;
-            overflow: hidden;
-            position: relative;
+            border-right: 1px solid #3e3e42;
             display: flex;
             flex-direction: column;
+            overflow: hidden;
         }
 
-        .pane-header {
+        .panel-header {
             background: #2d2d30;
-            padding: 8px;
+            padding: 8px 12px;
             border-bottom: 1px solid #3e3e42;
             font-size: 12px;
+            font-weight: 500;
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
 
-        .pane-content {
-            flex: 1;
-            overflow: auto;
-            position: relative;
+        .side-tabs {
+            display: flex;
+            gap: 5px;
+            width: 100%;
         }
 
-        .pane iframe {
+        .side-tab {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: #e0e0e0;
+            padding: 8px 4px;
+            cursor: pointer;
+            font-size: 11px;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .side-tab:hover {
+            background: #3e3e42;
+        }
+
+        .side-tab.active {
+            border-bottom-color: #0e639c;
+            color: #fff;
+        }
+
+        .side-panel-content {
+            position: relative;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .side-panel-frame {
+            position: absolute;
+            top: 0;
+            left: 0;
             width: 100%;
             height: 100%;
             border: none;
+            display: none;
         }
 
-        .module-list {
-            padding: 10px;
+        .side-panel-frame.active {
+            display: block;
+        }
+
+        .github-hub-panel iframe {
+            flex: 1;
+            border: none;
+            width: 100%;
+        }
+
+        /* Modules Panel - Collapsible */
+        .modules-panel {
+            grid-column: 2;
+            grid-row: 2;
+            background: #252526;
+            border-right: 1px solid #3e3e42;
+            position: relative;
+            transition: all 0.3s ease;
+            width: 40px;
+            overflow: hidden;
+        }
+
+        .modules-panel.expanded {
+            width: 250px;
+        }
+
+        .modules-toggle {
+            position: absolute;
+            top: 10px;
+            right: 5px;
+            background: #0e639c;
+            border: none;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            z-index: 10;
+            transition: background 0.2s;
+        }
+
+        .modules-toggle:hover {
+            background: #1177bb;
+        }
+
+        .modules-content {
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            padding: 50px 10px 10px;
+            overflow-y: auto;
+            height: 100%;
+        }
+
+        .modules-panel.expanded .modules-content {
+            opacity: 1;
+        }
+
+        .modules-panel:hover {
+            width: 250px;
+        }
+
+        .modules-panel:hover .modules-content {
+            opacity: 1;
         }
 
         .module-item {
@@ -160,6 +205,7 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
+            font-size: 12px;
         }
 
         .module-item:hover {
@@ -170,17 +216,167 @@
             background: #0e639c;
         }
 
+        .module-actions {
+            display: flex;
+            gap: 5px;
+        }
+
+        .module-actions button {
+            background: #3e3e42;
+            border: none;
+            color: #e0e0e0;
+            padding: 3px 6px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 11px;
+        }
+
+        .module-actions button:hover {
+            background: #4e4e52;
+        }
+
         .module-status {
             width: 8px;
             height: 8px;
             border-radius: 50%;
             background: #4ec9b0;
+            margin-right: 8px;
         }
 
         .module-status.offline {
             background: #f48771;
         }
 
+        /* Main Tabbed Area */
+        .main-area {
+            grid-column: 3;
+            grid-row: 2;
+            display: flex;
+            flex-direction: column;
+            background: #1e1e1e;
+            overflow: hidden;
+        }
+
+        .tabs-container {
+            background: #2d2d30;
+            border-bottom: 1px solid #3e3e42;
+            display: flex;
+            align-items: center;
+            overflow-x: auto;
+            overflow-y: hidden;
+            min-height: 40px;
+            scrollbar-width: thin;
+            scrollbar-color: #3e3e42 #2d2d30;
+        }
+
+        .tabs-container::-webkit-scrollbar {
+            height: 6px;
+        }
+
+        .tabs-container::-webkit-scrollbar-track {
+            background: #2d2d30;
+        }
+
+        .tabs-container::-webkit-scrollbar-thumb {
+            background: #3e3e42;
+            border-radius: 3px;
+        }
+
+        .tab {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 15px;
+            background: #252526;
+            border-right: 1px solid #3e3e42;
+            cursor: pointer;
+            font-size: 12px;
+            white-space: nowrap;
+            transition: background 0.2s;
+            min-width: 120px;
+            max-width: 200px;
+        }
+
+        .tab:hover {
+            background: #2d2d30;
+        }
+
+        .tab.active {
+            background: #1e1e1e;
+            border-bottom: 2px solid #0e639c;
+        }
+
+        .tab-label {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .tab-close {
+            background: transparent;
+            border: none;
+            color: #e0e0e0;
+            cursor: pointer;
+            font-size: 16px;
+            padding: 0;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 3px;
+            opacity: 0.6;
+            transition: all 0.2s;
+        }
+
+        .tab-close:hover {
+            background: #3e3e42;
+            opacity: 1;
+        }
+
+        .add-tab-btn {
+            background: #0e639c;
+            border: none;
+            color: white;
+            padding: 8px 15px;
+            margin: 5px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            white-space: nowrap;
+            transition: background 0.2s;
+        }
+
+        .add-tab-btn:hover {
+            background: #1177bb;
+        }
+
+        .tab-content-area {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .tab-pane {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none;
+        }
+
+        .tab-pane.active {
+            display: block;
+        }
+
+        .tab-pane iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        /* Modal */
         .modal {
             display: none;
             position: fixed;
@@ -265,34 +461,43 @@
             background: #4e4e52;
         }
 
-        .resizer {
-            background: #3e3e42;
-            cursor: col-resize;
-            position: absolute;
-            top: 0;
-            bottom: 0;
-            width: 3px;
-            right: -2px;
-            z-index: 10;
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #808080;
+            gap: 20px;
         }
 
-        .resizer:hover {
+        .empty-state-icon {
+            font-size: 64px;
+            opacity: 0.5;
+        }
+
+        .empty-state-text {
+            font-size: 14px;
+        }
+
+        .empty-state button {
             background: #0e639c;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
         }
 
-        .resizer.horizontal {
-            cursor: row-resize;
-            width: auto;
-            height: 3px;
-            left: 0;
-            right: 0;
-            bottom: -2px;
-            top: auto;
+        .empty-state button:hover {
+            background: #1177bb;
         }
     </style>
 </head>
 <body>
-    <div class="app-container" id="appContainer">
+    <div class="app-container">
+        <!-- Header -->
         <div class="header">
             <h1>🚀 Modular Application Framework</h1>
             <button onclick="discoverModules()">🔍 Discover</button>
@@ -303,86 +508,41 @@
             <button onclick="refreshModules()">🔄 Refresh</button>
         </div>
 
-        <div class="sidebar sidebar-left-1">
-            <div class="pane-header">Modules</div>
-            <div class="module-list" id="moduleList">
+        <!-- GitHub Hub Panel (Fixed Left) -->
+        <div class="github-hub-panel">
+            <div class="panel-header">
+                <div class="side-tabs">
+                    <button class="side-tab active" onclick="switchSidePanel('github')">📁 GitHub</button>
+                    <button class="side-tab" onclick="switchSidePanel('workspace')">💼 Workspace</button>
+                </div>
+            </div>
+            <div class="side-panel-content">
+                <iframe id="githubHubFrame" class="side-panel-frame active" src="/api/v1/github/ui/?embed=side"></iframe>
+                <iframe id="workspaceFrame" class="side-panel-frame" src="/api/v1/code-workspace/tree.html"></iframe>
+            </div>
+        </div>
+
+        <!-- Modules Panel (Collapsible) -->
+        <div class="modules-panel" id="modulesPanel">
+            <button class="modules-toggle" onclick="toggleModulesPanel()">
+                <span id="toggleIcon">☰</span>
+            </button>
+            <div class="modules-content" id="modulesList">
                 <!-- Modules will be loaded here -->
             </div>
         </div>
 
-        <div class="sidebar sidebar-left-2">
-            <div class="pane-header">Module Config</div>
-            <div class="pane-content" id="moduleConfig">
-                <iframe id="configFrame" style="display:none;"></iframe>
+        <!-- Main Tabbed Area -->
+        <div class="main-area">
+            <div class="tabs-container" id="tabsContainer">
+                <button class="add-tab-btn" onclick="showAddTabModal()">+ Add Tab</button>
             </div>
-        </div>
-
-        <div class="central-grid">
-            <div class="pane" data-pane="1">
-                <div class="pane-header">
-                    <span>Pane 1</span>
-                    <select onchange="loadModuleInPane(1, this.value)">
-                        <option value="">Select Module</option>
-                    </select>
+            <div class="tab-content-area" id="tabContentArea">
+                <div class="empty-state">
+                    <div class="empty-state-icon">📑</div>
+                    <div class="empty-state-text">No tabs open. Click "+ Add Tab" to get started.</div>
+                    <button onclick="showAddTabModal()">Add Your First Tab</button>
                 </div>
-                <div class="pane-content">
-                    <iframe id="pane1Frame"></iframe>
-                </div>
-            </div>
-            <div class="pane" data-pane="2">
-                <div class="pane-header">
-                    <span>Pane 2</span>
-                    <select onchange="loadModuleInPane(2, this.value)">
-                        <option value="">Select Module</option>
-                    </select>
-                </div>
-                <div class="pane-content">
-                    <iframe id="pane2Frame"></iframe>
-                </div>
-            </div>
-            <div class="pane" data-pane="3">
-                <div class="pane-header">
-                    <span>Pane 3</span>
-                    <select onchange="loadModuleInPane(3, this.value)">
-                        <option value="">Select Module</option>
-                    </select>
-                </div>
-                <div class="pane-content">
-                    <iframe id="pane3Frame"></iframe>
-                </div>
-            </div>
-            <div class="pane" data-pane="4">
-                <div class="pane-header">
-                    <span>Pane 4</span>
-                    <select onchange="loadModuleInPane(4, this.value)">
-                        <option value="">Select Module</option>
-                    </select>
-                </div>
-                <div class="pane-content">
-                    <iframe id="pane4Frame"></iframe>
-                </div>
-            </div>
-        </div>
-
-        <div class="sidebar sidebar-right-1 right">
-            <div class="sidebar-pane">
-                <div class="pane-header">Properties</div>
-                <div id="propertiesPane"></div>
-            </div>
-            <div class="sidebar-pane">
-                <div class="pane-header">Events</div>
-                <div id="eventsPane"></div>
-            </div>
-        </div>
-
-        <div class="sidebar sidebar-right-2 right">
-            <div class="sidebar-pane">
-                <div class="pane-header">Logs</div>
-                <div id="logsPane"></div>
-            </div>
-            <div class="sidebar-pane">
-                <div class="pane-header">Debug</div>
-                <div id="debugPane"></div>
             </div>
         </div>
     </div>
@@ -421,11 +581,35 @@
         </div>
     </div>
 
+    <!-- Add Tab Modal -->
+    <div id="addTabModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeAddTabModal()">&times;</span>
+            <h2 style="margin-bottom: 20px; font-size: 16px;">Add New Tab</h2>
+            <div class="form-group">
+                <label for="tabModule">Select Module</label>
+                <select id="tabModule">
+                    <option value="">Choose a module...</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="tabName">Tab Name (optional)</label>
+                <input type="text" id="tabName" placeholder="Custom tab name">
+            </div>
+            <div class="form-actions">
+                <button class="btn btn-secondary" onclick="closeAddTabModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="addNewTab()">Add Tab</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // Module Registry
         const moduleRegistry = new Map();
-        const eventBus = new EventTarget();
+        const tabs = [];
+        let tabCounter = 0;
         let editingModuleName = null;
+        let modulesExpanded = false;
 
         // Known modules for one-click discovery
         const knownModules = [
@@ -436,65 +620,73 @@
             { name: 'LLM Gateway', url: '/api/v1/gateway/', type: 'dashboard', configUrl: '/api/v1/gateway/', description: 'Gateway admin & keys' },
             { name: 'RAG Admin', url: '/api/v1/rag/admin/', type: 'dashboard', configUrl: '/api/v1/rag/admin/', description: 'RAG Admin UI and API' },
             { name: 'LLM Tester', url: '/api/v1/tester/', type: 'dashboard', configUrl: '/api/v1/tester/', description: 'Create and run LLM tests' },
-            { name: 'Documentor', url: '/api/v1/documentor/', type: 'viewer', configUrl: '/api/v1/documentor/', description: 'Generate docs using LLMs' }
+            { name: 'Documentor', url: '/api/v1/documentor/', type: 'viewer', configUrl: '/api/v1/documentor/', description: 'Generate docs using LLMs' },
+            { name: 'Code Workspace', url: '/api/v1/code-workspace/', type: 'editor', configUrl: '/api/v1/code-workspace/', description: 'Code editing workspace' }
         ];
 
-        // Demo defaults (first-run only)
         const demoModules = knownModules;
 
+        // Module Event Bus
         class ModuleEventBus {
             constructor() {
-            this.listeners = new Map();
-            window.addEventListener('message', (event) => {
-                if (event.data?.type === 'MODULE_EVENT') {
-                this.emit(event.data.eventName, event.data.payload);
-                }
-            });
+                this.listeners = new Map();
+                window.addEventListener('message', (event) => {
+                    if (event.data?.type === 'MODULE_EVENT') {
+                        this.emit(event.data.eventName, event.data.payload);
+                    }
+                });
             }
             on(eventName, callback) {
-            if (!this.listeners.has(eventName)) this.listeners.set(eventName, []);
-            this.listeners.get(eventName).push(callback);
+                if (!this.listeners.has(eventName)) this.listeners.set(eventName, []);
+                this.listeners.get(eventName).push(callback);
             }
             emit(eventName, data) {
-            if (this.listeners.has(eventName)) {
-                this.listeners.get(eventName).forEach(cb => cb(data));
-            }
-            logEvent(eventName, data);
+                if (this.listeners.has(eventName)) {
+                    this.listeners.get(eventName).forEach(cb => cb(data));
+                }
             }
             sendToModule(moduleName, eventName, data) {
-            const module = moduleRegistry.get(moduleName);
-            if (module?.iframe) {
-                module.iframe.contentWindow.postMessage({ type: 'FRAMEWORK_EVENT', eventName, payload: data }, '*');
-            }
+                const module = moduleRegistry.get(moduleName);
+                if (module?.iframe) {
+                    module.iframe.contentWindow.postMessage({ type: 'FRAMEWORK_EVENT', eventName, payload: data }, '*');
+                }
             }
         }
 
         const messageBus = new ModuleEventBus();
 
+        function slug(s) { return s.toLowerCase().replace(/[^a-z0-9]+/g, '-'); }
+
+        function toggleModulesPanel() {
+            const panel = document.getElementById('modulesPanel');
+            modulesExpanded = !modulesExpanded;
+            panel.classList.toggle('expanded', modulesExpanded);
+            document.getElementById('toggleIcon').textContent = modulesExpanded ? '×' : '☰';
+        }
+
         function loadModules() {
-            const moduleList = document.getElementById('moduleList');
-            moduleList.innerHTML = '';
+            const modulesList = document.getElementById('modulesList');
+            modulesList.innerHTML = '';
 
             let modules = [];
             try {
-            const saved = JSON.parse(localStorage.getItem('modules') || '[]');
-            modules = Array.isArray(saved) && saved.length ? saved : demoModules;
+                const saved = JSON.parse(localStorage.getItem('modules') || '[]');
+                modules = Array.isArray(saved) && saved.length ? saved : demoModules;
             } catch { modules = demoModules; }
 
             moduleRegistry.clear();
             modules.forEach(m => {
-            const mod = { ...m, status: 'unknown' };
-            moduleRegistry.set(mod.name, mod);
+                const mod = { ...m, status: 'unknown' };
+                moduleRegistry.set(mod.name, mod);
             });
 
-            // render list + start async health checks
             moduleRegistry.forEach((module, name) => {
-            const el = renderModuleItem(module);
-            moduleList.appendChild(el);
-            checkModuleStatus(name);  // async update
+                const el = renderModuleItem(module);
+                modulesList.appendChild(el);
+                checkModuleStatus(name);
             });
 
-            updatePaneSelectors();
+            updateTabModuleSelector();
         }
 
         function renderModuleItem(module) {
@@ -502,109 +694,192 @@
             el.className = 'module-item';
             const statusClass = module.status === 'offline' ? 'offline' : '';
             el.innerHTML = `
-            <span style="flex:1">${module.name}</span>
-            <div style="display:flex; align-items:center; gap:8px">
-                <button title="Load in Pane 1" class="btn btn-secondary" style="padding:2px 6px" onclick="quickLoad('${module.name}',1); event.stopPropagation();">P1</button>
-                <button title="Edit" class="btn btn-secondary" style="padding:2px 6px" onclick="editModule('${module.name}'); event.stopPropagation();">✏️</button>
-                <button title="Remove" class="btn btn-secondary" style="padding:2px 6px" onclick="removeModule('${module.name}'); event.stopPropagation();">🗑️</button>
-                <div class="module-status ${statusClass}" id="status-${slug(module.name)}"></div>
-            </div>
+                <div style="display: flex; align-items: center; flex: 1;">
+                    <div class="module-status ${statusClass}" id="status-${slug(module.name)}"></div>
+                    <span>${module.name}</span>
+                </div>
+                <div class="module-actions">
+                    <button title="Add to tab" onclick="quickAddTab('${module.name}'); event.stopPropagation();">+</button>
+                    <button title="Edit" onclick="editModule('${module.name}'); event.stopPropagation();">✏️</button>
+                    <button title="Remove" onclick="removeModule('${module.name}'); event.stopPropagation();">🗑️</button>
+                </div>
             `;
-            el.onclick = () => selectModule(module, el);
             return el;
         }
-
-        function slug(s) { return s.toLowerCase().replace(/[^a-z0-9]+/g,'-'); }
 
         async function checkModuleStatus(name) {
             const module = moduleRegistry.get(name);
             if (!module) return;
             try {
-            // Try well-known manifest first
-            const base = module.url.replace(/\/+$/,'');
-            const manifestUrl = `${base}/.well-known/module.json`;
-            let ok = false;
-            let configFromManifest = null;
-            try {
-                const r = await fetch(manifestUrl, { method: 'GET' });
-                if (r.ok) {
-                const j = await r.json().catch(()=>null);
-                if (j?.name) {
-                    module.type = j.type || module.type || 'other';
-                    module.description = j.description || module.description || '';
-                    module.configUrl = j.configUrl || module.configUrl;
-                }
-                ok = true;
-                configFromManifest = true;
-                }
-            } catch {}
+                const base = module.url.replace(/\/+$/, '');
+                const manifestUrl = `${base}/.well-known/module.json`;
+                let ok = false;
+                try {
+                    const r = await fetch(manifestUrl, { method: 'GET' });
+                    if (r.ok) {
+                        const j = await r.json().catch(() => null);
+                        if (j?.name) {
+                            module.type = j.type || module.type || 'other';
+                            module.description = j.description || module.description || '';
+                            module.configUrl = j.configUrl || module.configUrl;
+                        }
+                        ok = true;
+                    }
+                } catch { }
 
-            if (!ok) {
-                // Fallback: HEAD or GET on base URL
-                const r = await fetch(base, { method: 'HEAD' }).catch(()=>null);
-                ok = !!(r && (r.ok || r.status === 405 || r.status === 404));
-            }
+                if (!ok) {
+                    const r = await fetch(base, { method: 'HEAD' }).catch(() => null);
+                    ok = !!(r && (r.ok || r.status === 405 || r.status === 404));
+                }
 
-            module.status = ok ? 'online' : 'offline';
+                module.status = ok ? 'online' : 'offline';
             } catch {
-            module.status = 'offline';
+                module.status = 'offline';
             } finally {
-            const dot = document.getElementById(`status-${slug(name)}`);
-            if (dot) dot.classList.toggle('offline', module.status === 'offline');
-            persistModules();
+                const dot = document.getElementById(`status-${slug(name)}`);
+                if (dot) dot.classList.toggle('offline', module.status === 'offline');
+                persistModules();
             }
         }
 
-        function selectModule(module, el) {
-            const configFrame = document.getElementById('configFrame');
-            if (module.configUrl) {
-            configFrame.src = module.configUrl;
-            configFrame.style.display = 'block';
-            } else {
-            configFrame.removeAttribute('src');
-            configFrame.style.display = 'none';
-            }
-            document.querySelectorAll('.module-item').forEach(item => item.classList.remove('active'));
-            if (el) el.classList.add('active');
-            messageBus.emit('module-selected', { module: module.name });
-        }
-
-        function quickLoad(name, pane) {
-            const selects = document.querySelectorAll('.pane select');
-            const target = Array.from(selects)[pane - 1];
-            if (!target) return;
-            target.value = name;
-            loadModuleInPane(pane, name);
-        }
-
-        function loadModuleInPane(paneNumber, moduleName) {
-            if (!moduleName) return;
+        function quickAddTab(moduleName) {
             const module = moduleRegistry.get(moduleName);
             if (!module) return;
-            const frame = document.getElementById(`pane${paneNumber}Frame`);
-            frame.src = module.url;
-            module.iframe = frame;
-            const pane = document.querySelector(`[data-pane="${paneNumber}"]`);
-            const header = pane.querySelector('.pane-header span');
-            header.textContent = `${module.name} - Pane ${paneNumber}`;
-            messageBus.emit('module-loaded', { module: moduleName, pane: paneNumber });
+            createTab(moduleName, module.name);
         }
 
-        function updatePaneSelectors() {
-            const selectors = document.querySelectorAll('.pane select');
-            selectors.forEach(select => {
-            const currentValue = select.value;
-            select.innerHTML = '<option value="">Select Module</option>';
+        function showAddTabModal() {
+            updateTabModuleSelector();
+            document.getElementById('addTabModal').style.display = 'block';
+            document.getElementById('tabModule').value = '';
+            document.getElementById('tabName').value = '';
+        }
+
+        function closeAddTabModal() {
+            document.getElementById('addTabModal').style.display = 'none';
+        }
+
+        function updateTabModuleSelector() {
+            const select = document.getElementById('tabModule');
+            if (!select) return;
+            select.innerHTML = '<option value="">Choose a module...</option>';
             moduleRegistry.forEach((module, name) => {
                 const option = document.createElement('option');
                 option.value = name;
-                option.textContent = name;
+                option.textContent = `${name} (${module.type})`;
                 select.appendChild(option);
-            });
-            select.value = currentValue;
             });
         }
 
+        function addNewTab() {
+            const moduleName = document.getElementById('tabModule').value;
+            const customName = document.getElementById('tabName').value.trim();
+            if (!moduleName) {
+                alert('Please select a module');
+                return;
+            }
+            const module = moduleRegistry.get(moduleName);
+            if (!module) return;
+            const tabName = customName || module.name;
+            createTab(moduleName, tabName);
+            closeAddTabModal();
+        }
+
+        function createTab(moduleName, tabName) {
+            const module = moduleRegistry.get(moduleName);
+            if (!module) return;
+
+            const tabId = `tab-${++tabCounter}`;
+            const tab = {
+                id: tabId,
+                name: tabName,
+                moduleName: moduleName,
+                url: module.url
+            };
+            tabs.push(tab);
+
+            renderTabs();
+            activateTab(tabId);
+        }
+
+        function renderTabs() {
+            const container = document.getElementById('tabsContainer');
+            const addBtn = container.querySelector('.add-tab-btn');
+            
+            // Clear existing tabs but keep add button
+            const existingTabs = container.querySelectorAll('.tab');
+            existingTabs.forEach(tab => tab.remove());
+
+            // Render all tabs
+            tabs.forEach(tab => {
+                const tabEl = document.createElement('div');
+                tabEl.className = 'tab';
+                tabEl.dataset.tabId = tab.id;
+                tabEl.innerHTML = `
+                    <span class="tab-label" title="${tab.name}">${tab.name}</span>
+                    <button class="tab-close" onclick="closeTab('${tab.id}'); event.stopPropagation();">×</button>
+                `;
+                tabEl.onclick = () => activateTab(tab.id);
+                container.insertBefore(tabEl, addBtn);
+            });
+
+            renderTabContent();
+        }
+
+        function renderTabContent() {
+            const contentArea = document.getElementById('tabContentArea');
+            contentArea.innerHTML = '';
+
+            if (tabs.length === 0) {
+                contentArea.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📑</div>
+                        <div class="empty-state-text">No tabs open. Click "+ Add Tab" to get started.</div>
+                        <button onclick="showAddTabModal()">Add Your First Tab</button>
+                    </div>
+                `;
+                return;
+            }
+
+            tabs.forEach(tab => {
+                const pane = document.createElement('div');
+                pane.className = 'tab-pane';
+                pane.dataset.tabId = tab.id;
+                const iframe = document.createElement('iframe');
+                iframe.src = tab.url;
+                iframe.id = `iframe-${tab.id}`;
+                pane.appendChild(iframe);
+                contentArea.appendChild(pane);
+            });
+        }
+
+        function activateTab(tabId) {
+            // Update tab styling
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.toggle('active', tab.dataset.tabId === tabId);
+            });
+
+            // Show corresponding content
+            document.querySelectorAll('.tab-pane').forEach(pane => {
+                pane.classList.toggle('active', pane.dataset.tabId === tabId);
+            });
+        }
+
+        function closeTab(tabId) {
+            const index = tabs.findIndex(t => t.id === tabId);
+            if (index === -1) return;
+
+            const wasActive = document.querySelector(`.tab[data-tab-id="${tabId}"]`)?.classList.contains('active');
+            tabs.splice(index, 1);
+            renderTabs();
+
+            if (wasActive && tabs.length > 0) {
+                const newActiveIndex = Math.min(index, tabs.length - 1);
+                activateTab(tabs[newActiveIndex].id);
+            }
+        }
+
+        // Module Management
         function showRegistrationModal() {
             editingModuleName = null;
             document.getElementById('registrationModal').style.display = 'block';
@@ -636,22 +911,19 @@
             const type = document.getElementById('moduleType').value;
             const description = document.getElementById('moduleDescription').value.trim();
             if (!name || !url) {
-            alert('Please fill in all required fields');
-            return;
+                alert('Please fill in all required fields');
+                return;
             }
             const newModule = {
-            name, url, type, description,
-            configUrl: `${url.replace(/\/+$/,'')}/config`,
-            status: 'unknown'
+                name, url, type, description,
+                configUrl: `${url.replace(/\/+$/, '')}/config`,
+                status: 'unknown'
             };
             if (editingModuleName && moduleRegistry.has(editingModuleName)) {
-            // update (might rename)
-            if (editingModuleName !== name) moduleRegistry.delete(editingModuleName);
-            moduleRegistry.set(name, newModule);
-            logEvent('Module Updated', name);
+                if (editingModuleName !== name) moduleRegistry.delete(editingModuleName);
+                moduleRegistry.set(name, newModule);
             } else {
-            moduleRegistry.set(name, newModule);
-            logEvent('Module Registered', name);
+                moduleRegistry.set(name, newModule);
             }
             persistModules();
             loadModules();
@@ -663,7 +935,6 @@
             moduleRegistry.delete(name);
             persistModules();
             loadModules();
-            logEvent('Module Removed', name);
         }
 
         function persistModules() {
@@ -685,16 +956,16 @@
             if (!file) return;
             const reader = new FileReader();
             reader.onload = () => {
-            try {
-                const arr = JSON.parse(reader.result);
-                if (!Array.isArray(arr)) throw new Error('Invalid JSON');
-                arr.forEach(m => moduleRegistry.set(m.name, m));
-                persistModules();
-                loadModules();
-                alert('Modules imported.');
-            } catch {
-                alert('Invalid modules JSON.');
-            }
+                try {
+                    const arr = JSON.parse(reader.result);
+                    if (!Array.isArray(arr)) throw new Error('Invalid JSON');
+                    arr.forEach(m => moduleRegistry.set(m.name, m));
+                    persistModules();
+                    loadModules();
+                    alert('Modules imported.');
+                } catch {
+                    alert('Invalid modules JSON.');
+                }
             };
             reader.readAsText(file);
         }
@@ -702,39 +973,23 @@
         async function discoverModules() {
             let added = 0;
             for (const km of knownModules) {
-            try {
-                const base = km.url.replace(/\/+$/,'');
-                const r = await fetch(base, { method: 'HEAD' });
-                if (r.ok || r.status === 405 || r.status === 404) {
-                if (!moduleRegistry.has(km.name)) {
-                    moduleRegistry.set(km.name, { ...km, status: 'online' });
-                    added++;
-                } else {
-                    const cur = moduleRegistry.get(km.name);
-                    cur.status = 'online';
-                }
-                }
-            } catch {
-                // ignore
-            }
+                try {
+                    const base = km.url.replace(/\/+$/, '');
+                    const r = await fetch(base, { method: 'HEAD' });
+                    if (r.ok || r.status === 405 || r.status === 404) {
+                        if (!moduleRegistry.has(km.name)) {
+                            moduleRegistry.set(km.name, { ...km, status: 'online' });
+                            added++;
+                        } else {
+                            const cur = moduleRegistry.get(km.name);
+                            cur.status = 'online';
+                        }
+                    }
+                } catch { }
             }
             persistModules();
             loadModules();
             alert(added ? `Discovered ${added} module(s).` : 'No new modules discovered.');
-        }
-
-        function mountGithubHubInLeftPane() {
-            const leftPaneHeader = document.querySelector('.sidebar-left-2 .pane-header');
-            const leftPaneContent = document.querySelector('.sidebar-left-2 .pane-content');
-            if (!leftPaneContent) return;
-            if (leftPaneHeader) leftPaneHeader.textContent = 'GitHub Hub';
-            const iframe = document.createElement('iframe');
-            iframe.src = '/api/v1/github/ui/?embed=side';
-            iframe.style.width = '100%';
-            iframe.style.height = '100%';
-            iframe.style.border = 'none';
-            leftPaneContent.innerHTML = '';
-            leftPaneContent.appendChild(iframe);
         }
 
         function refreshModules() {
@@ -742,28 +997,35 @@
             messageBus.emit('modules-refreshed', { timestamp: Date.now() });
         }
 
-        // Logging
-        function logEvent(eventName, data) {
-            const logsPane = document.getElementById('logsPane');
-            const logEntry = document.createElement('div');
-            logEntry.style.cssText = 'padding: 5px; border-bottom: 1px solid #3e3e42; font-size: 11px;';
-            const timestamp = new Date().toLocaleTimeString();
-            logEntry.innerHTML <= `<span style="color: #608b4e;">[${timestamp}]</span> <strong>${eventName}</strong>: ${typeof data==='string'?data:JSON.stringify(data)}`;
-            logsPane.insertBefore(logEntry, logsPane.firstChild);
-            while (logsPane.children.length > 50) logsPane.removeChild(logsPane.lastChild);
-        }
-
+        // Initialize
         document.addEventListener('DOMContentLoaded', () => {
             loadModules();
-            messageBus.on('module-selected', data => console.log('Module selected:', data));
-            messageBus.on('module-loaded', data => console.log('Module loaded:', data));
-            mountGithubHubInLeftPane();
-            logEvent('System', 'Framework initialized successfully');
         });
 
-        window.onclick = function(event) {
-            const modal = document.getElementById('registrationModal');
-            if (event.target === modal) closeRegistrationModal();
+        // Close modals on outside click
+        window.onclick = function (event) {
+            const regModal = document.getElementById('registrationModal');
+            const addTabModal = document.getElementById('addTabModal');
+            if (event.target === regModal) closeRegistrationModal();
+            if (event.target === addTabModal) closeAddTabModal();
+        }
+        function switchSidePanel(panel) {
+            // Update tab buttons
+            document.querySelectorAll('.side-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            // Update frames
+            document.querySelectorAll('.side-panel-frame').forEach(frame => {
+                frame.classList.remove('active');
+            });
+            
+            if (panel === 'github') {
+                document.getElementById('githubHubFrame').classList.add('active');
+            } else if (panel === 'workspace') {
+                document.getElementById('workspaceFrame').classList.add('active');
+            }
         }
     </script>
 </body>

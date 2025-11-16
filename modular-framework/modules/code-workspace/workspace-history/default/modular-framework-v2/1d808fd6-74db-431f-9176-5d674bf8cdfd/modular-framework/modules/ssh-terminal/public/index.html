@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SSH Terminal Module</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .terminal-header {
+            background: #252526;
+            padding: 10px;
+            border-bottom: 1px solid #3e3e42;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 12px;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #f48771;
+        }
+
+        .status-indicator.connected {
+            background: #4ec9b0;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .connection-info {
+            margin-left: auto;
+            font-size: 12px;
+            color: #969696;
+        }
+
+        .terminal-container {
+            flex: 1;
+            background: #1e1e1e;
+            padding: 10px;
+            overflow: auto;
+            position: relative;
+        }
+
+        .terminal {
+            width: 100%;
+            height: 100%;
+            background: #0c0c0c;
+            border-radius: 4px;
+            padding: 10px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            color: #cccccc;
+            overflow-y: auto;
+        }
+
+        .terminal-line {
+            margin-bottom: 2px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .terminal-prompt {
+            color: #4ec9b0;
+        }
+
+        .terminal-input {
+            display: flex;
+            align-items: center;
+        }
+
+        .terminal-cursor {
+            display: inline-block;
+            width: 8px;
+            height: 16px;
+            background: #ffffff;
+            animation: blink 1s infinite;
+            margin-left: 2px;
+        }
+
+        @keyframes blink {
+            0%, 49% { opacity: 1; }
+            50%, 100% { opacity: 0; }
+        }
+
+        .input-field {
+            background: transparent;
+            border: none;
+            color: #cccccc;
+            font-family: inherit;
+            font-size: inherit;
+            outline: none;
+            flex: 1;
+            caret-color: transparent;
+        }
+
+        .toolbar {
+            background: #2d2d30;
+            padding: 8px;
+            display: flex;
+            gap: 5px;
+            border-top: 1px solid #3e3e42;
+        }
+
+        .toolbar button {
+            background: #3e3e42;
+            color: #cccccc;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.2s;
+        }
+
+        .toolbar button:hover {
+            background: #4e4e52;
+        }
+
+        .toolbar button:active {
+            background: #5e5e62;
+        }
+
+        .toolbar button.primary {
+            background: #0e639c;
+        }
+
+        .toolbar button.primary:hover {
+            background: #1177bb;
+        }
+
+        .toolbar button.danger {
+            background: #a1260d;
+        }
+
+        .toolbar button.danger:hover {
+            background: #c42b1c;
+        }
+
+        /* Quick Connect Panel */
+        .quick-connect {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #252526;
+            border: 1px solid #3e3e42;
+            border-radius: 8px;
+            padding: 20px;
+            min-width: 400px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+        }
+
+        .quick-connect h3 {
+            margin-bottom: 15px;
+            font-size: 16px;
+            font-weight: normal;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 12px;
+            color: #969696;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 8px;
+            background: #1e1e1e;
+            border: 1px solid #3e3e42;
+            color: #cccccc;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #0e639c;
+        }
+
+        .form-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .saved-connections {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #3e3e42;
+        }
+
+        .saved-connections h4 {
+            font-size: 12px;
+            margin-bottom: 10px;
+            color: #969696;
+        }
+
+        .connection-item {
+            padding: 8px;
+            background: #1e1e1e;
+            border-radius: 4px;
+            margin-bottom: 5px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+        }
+
+        .connection-item:hover {
+            background: #2d2d30;
+        }
+
+        .connection-item .remove {
+            color: #f48771;
+            cursor: pointer;
+        }
+
+        #terminalOutput {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-family: 'Courier New', monospace;
+        }
+
+        .command-line {
+            color: #4ec9b0;
+        }
+
+        .output-line {
+            color: #cccccc;
+        }
+
+        .error-line {
+            color: #f48771;
+        }
+    </style>
+</head>
+<body>
+    <div class="terminal-header">
+        <div class="connection-status">
+            <span class="status-indicator" id="statusIndicator"></span>
+            <span id="statusText">Disconnected</span>
+        </div>
+        <button onclick="showQuickConnect()" style="background: #0e639c; color: white; border: none; padding: 5px 15px; border-radius: 3px; cursor: pointer; font-size: 12px;">Connect</button>
+        <div class="connection-info" id="connectionInfo"></div>
+    </div>
+
+    <div class="terminal-container">
+        <div id="quickConnect" class="quick-connect" style="display: none;">
+            <h3>SSH Connection</h3>
+            <div class="form-group">
+                <label>Host</label>
+                <input type="text" id="sshHost" placeholder="192.168.1.100 or hostname.com">
+            </div>
+            <div class="form-group">
+                <label>Port</label>
+                <input type="number" id="sshPort" value="22" placeholder="22">
+            </div>
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" id="sshUsername" placeholder="username">
+            </div>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" id="sshPassword" placeholder="password">
+            </div>
+            <div class="form-actions">
+                <button onclick="hideQuickConnect()" style="background: #3e3e42; color: #cccccc; border: none; padding: 8px 16px; border-radius: 3px; cursor: pointer;">Cancel</button>
+                <button onclick="connect()" style="background: #0e639c; color: white; border: none; padding: 8px 16px; border-radius: 3px; cursor: pointer;">Connect</button>
+            </div>
+            
+            <div class="saved-connections">
+                <h4>Saved Connections</h4>
+                <div id="savedConnections"></div>
+                <button onclick="saveCurrentConnection()" style="margin-top: 10px; background: #3e3e42; color: #cccccc; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer; font-size: 11px;">+ Save Current</button>
+            </div>
+        </div>
+
+        <div class="terminal" id="terminal" style="display: none;">
+            <div id="terminalOutput"></div>
+            <div class="terminal-input">
+                <span class="terminal-prompt" id="prompt">$ </span>
+                <input type="text" id="commandInput" class="input-field" autofocus>
+                <span class="terminal-cursor"></span>
+            </div>
+        </div>
+    </div>
+
+    <div class="toolbar">
+        <button onclick="clearTerminal()">Clear</button>
+        <button onclick="copyOutput()">Copy</button>
+        <button onclick="downloadLog()">Download Log</button>
+        <button class="danger" onclick="disconnect()">Disconnect</button>
+    </div>
+
+    <script>
+        // SSH Terminal Module Implementation
+        class SSHTerminal {
+            constructor() {
+                this.connected = false;
+                this.commandHistory = [];
+                this.historyIndex = 0;
+                this.currentCommand = '';
+                this.outputBuffer = [];
+                this.ws = null;
+                this.setupEventListeners();
+                this.setupMessageBus();
+                this.loadSavedConnections();
+            }
+
+            setupEventListeners() {
+                const input = document.getElementById('commandInput');
+                
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        this.executeCommand(input.value);
+                        input.value = '';
+                    } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        this.navigateHistory(-1);
+                    } else if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        this.navigateHistory(1);
+                    } else if (e.key === 'Tab') {
+                        e.preventDefault();
+                        this.autocomplete();
+                    }
+                });
+
+                // Focus input when clicking on terminal
+                document.getElementById('terminal').addEventListener('click', () => {
+                    input.focus();
+                });
+            }
+
+            setupMessageBus() {
+                // Listen for framework events
+                window.addEventListener('message', (event) => {
+                    if (event.data.type === 'FRAMEWORK_EVENT') {
+                        this.handleFrameworkEvent(event.data.eventName, event.data.payload);
+                    }
+                });
+            }
+
+            handleFrameworkEvent(eventName, payload) {
+                console.log('Received framework event:', eventName, payload);
+                
+                switch(eventName) {
+                    case 'connect':
+                        if (payload.host && payload.username) {
+                            this.quickConnect(payload);
+                        }
+                        break;
+                    case 'disconnect':
+                        this.disconnect();
+                        break;
+                    case 'execute':
+                        if (payload.command && this.connected) {
+                            this.executeCommand(payload.command);
+                        }
+                        break;
+                }
+            }
+
+            emitEvent(eventName, data) {
+                window.parent.postMessage({
+                    type: 'MODULE_EVENT',
+                    eventName: `ssh-terminal:${eventName}`,
+                    payload: data
+                }, '*');
+            }
+
+            connect() {
+                const host = document.getElementById('sshHost').value;
+                const port = document.getElementById('sshPort').value;
+                const username = document.getElementById('sshUsername').value;
+                const password = document.getElementById('sshPassword').value;
+
+                if (!host || !username) {
+                    alert('Please enter host and username');
+                    return;
+                }
+
+                this.simulateConnection({ host, port, username, password });
+            }
+
+            simulateConnection(config) {
+                // In production, this would establish a real SSH connection
+                // For demo, we'll simulate it
+                
+                this.showTerminal();
+                this.hideQuickConnect();
+                
+                this.appendOutput(`Connecting to ${config.host}:${config.port || 22}...`);
+                
+                setTimeout(() => {
+                    this.connected = true;
+                    this.updateStatus(true, `${config.username}@${config.host}`);
+                    this.appendOutput(`Connected to ${config.host}`);
+                    this.appendOutput(`Welcome to SSH Terminal Simulator`);
+                    this.appendOutput('');
+                    document.getElementById('prompt').textContent = `${config.username}@${config.host}:~$ `;
+                    
+                    this.emitEvent('connected', { host: config.host, username: config.username });
+                }, 1000);
+            }
+
+            quickConnect(config) {
+                document.getElementById('sshHost').value = config.host;
+                document.getElementById('sshPort').value = config.port || 22;
+                document.getElementById('sshUsername').value = config.username;
+                document.getElementById('sshPassword').value = config.password || '';
+                this.connect();
+            }
+
+            disconnect() {
+                if (this.connected) {
+                    this.connected = false;
+                    this.updateStatus(false);
+                    this.appendOutput('Connection closed.');
+                    document.getElementById('prompt').textContent = '$ ';
+                    this.emitEvent('disconnected', {});
+                }
+            }
+
+            executeCommand(command) {
+                if (!command.trim()) return;
+                
+                this.commandHistory.push(command);
+                this.historyIndex = this.commandHistory.length;
+                
+                const output = document.getElementById('terminalOutput');
+                const prompt = document.getElementById('prompt').textContent;
+                
+                // Display command
+                this.appendOutput(`${prompt}${command}`, 'command-line');
+                
+                // Simulate command execution
+                this.simulateCommandExecution(command);
+                
+                this.emitEvent('command-executed', { command });
+            }
+
+            simulateCommandExecution(command) {
+                const parts = command.split(' ');
+                const cmd = parts[0];
+                
+                switch(cmd) {
+                    case 'ls':
+                        this.appendOutput('Documents  Downloads  Pictures  Videos  Music  Desktop');
+                        break;
+                    case 'pwd':
+                        this.appendOutput('/home/user');
+                        break;
+                    case 'date':
+                        this.appendOutput(new Date().toString());
+                        break;
+                    case 'echo':
+                        this.appendOutput(parts.slice(1).join(' '));
+                        break;
+                    case 'clear':
+                        this.clearTerminal();
+                        break;
+                    case 'help':
+                        this.appendOutput('Available commands: ls, pwd, date, echo, clear, help, whoami, uname');
+                        break;
+                    case 'whoami':
+                        this.appendOutput(document.getElementById('sshUsername').value || 'user');
+                        break;
+                    case 'uname':
+                        this.appendOutput('Linux ssh-terminal-simulator 5.10.0 x86_64 GNU/Linux');
+                        break;
+                    default:
+                        this.appendOutput(`bash: ${cmd}: command not found`, 'error-line');
+                }
+            }
+
+            appendOutput(text, className = 'output-line') {
+                const output = document.getElementById('terminalOutput');
+                const line = document.createElement('div');
+                line.className = `terminal-line ${className}`;
+                line.textContent = text;
+                output.appendChild(line);
+                
+                // Auto-scroll
+                output.parentElement.scrollTop = output.parentElement.scrollHeight;
+                
+                // Store in buffer
+                this.outputBuffer.push(text);
+            }
+
+            clearTerminal() {
+                document.getElementById('terminalOutput').innerHTML = '';
+                this.outputBuffer = [];
+            }
+
+            navigateHistory(direction) {
+                const input = document.getElementById('commandInput');
+                
+                if (direction === -1 && this.historyIndex > 0) {
+                    this.historyIndex--;
+                    input.value = this.commandHistory[this.historyIndex];
+                } else if (direction === 1 && this.historyIndex < this.commandHistory.length - 1) {
+                    this.historyIndex++;
+                    input.value = this.commandHistory[this.historyIndex];
+                } else if (direction === 1 && this.historyIndex === this.commandHistory.length - 1) {
+                    this.historyIndex = this.commandHistory.length;
+                    input.value = '';
+                }
+            }
+
+            autocomplete() {
+                const input = document.getElementById('commandInput');
+                const commands = ['ls', 'pwd', 'date', 'echo', 'clear', 'help', 'whoami', 'uname'];
+                const partial = input.value;
+                
+                const matches = commands.filter(cmd => cmd.startsWith(partial));
+                if (matches.length === 1) {
+                    input.value = matches[0];
+                } else if (matches.length > 1) {
+                    this.appendOutput(`Possible completions: ${matches.join('  ')}`);
+                }
+            }
+
+            updateStatus(connected, info = '') {
+                const indicator = document.getElementById('statusIndicator');
+                const statusText = document.getElementById('statusText');
+                const connectionInfo = document.getElementById('connectionInfo');
+                
+                if (connected) {
+                    indicator.classList.add('connected');
+                    statusText.textContent = 'Connected';
+                    connectionInfo.textContent = info;
+                } else {
+                    indicator.classList.remove('connected');
+                    statusText.textContent = 'Disconnected';
+                    connectionInfo.textContent = '';
+                }
+            }
+
+            showTerminal() {
+                document.getElementById('terminal').style.display = 'block';
+                document.getElementById('commandInput').focus();
+            }
+
+            hideQuickConnect() {
+                document.getElementById('quickConnect').style.display = 'none';
+            }
+
+            loadSavedConnections() {
+                const saved = localStorage.getItem('sshConnections');
+                if (saved) {
+                    const connections = JSON.parse(saved);
+                    this.displaySavedConnections(connections);
+                }
+            }
+
+            saveCurrentConnection() {
+                const host = document.getElementById('sshHost').value;
+                const username = document.getElementById('sshUsername').value;
+                const port = document.getElementById('sshPort').value;
+                
+                if (!host || !username) return;
+                
+                const saved = localStorage.getItem('sshConnections');
+                const connections = saved ? JSON.parse(saved) : [];
+                
+                connections.push({
+                    host,
+                    username,
+                    port: port || 22,
+                    name: `${username}@${host}`
+                });
+                
+                localStorage.setItem('sshConnections', JSON.stringify(connections));
+                this.displaySavedConnections(connections);
+            }
+
+            displaySavedConnections(connections) {
+                const container = document.getElementById('savedConnections');
+                container.innerHTML = '';
+                
+                connections.forEach((conn, index) => {
+                    const item = document.createElement('div');
+                    item.className = 'connection-item';
+                    item.innerHTML = `
+                        <span onclick="terminal.loadConnection(${index})">${conn.name}</span>
+                        <span class="remove" onclick="terminal.removeConnection(${index})">×</span>
+                    `;
+                    container.appendChild(item);
+                });
+            }
+
+            loadConnection(index) {
+                const saved = localStorage.getItem('sshConnections');
+                if (saved) {
+                    const connections = JSON.parse(saved);
+                    const conn = connections[index];
+                    if (conn) {
+                        document.getElementById('sshHost').value = conn.host;
+                        document.getElementById('sshUsername').value = conn.username;
+                        document.getElementById('sshPort').value = conn.port;
+                    }
+                }
+            }
+
+            removeConnection(index) {
+                const saved = localStorage.getItem('sshConnections');
+                if (saved) {
+                    const connections = JSON.parse(saved);
+                    connections.splice(index, 1);
+                    localStorage.setItem('sshConnections', JSON.stringify(connections));
+                    this.displaySavedConnections(connections);
+                }
+            }
+        }
+
+        // Global functions
+        const terminal = new SSHTerminal();
+
+        function showQuickConnect() {
+            document.getElementById('quickConnect').style.display = 'block';
+        }
+
+        function hideQuickConnect() {
+            document.getElementById('quickConnect').style.display = 'none';
+        }
+
+        function connect() {
+            terminal.connect();
+        }
+
+        function disconnect() {
+            terminal.disconnect();
+        }
+
+        function clearTerminal() {
+            terminal.clearTerminal();
+        }
+
+        function copyOutput() {
+            const text = terminal.outputBuffer.join('\n');
+            navigator.clipboard.writeText(text).then(() => {
+                terminal.appendOutput('Output copied to clipboard');
+            });
+        }
+
+        function downloadLog() {
+            const text = terminal.outputBuffer.join('\n');
+            const blob = new Blob([text], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `terminal_log_${Date.now()}.txt`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function saveCurrentConnection() {
+            terminal.saveCurrentConnection();
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            terminal.emitEvent('module-ready', { module: 'ssh-terminal' });
+        });
+    </script>
+</body>
+</html>

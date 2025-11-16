@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LLM Chat Module with RAG</title>
+  <link rel="stylesheet" href="./css/theme.css" />
+  <style>
+    /* Additional styles for RAG features */
+    .rag-controls {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      padding: 8px 16px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--line);
+    }
+    
+    .rag-controls label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    
+    .rag-controls input[type="checkbox"] {
+      width: auto;
+      margin: 0;
+    }
+    
+    .conv-controls {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      padding: 8px 16px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--line);
+    }
+    
+    .conv-info {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin-left: auto;
+    }
+    
+    .conv-info span {
+      font-size: 11px;
+    }
+    
+    .rag-badge {
+      background: #0e639c;
+      color: white;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      margin-right: 8px;
+    }
+    
+    .sources {
+      background: #1a1a1a;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 8px;
+      margin: 8px 0;
+      font-size: 12px;
+    }
+    
+    .sources summary {
+      cursor: pointer;
+      user-select: none;
+    }
+    
+    .source-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 0;
+      border-bottom: 1px solid var(--line);
+    }
+    
+    .source-item:last-child {
+      border-bottom: none;
+    }
+    
+    .score {
+      background: #111;
+      color: #4ec9b0;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+    }
+    
+    #searchModal {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: var(--panel);
+      border: 2px solid var(--line);
+      border-radius: 8px;
+      padding: 20px;
+      width: 600px;
+      max-height: 500px;
+      overflow-y: auto;
+      z-index: 1000;
+    }
+    
+    #searchModal input {
+      width: 100%;
+      margin-bottom: 16px;
+    }
+    
+    .search-result {
+      background: var(--bg);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 12px;
+      margin-bottom: 8px;
+      cursor: pointer;
+    }
+    
+    .search-result:hover {
+      background: #2a2a2a;
+    }
+    
+    .search-result-content {
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
+    
+    .search-result-meta {
+      display: flex;
+      gap: 12px;
+      font-size: 11px;
+    }
+    
+    #ragIndicator, #saveIndicator {
+      color: #4ec9b0;
+      font-size: 12px;
+      display: none;
+    }
+    
+    .modal-close {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: none;
+      border: none;
+      color: var(--txt);
+      font-size: 20px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="status"><span class="dot" id="dot"></span><span id="statusText">Idle</span></div>
+    <div class="grow"></div>
+    <span id="ragIndicator"></span>
+    <span id="saveIndicator"></span>
+  </div>
+
+  <!-- Top-level tabs -->
+  <div class="main-tabs">
+    <button class="tab active" id="tabBtnChat" type="button">Chat</button>
+    <button class="tab" id="tabBtnSettings" type="button">Settings</button>
+  </div>
+
+  <!-- ============ CHAT TAB ============ -->
+  <section id="tab-chat">
+    <div class="chat">
+      <!-- RAG Controls -->
+      <div class="rag-controls">
+        <label>
+          <input type="checkbox" id="useRAG" />
+          <span>🔍 Use RAG Knowledge Base</span>
+        </label>
+        <label>
+          <input type="checkbox" id="ragOnly" />
+          <span>⚡ RAG Only (no LLM)</span>
+        </label>
+
+        <!-- NEW: memory toggle + tags -->
+        <label>
+          <input type="checkbox" id="useMemories" />
+          <span>🧠 Use memories (by tags)</span>
+        </label>
+        <input id="convTags" placeholder="tags e.g. pets, project:omega" style="max-width:360px" />
+
+        <button id="ingestBtn" class="ghost" title="Ingest new documents">📥 Ingest</button>
+        <button id="statsBtn" class="ghost" title="View RAG statistics">📊 Stats</button>
+      </div>
+
+      <!-- Conversation Controls -->
+      <div class="conv-controls">
+        <button id="newConvBtn" title="Start new conversation">📝 New</button>
+        <button id="saveConvBtn" title="Save current conversation">💾 Save</button>
+        <button id="searchConvBtn" title="Search past conversations">🔍 History</button>
+        <button id="summarizeBtn" title="Summarize conversation">📋 Summarize</button>
+        
+        <div class="conv-info">
+          <span id="convId" class="muted"></span>
+          <span id="convMsgCount" class="muted">0 messages</span>
+        </div>
+      </div>
+
+      <!-- Toolbar -->
+      <div class="toolbar">
+        <div class="row">
+          <label for="profileSelect">Profile</label>
+          <select id="profileSelect"></select>
+        </div>
+        <div class="row">
+          <label for="providerSelect">Provider</label>
+          <select id="providerSelect" title="Provider for this chat">
+            <option value="openai">OpenAI</option>
+            <option value="openai-compatible">OpenAI-compatible</option>
+            <option value="ollama">Ollama</option>
+          </select>
+        </div>
+        <div class="row">
+          <label for="modelInput">Model</label>
+          <input id="modelInput" class="w-clip" placeholder="e.g. gpt-4o-mini, gpt-5, llama3" />
+        </div>
+        <div class="row">
+          <label for="baseUrlInput">Base URL</label>
+          <input id="baseUrlInput" class="w-clip" placeholder="https://api.openai.com / http://ollama:11434" />
+        </div>
+        <div class="row">
+          <label for="tempInput">Temp</label>
+          <input id="tempInput" type="number" step="0.1" min="0" max="2" style="width:7ch" />
+        </div>
+        <div class="row">
+          <label for="maxTokInput">Max tokens</label>
+          <input id="maxTokInput" type="number" style="width:10ch" />
+        </div>
+        <div class="inline">
+          <button id="resetBtn" title="Reset toolbar fields from the selected profile">Reset</button>
+          <button id="manageBtn" title="Open settings tab">Manage Profiles</button>
+        </div>
+      </div>
+
+      <!-- System Prompt -->
+      <div class="sys-wrap">
+        <label for="sysInput">System prompt (editable, applies to next send)</label>
+        <textarea id="sysInput" placeholder="Optional system prompt..."></textarea>
+      </div>
+
+      <!-- Messages -->
+      <div id="msgs" class="msgs"></div>
+      <div class="composer">
+        <textarea id="input" placeholder="Type a message..."></textarea>
+        <button class="primary" id="sendBtn">Send</button>
+        <button id="stopBtn">Stop</button>
+        <button id="clearBtn">Clear</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SETTINGS TAB ============ -->
+  <section id="tab-settings" style="display:none">
+    <div class="pane">
+      <h2 style="margin:10px 0 12px">⚙️ LLM Chat – Settings</h2>
+
+      <!-- Sub-tabs inside settings -->
+      <div class="tabs">
+        <div class="tab active" id="tGlobal">Global</div>
+        <div class="tab" id="tProfiles">Profiles</div>
+      </div>
+
+      <!-- Global settings -->
+      <div id="global" class="card">
+        <div class="row3">
+          <div>
+            <label>Default Provider</label>
+            <select id="provider">
+              <option value="openai">OpenAI</option>
+              <option value="openai-compatible">OpenAI-compatible</option>
+              <option value="ollama">Ollama</option>
+            </select>
+          </div>
+          <div>
+            <label>Default Model</label>
+            <input id="model" placeholder="gpt-4o-mini or llama3" />
+          </div>
+          <div>
+            <label>Temperature</label>
+            <input id="temperature" type="number" step="0.1" min="0" max="2" />
+          </div>
+        </div>
+        <label>Base URL</label>
+        <input id="baseUrl" placeholder="https://api.openai.com" />
+        <label>API Key <span class="muted">(not required for Ollama)</span></label>
+        <input id="apiKey" placeholder="sk-..." />
+
+        <div class="row">
+          <div>
+            <label>Max tokens (optional)</label>
+            <input id="max_tokens" type="number" />
+          </div>
+          <div>
+            <label>&nbsp;</label>
+            <button id="saveGlobalBtn">Save Global</button>
+          </div>
+        </div>
+
+        <!-- RAG Configuration -->
+        <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--line);">
+          <h4>RAG Configuration</h4>
+          <label>RAG Service URL</label>
+          <input id="ragServiceUrl" placeholder="http://192.168.0.9:8000" value="http://192.168.0.9:8000" />
+          <button id="testRagBtn" class="ghost">Test RAG Connection</button>
+        </div>
+      </div>
+
+      <!-- Profiles -->
+      <div id="profiles" class="card" style="display:none">
+        <h3>Profiles</h3>
+        <div class="muted">Profiles override global settings when selected in the chat toolbar.</div>
+        <div class="row3">
+          <div>
+            <label>Name</label>
+            <input id="pName" />
+          </div>
+          <div>
+            <label>Provider</label>
+            <select id="pProvider">
+              <option value="">(inherit global)</option>
+              <option value="openai">OpenAI</option>
+              <option value="openai-compatible">OpenAI-compatible</option>
+              <option value="ollama">Ollama</option>
+            </select>
+          </div>
+          <div>
+            <label>Model</label>
+            <input id="pModel" placeholder="(inherit or set)" />
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>Base URL</label>
+            <input id="pBaseUrl" placeholder="(inherit or set)" />
+          </div>
+          <div>
+            <label>API Key</label>
+            <input id="pApiKey" placeholder="(inherit or set)" />
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>Temperature</label>
+            <input id="pTemp" type="number" step="0.1" min="0" max="2" placeholder="(inherit)" />
+          </div>
+          <div>
+            <label>Max tokens</label>
+            <input id="pMax" type="number" placeholder="(inherit)" />
+          </div>
+        </div>
+        <label>System prompt</label>
+        <textarea id="pSystem" rows="6" placeholder="e.g., Act as a senior React engineer ..."></textarea>
+
+        <div>
+          <button id="saveProfileBtn">Save Profile</button>
+          <button class="ghost" id="loadDefaultsBtn">Load Default Profiles</button>
+          <button class="ghost" id="exportBtn">Export</button>
+          <input type="file" id="importFile" accept="application/json" style="display:none" />
+          <button class="ghost" id="importBtn">Import</button>
+        </div>
+
+        <div class="list" id="profileList"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Search Modal -->
+  <div id="searchModal" style="display:none;">
+    <button class="modal-close" onclick="this.parentElement.style.display='none'">×</button>
+    <h3>Search Conversation History</h3>
+    <input type="text" id="searchConvInput" placeholder="Search past conversations..." />
+    <div id="searchResults">
+      <div class="muted">Type at least 3 characters to search...</div>
+    </div>
+  </div>
+
+  <!-- Update the script import to use the modified index.page.js -->
+  <script type="module" src="./js/index.page.js"></script>
+</body>
+</html>

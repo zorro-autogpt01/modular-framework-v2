@@ -16,23 +16,28 @@
   }
 
   async function requestJSON(url, options = {}) {
-    const defaultOptions = {
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-    };
-    const resp = await fetch(url, { ...defaultOptions, ...options });
-    if (!resp.ok) {
-      // Try to parse JSON error, otherwise throw status
-      try {
-        const data = await resp.json();
-        const msg = data?.error || data?.message || `${resp.status} ${resp.statusText}`;
-        throw new Error(msg);
-      } catch {
-        throw new Error(`${resp.status} ${resp.statusText}`);
+      // Strip protocol and host, keep only path for same-origin requests
+      if (url.startsWith('http://') || url.startsWith('https://')) {
+        url = url.replace(/^https?:\/\/[^\/]+/, '');
       }
+      
+      const defaultOptions = {
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+      };
+      const resp = await fetch(url, { ...defaultOptions, ...options });
+      if (!resp.ok) {
+        // Try to parse JSON error, otherwise throw status
+        try {
+          const data = await resp.json();
+          const msg = data?.error || data?.message || `${resp.status} ${resp.statusText}`;
+          throw new Error(msg);
+        } catch {
+          throw new Error(`${resp.status} ${resp.statusText}`);
+        }
+      }
+      return parseJSONorThrow(resp);
     }
-    return parseJSONorThrow(resp);
-  }
 
   async function requestBlob(url, options = {}) {
     const defaultOptions = { credentials: 'include' };

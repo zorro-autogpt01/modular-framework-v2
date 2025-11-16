@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SSH Terminal Configuration</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            margin: 0;
+        }
+        
+        h2 {
+            font-size: 18px;
+            margin-bottom: 20px;
+            color: #e0e0e0;
+        }
+        
+        .config-section {
+            background: #252526;
+            border: 1px solid #3e3e42;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        
+        .config-section h3 {
+            font-size: 14px;
+            margin-bottom: 15px;
+            color: #969696;
+        }
+        
+        .form-group {
+            margin-bottom: 12px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 4px;
+            font-size: 12px;
+            color: #969696;
+        }
+        
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 6px;
+            background: #1e1e1e;
+            border: 1px solid #3e3e42;
+            color: #cccccc;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+        
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #0e639c;
+        }
+        
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+        }
+        
+        button {
+            background: #0e639c;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-right: 10px;
+        }
+        
+        button:hover {
+            background: #1177bb;
+        }
+        
+        button.secondary {
+            background: #3e3e42;
+        }
+        
+        button.secondary:hover {
+            background: #4e4e52;
+        }
+        
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            font-size: 12px;
+        }
+        
+        .status.success {
+            background: #1b3d2f;
+            color: #4ec9b0;
+            border: 1px solid #2d5a47;
+        }
+        
+        .status.error {
+            background: #3d1b1b;
+            color: #f48771;
+            border: 1px solid #5a2d2d;
+        }
+    </style>
+</head>
+<body>
+    <h2>⚙️ SSH Terminal Configuration</h2>
+    
+    <div id="statusMessage" style="display: none;" class="status"></div>
+    
+    <div class="config-section">
+        <h3>Default Connection Settings</h3>
+        <div class="form-group">
+            <label for="defaultHost">Default Host</label>
+            <input type="text" id="defaultHost" placeholder="192.168.1.100">
+        </div>
+        <div class="form-group">
+            <label for="defaultPort">Default Port</label>
+            <input type="number" id="defaultPort" value="22">
+        </div>
+        <div class="form-group">
+            <label for="defaultUsername">Default Username</label>
+            <input type="text" id="defaultUsername" placeholder="username">
+        </div>
+    </div>
+    
+    <div class="config-section">
+        <h3>Terminal Settings</h3>
+        <div class="form-group">
+            <label for="fontSize">Font Size</label>
+            <select id="fontSize">
+                <option value="12">12px</option>
+                <option value="14" selected>14px</option>
+                <option value="16">16px</option>
+                <option value="18">18px</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="theme">Theme</label>
+            <select id="theme">
+                <option value="dark" selected>Dark</option>
+                <option value="light">Light</option>
+                <option value="monokai">Monokai</option>
+                <option value="solarized">Solarized</option>
+            </select>
+        </div>
+        <div class="checkbox-group">
+            <input type="checkbox" id="enableSound" checked>
+            <label for="enableSound">Enable bell sound</label>
+        </div>
+        <div class="checkbox-group">
+            <input type="checkbox" id="enableBlinking" checked>
+            <label for="enableBlinking">Enable cursor blinking</label>
+        </div>
+    </div>
+    
+    <div class="config-section">
+        <h3>SSH Key Authentication</h3>
+        <div class="form-group">
+            <label for="privateKey">Private Key (Optional)</label>
+            <textarea id="privateKey" rows="4" placeholder="Paste your private key here..."></textarea>
+        </div>
+        <div class="checkbox-group">
+            <input type="checkbox" id="saveKey">
+            <label for="saveKey">Save key locally (encrypted)</label>
+        </div>
+    </div>
+    
+    <div class="config-section">
+        <h3>Advanced Settings</h3>
+        <div class="form-group">
+            <label for="keepAlive">Keep-Alive Interval (seconds)</label>
+            <input type="number" id="keepAlive" value="60">
+        </div>
+        <div class="form-group">
+            <label for="commandHistory">Command History Size</label>
+            <input type="number" id="commandHistory" value="1000">
+        </div>
+        <div class="checkbox-group">
+            <input type="checkbox" id="autoReconnect">
+            <label for="autoReconnect">Auto-reconnect on disconnect</label>
+        </div>
+    </div>
+    
+    <button onclick="saveConfiguration()">Save Configuration</button>
+    <button class="secondary" onclick="resetDefaults()">Reset to Defaults</button>
+    
+    <script>
+        // Load saved configuration
+        function loadConfiguration() {
+            const config = localStorage.getItem('sshTerminalConfig');
+            if (config) {
+                const settings = JSON.parse(config);
+                
+                // Apply settings to form
+                Object.keys(settings).forEach(key => {
+                    const element = document.getElementById(key);
+                    if (element) {
+                        if (element.type === 'checkbox') {
+                            element.checked = settings[key];
+                        } else {
+                            element.value = settings[key];
+                        }
+                    }
+                });
+            }
+        }
+        
+        // Save configuration
+        function saveConfiguration() {
+            const settings = {
+                defaultHost: document.getElementById('defaultHost').value,
+                defaultPort: document.getElementById('defaultPort').value,
+                defaultUsername: document.getElementById('defaultUsername').value,
+                fontSize: document.getElementById('fontSize').value,
+                theme: document.getElementById('theme').value,
+                enableSound: document.getElementById('enableSound').checked,
+                enableBlinking: document.getElementById('enableBlinking').checked,
+                privateKey: document.getElementById('privateKey').value,
+                saveKey: document.getElementById('saveKey').checked,
+                keepAlive: document.getElementById('keepAlive').value,
+                commandHistory: document.getElementById('commandHistory').value,
+                autoReconnect: document.getElementById('autoReconnect').checked
+            };
+            
+            localStorage.setItem('sshTerminalConfig', JSON.stringify(settings));
+            
+            // Show success message
+            showStatus('Configuration saved successfully!', 'success');
+            
+            // Notify parent frame
+            window.parent.postMessage({
+                type: 'MODULE_EVENT',
+                eventName: 'ssh-terminal:config-saved',
+                payload: settings
+            }, '*');
+        }
+        
+        // Reset to defaults
+        function resetDefaults() {
+            if (confirm('Are you sure you want to reset all settings to defaults?')) {
+                localStorage.removeItem('sshTerminalConfig');
+                location.reload();
+            }
+        }
+        
+        // Show status message
+        function showStatus(message, type) {
+            const statusElement = document.getElementById('statusMessage');
+            statusElement.textContent = message;
+            statusElement.className = `status ${type}`;
+            statusElement.style.display = 'block';
+            
+            setTimeout(() => {
+                statusElement.style.display = 'none';
+            }, 3000);
+        }
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadConfiguration();
+        });
+    </script>
+</body>
+</html>

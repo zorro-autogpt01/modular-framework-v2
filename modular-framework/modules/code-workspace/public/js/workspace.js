@@ -1,4 +1,5 @@
-// Workspace Module - File Editing and Git Operations
+// Workspace Module - File Editing and Git Operations with Multi-Select & Token Counting
+// Updated to integrate with existing Code Workspace UI
 
 const Workspace = {
     currentRepo: null,
@@ -8,6 +9,8 @@ const Workspace = {
     modifiedFiles: new Set(),
     fileContents: new Map(),
     locks: new Map(),
+    selectedFiles: new Set(),
+    tokenCountTimer: null,
 
     async init() {
         console.log('Initializing Workspace module...');
@@ -15,6 +18,7 @@ const Workspace = {
         this.setupEventListeners();
         this.setupGitActions();
         this.setupPanels();
+        this.setupFileSelection();
         await this.loadRepositoryList();
     },
 
@@ -46,13 +50,41 @@ const Workspace = {
         });
 
         // WebSocket events
-        WS.on('file:modified', (data) => {
-            if (this.currentRepo && 
-                data.connection_id === this.currentRepo.connection_id &&
-                data.repo_name === this.currentRepo.repo_name) {
-                this.handleFileModified(data.file);
-            }
-        });
+        if (typeof WS !== 'undefined') {
+            WS.on('file:modified', (data) => {
+                if (this.currentRepo && 
+                    data.connection_id === this.currentRepo.connection_id &&
+                    data.repo_name === this.currentRepo.repo_name) {
+                    this.handleFileModified(data.file);
+                }
+            });
+        }
+    },
+
+    setupFileSelection() {
+        // Copy selected files button
+        const copyBtn = document.getElementById('copy-selected-btn');
+        if (copyBtn) {
+            copyBtn.addEventListener('click', async () => {
+                await this.copySelectedFiles();
+            });
+        }
+
+        // Select all checkbox
+        const selectAllCheckbox = document.getElementById('select-all-files');
+        if (selectAllCheckbox) {
+            selectAllCheckbox.addEventListener('change', (e) => {
+                this.toggleSelectAll(e.target.checked);
+            });
+        }
+
+        // Clear selection button
+        const clearBtn = document.getElementById('clear-selection-btn');
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => {
+                this.clearSelection();
+            });
+        }
     },
 
     setupGitActions() {
@@ -131,6 +163,9 @@ const Workspace = {
             
             this.currentRepo = { connection_id, repo_name };
             
+            // Clear selection when loading new repo
+            this.clearSelection();
+            
             // Update selector if needed
             const selector = document.getElementById('repo-selector');
             if (selector) {
@@ -138,7 +173,9 @@ const Workspace = {
             }
             
             // Subscribe to WebSocket events for this repo
-            WS.watchRepo(connection_id, repo_name);
+            if (typeof WS !== 'undefined') {
+                WS.watchRepo(connection_id, repo_name);
+            }
             
             // Load file tree
             await this.loadFileTree();
@@ -163,7 +200,7 @@ const Workspace = {
         const { connection_id, repo_name } = this.currentRepo;
         
         try {
-            const result = await API.workspace.browse(connection_id, repo_name, '', 3);
+            const result = await API.workspace.browse(connection_id, repo_name, '', 15);
             this.fileTree = result.items || [];
             this.renderFileTree();
         } catch (error) {
@@ -180,6 +217,9 @@ const Workspace = {
         // Add click handlers
         container.querySelectorAll('.tree-item').forEach(item => {
             item.addEventListener('click', async (e) => {
+                // Don't trigger if clicking checkbox
+                if (e.target.type === 'checkbox') return;
+                
                 e.stopPropagation();
                 const path = item.dataset.path;
                 const type = item.dataset.type;
@@ -195,25 +235,50 @@ const Workspace = {
                 }
             });
         });
+
+        // Add checkbox handlers
+        container.querySelectorAll('.file-checkbox').forEach(checkbox => {
+            checkbox.addEventListener('change', (e) => {
+                const path = e.target.dataset.path;
+                if (e.target.checked) {
+                    this.selectedFiles.add(path);
+                } else {
+                    this.selectedFiles.delete(path);
+                }
+                this.updateFileSelectionUI();
+            });
+        });
     },
 
-    renderTreeItems(items, level = 0) {
+    renderTreeItems(items, level = 0, parentPath = '') {
         return items.map(item => {
+            const fullPath = parentPath ? `${parentPath}/${item.name}` : item.name;
+            const isFile = item.type === 'file';
+            
+            const checkbox = isFile 
+                ? `<input type="checkbox" 
+                          class="file-checkbox" 
+                          data-path="${fullPath}"
+                          ${this.selectedFiles.has(fullPath) ? 'checked' : ''}
+                          onclick="event.stopPropagation()">`
+                : '';
+            
             const icon = item.type === 'directory' 
                 ? '<i class="fas fa-folder"></i>'
                 : `<i class="${App.getFileIcon(item.name)}"></i>`;
             
             const children = item.children 
                 ? `<div class="tree-children" style="display: none;">
-                    ${this.renderTreeItems(item.children, level + 1)}
+                    ${this.renderTreeItems(item.children, level + 1, fullPath)}
                    </div>`
                 : '';
             
             return `
                 <div class="tree-item ${item.type}" 
-                     data-path="${item.name}" 
+                     data-path="${fullPath}" 
                      data-type="${item.type}"
                      style="padding-left: ${level * 20}px">
+                    ${checkbox}
                     ${icon}
                     <span>${item.name}</span>
                 </div>
@@ -231,9 +296,14 @@ const Workspace = {
             const status = await API.repos.status(connection_id, repo_name);
             
             // Update branch info
-            document.getElementById('current-branch').textContent = status.current_branch || 'unknown';
-            document.getElementById('ahead-count').textContent = status.status?.ahead || 0;
-            document.getElementById('behind-count').textContent = status.status?.behind || 0;
+            const branchEl = document.getElementById('current-branch');
+            if (branchEl) branchEl.textContent = status.current_branch || 'unknown';
+            
+            const aheadEl = document.getElementById('ahead-count');
+            if (aheadEl) aheadEl.textContent = status.status?.ahead || 0;
+            
+            const behindEl = document.getElementById('behind-count');
+            if (behindEl) behindEl.textContent = status.status?.behind || 0;
             
             // Update file lists
             this.renderStagedFiles(status.status?.staged || []);
@@ -258,10 +328,10 @@ const Workspace = {
         }
         
         container.innerHTML = files.map(file => `
-            <div class="file-item" onclick="Workspace.viewDiff('${file}', true)">
+            <div class="file-item" onclick="Workspace.viewDiff('${this.escapeHtml(file)}', true)">
                 <i class="${App.getFileIcon(file)}"></i>
-                ${file}
-                <button class="btn btn-sm" onclick="event.stopPropagation(); Workspace.unstageFile('${file}')">
+                ${this.escapeHtml(file)}
+                <button class="btn btn-sm" onclick="event.stopPropagation(); Workspace.unstageFile('${this.escapeHtml(file)}')">
                     <i class="fas fa-minus"></i>
                 </button>
             </div>
@@ -278,10 +348,10 @@ const Workspace = {
         }
         
         container.innerHTML = files.map(file => `
-            <div class="file-item" onclick="Workspace.viewDiff('${file}', false)">
+            <div class="file-item" onclick="Workspace.viewDiff('${this.escapeHtml(file)}', false)">
                 <i class="${App.getFileIcon(file)}"></i>
-                ${file}
-                <button class="btn btn-sm" onclick="event.stopPropagation(); Workspace.stageFile('${file}')">
+                ${this.escapeHtml(file)}
+                <button class="btn btn-sm" onclick="event.stopPropagation(); Workspace.stageFile('${this.escapeHtml(file)}')">
                     <i class="fas fa-plus"></i>
                 </button>
             </div>
@@ -300,12 +370,12 @@ const Workspace = {
         container.innerHTML = files.map(file => `
             <div class="change-item">
                 <i class="${App.getFileIcon(file)}"></i>
-                <span>${file}</span>
+                <span>${this.escapeHtml(file)}</span>
                 <div class="change-actions">
-                    <button class="btn btn-sm" title="View diff" onclick="Workspace.viewDiff('${file}')">
+                    <button class="btn btn-sm" title="View diff" onclick="Workspace.viewDiff('${this.escapeHtml(file)}')">
                         <i class="fas fa-eye"></i>
                     </button>
-                    <button class="btn btn-sm" title="Discard changes" onclick="Workspace.discardChanges('${file}')">
+                    <button class="btn btn-sm" title="Discard changes" onclick="Workspace.discardChanges('${this.escapeHtml(file)}')">
                         <i class="fas fa-undo"></i>
                     </button>
                 </div>
@@ -332,14 +402,242 @@ const Workspace = {
             
             container.innerHTML = commits.map(commit => `
                 <div class="commit-item">
-                    <div class="commit-hash">${commit.hash}</div>
-                    <div class="commit-message">${commit.message}</div>
+                    <div class="commit-hash">${this.escapeHtml(commit.hash)}</div>
+                    <div class="commit-message">${this.escapeHtml(commit.message)}</div>
                 </div>
             `).join('');
         } catch (error) {
             console.error('Failed to load recent commits:', error);
         }
     },
+
+    // ========== FILE SELECTION & CLIPBOARD FUNCTIONS ==========
+
+    collectSelectedFiles() {
+        return Array.from(this.selectedFiles).sort();
+    },
+
+    updateFileSelectionUI() {
+        const selectedCount = this.selectedFiles.size;
+        const copyBtn = document.getElementById('copy-selected-btn');
+        const countText = document.getElementById('selected-count-text');
+        
+        if (countText) {
+            countText.textContent = selectedCount.toString();
+        }
+        
+        if (copyBtn) {
+            copyBtn.disabled = selectedCount === 0;
+        }
+        
+        // Update select-all checkbox state
+        const selectAllCheckbox = document.getElementById('select-all-files');
+        if (selectAllCheckbox) {
+            const allCheckboxes = document.querySelectorAll('.file-checkbox');
+            const allChecked = allCheckboxes.length > 0 && 
+                               selectedCount === allCheckboxes.length;
+            selectAllCheckbox.checked = allChecked;
+            selectAllCheckbox.indeterminate = selectedCount > 0 && !allChecked;
+        }
+        
+        // Schedule token calculation
+        this.scheduleTokenCalc();
+    },
+
+    scheduleTokenCalc() {
+        if (this.tokenCountTimer) {
+            cancelAnimationFrame(this.tokenCountTimer);
+        }
+        
+        this.tokenCountTimer = requestAnimationFrame(async () => {
+            const tokenCountText = document.getElementById('token-count-text');
+            const tokenCountChip = document.getElementById('token-count-chip');
+            
+            if (!tokenCountText) return;
+            
+            const files = this.collectSelectedFiles();
+            
+            if (files.length === 0) {
+                tokenCountText.textContent = '0';
+                if (tokenCountChip) tokenCountChip.classList.remove('loading');
+                return;
+            }
+            
+            tokenCountText.textContent = '…';
+            if (tokenCountChip) tokenCountChip.classList.add('loading');
+            
+            try {
+                const text = await this.buildClipboardText(files);
+                const tokenCount = await this.countTokensFor(text);
+                tokenCountText.textContent = this.formatNumber(tokenCount);
+                if (tokenCountChip) tokenCountChip.classList.remove('loading');
+            } catch (error) {
+                console.error('Token calculation error:', error);
+                tokenCountText.textContent = '—';
+                if (tokenCountChip) tokenCountChip.classList.remove('loading');
+            }
+        });
+    },
+
+    formatNumber(num) {
+        if (num >= 1000000) {
+            return (num / 1000000).toFixed(1) + 'M';
+        } else if (num >= 1000) {
+            return (num / 1000).toFixed(1) + 'K';
+        }
+        return num.toString();
+    },
+
+    async buildClipboardText(paths) {
+        const parts = [];
+        
+        for (const path of paths) {
+            parts.push(`# ${path}\n`);
+            
+            try {
+                const content = await this.getFileContentForClipboard(path);
+                parts.push(content.endsWith('\n') ? content : content + '\n');
+                parts.push('\n');
+            } catch (error) {
+                console.error(`Error reading ${path}:`, error);
+                parts.push(`[Error reading file: ${error.message}]\n\n`);
+            }
+        }
+        
+        return parts.join('');
+    },
+
+    async getFileContentForClipboard(path) {
+        // Check if already loaded in memory
+        if (this.fileContents.has(path)) {
+            return this.fileContents.get(path);
+        }
+        
+        // Otherwise fetch from API
+        if (!this.currentRepo) {
+            throw new Error('No repository loaded');
+        }
+        
+        const { connection_id, repo_name } = this.currentRepo;
+        const result = await API.workspace.readFile(connection_id, repo_name, path);
+        
+        if (result.binary) {
+            return `[Binary file: ${result.size} bytes]`;
+        }
+        
+        return result.content;
+    },
+
+    async countTokensFor(text) {
+        // Use the API token counting endpoint if available
+        if (API.ai && API.ai.countTokens) {
+            try {
+                const result = await API.ai.countTokens(text);
+                return result.tokens;
+            } catch (error) {
+                console.error('Token counting API error:', error);
+            }
+        }
+        
+        // Fallback to rough estimation (1 token ~= 4 characters)
+        return Math.ceil(text.length / 4);
+    },
+
+    async copySelectedFiles() {
+        const files = this.collectSelectedFiles();
+        
+        if (files.length === 0) {
+            App.showToast('warning', 'No Files', 'Select one or more files in the tree first.');
+            return;
+        }
+        
+        try {
+            App.showLoading('Building clipboard content...');
+            
+            const text = await this.buildClipboardText(files);
+            
+            // Try modern clipboard API first
+            try {
+                await navigator.clipboard.writeText(text);
+                App.hideLoading();
+                
+                const copyBtn = document.getElementById('copy-selected-btn');
+                if (copyBtn) {
+                    const oldHTML = copyBtn.innerHTML;
+                    copyBtn.innerHTML = '<i class="fas fa-check"></i>';
+                    copyBtn.classList.add('copied');
+                    setTimeout(() => {
+                        copyBtn.innerHTML = oldHTML;
+                        copyBtn.classList.remove('copied');
+                    }, 2000);
+                }
+                
+                App.showToast('success', 'Copied', `${files.length} file${files.length !== 1 ? 's' : ''} copied to clipboard`);
+            } catch (clipboardError) {
+                // Fallback to textarea method
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                textarea.style.position = 'fixed';
+                textarea.style.opacity = '0';
+                textarea.style.pointerEvents = 'none';
+                document.body.appendChild(textarea);
+                textarea.focus();
+                textarea.select();
+                
+                try {
+                    document.execCommand('copy');
+                    App.hideLoading();
+                    App.showToast('success', 'Copied', `${files.length} file${files.length !== 1 ? 's' : ''} copied to clipboard`);
+                } catch (execError) {
+                    App.hideLoading();
+                    App.showToast('error', 'Copy Failed', 'Could not copy to clipboard');
+                }
+                
+                document.body.removeChild(textarea);
+            }
+        } catch (error) {
+            App.hideLoading();
+            App.showToast('error', 'Copy Failed', error.message);
+        }
+    },
+
+    toggleSelectAll(checked) {
+        // Get all file checkboxes
+        const checkboxes = document.querySelectorAll('.file-checkbox');
+        
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = checked;
+            const path = checkbox.dataset.path;
+            
+            if (checked) {
+                this.selectedFiles.add(path);
+            } else {
+                this.selectedFiles.delete(path);
+            }
+        });
+        
+        this.updateFileSelectionUI();
+    },
+
+    clearSelection() {
+        this.selectedFiles.clear();
+        
+        // Uncheck all checkboxes
+        document.querySelectorAll('.file-checkbox').forEach(checkbox => {
+            checkbox.checked = false;
+        });
+        
+        // Update select-all checkbox
+        const selectAllCheckbox = document.getElementById('select-all-files');
+        if (selectAllCheckbox) {
+            selectAllCheckbox.checked = false;
+            selectAllCheckbox.indeterminate = false;
+        }
+        
+        this.updateFileSelectionUI();
+    },
+
+    // ========== EXISTING FILE OPERATIONS ==========
 
     async openFile(path) {
         if (!this.currentRepo) return;
@@ -410,7 +708,7 @@ const Workspace = {
             container.innerHTML = `
                 <div class="binary-preview">
                     <i class="fas fa-file-alt fa-3x"></i>
-                    <p>Binary file (${App.formatFileSize(content.length)})</p>
+                    <p>Binary file${App.formatFileSize ? ' (' + App.formatFileSize(content.length) + ')' : ''}</p>
                     <p>Preview not available</p>
                 </div>
             `;
@@ -428,13 +726,16 @@ const Workspace = {
                     <pre><code contenteditable="true" 
                               class="language-javascript" 
                               id="editor-code"
-                              data-path="${path}">${this.escapeHtml(content)}</code></pre>
+                              data-path="${this.escapeHtml(path)}">${this.escapeHtml(content)}</code></pre>
                 </div>
             </div>
         `;
         
         // Syntax highlighting
-        Prism.highlightElement(document.getElementById('editor-code'));
+        if (typeof Prism !== 'undefined') {
+            const codeEl = document.getElementById('editor-code');
+            if (codeEl) Prism.highlightElement(codeEl);
+        }
         
         // Track changes
         document.getElementById('editor-code')?.addEventListener('input', (e) => {
@@ -467,11 +768,11 @@ const Workspace = {
         
         container.innerHTML = this.openFiles.map(file => `
             <button class="editor-tab ${file.path === this.activeFile ? 'active' : ''}"
-                    data-path="${file.path}">
+                    data-path="${this.escapeHtml(file.path)}">
                 <i class="${App.getFileIcon(file.name)}"></i>
-                <span>${file.name}</span>
+                <span>${this.escapeHtml(file.name)}</span>
                 ${file.modified ? '<span class="modified-indicator">●</span>' : ''}
-                <span class="close-btn" onclick="event.stopPropagation(); Workspace.closeFile('${file.path}')">
+                <span class="close-btn" onclick="event.stopPropagation(); Workspace.closeFile('${this.escapeHtml(file.path)}')">
                     <i class="fas fa-times"></i>
                 </span>
             </button>
@@ -487,7 +788,7 @@ const Workspace = {
     },
 
     updateTab(path) {
-        const tab = document.querySelector(`.editor-tab[data-path="${path}"]`);
+        const tab = document.querySelector(`.editor-tab[data-path="${CSS.escape(path)}"]`);
         if (!tab) return;
         
         const file = this.openFiles.find(f => f.path === path);
@@ -495,7 +796,10 @@ const Workspace = {
         
         const indicator = tab.querySelector('.modified-indicator');
         if (file.modified && !indicator) {
-            tab.innerHTML += '<span class="modified-indicator">●</span>';
+            const closeBtn = tab.querySelector('.close-btn');
+            if (closeBtn) {
+                closeBtn.insertAdjacentHTML('beforebegin', '<span class="modified-indicator">●</span>');
+            }
         } else if (!file.modified && indicator) {
             indicator.remove();
         }
@@ -529,12 +833,15 @@ const Workspace = {
             if (this.openFiles.length > 0) {
                 this.activateFile(this.openFiles[this.openFiles.length - 1].path);
             } else {
-                document.getElementById('editor-content').innerHTML = `
-                    <div class="welcome-screen">
-                        <i class="fas fa-folder-open fa-3x"></i>
-                        <h3>No files open</h3>
-                    </div>
-                `;
+                const editorContent = document.getElementById('editor-content');
+                if (editorContent) {
+                    editorContent.innerHTML = `
+                        <div class="welcome-screen">
+                            <i class="fas fa-folder-open fa-3x"></i>
+                            <h3>No files open</h3>
+                        </div>
+                    `;
+                }
             }
         }
     },
@@ -585,14 +892,24 @@ const Workspace = {
             const result = await API.git.diff(connection_id, repo_name, file, staged);
             
             // Show diff modal
-            App.openModal('diff-modal');
-            document.getElementById('diff-title').textContent = `Diff: ${file}`;
-            document.getElementById('diff-content').innerHTML = `
-                <pre class="diff-content"><code class="language-diff">${this.escapeHtml(result.diff)}</code></pre>
-            `;
+            if (typeof App.openModal === 'function') {
+                App.openModal('diff-modal');
+            }
+            
+            const titleEl = document.getElementById('diff-title');
+            if (titleEl) titleEl.textContent = `Diff: ${file}`;
+            
+            const contentEl = document.getElementById('diff-content');
+            if (contentEl) {
+                contentEl.innerHTML = `
+                    <pre class="diff-content"><code class="language-diff">${this.escapeHtml(result.diff)}</code></pre>
+                `;
+            }
             
             // Syntax highlighting for diff
-            Prism.highlightAll();
+            if (typeof Prism !== 'undefined') {
+                Prism.highlightAll();
+            }
         } catch (error) {
             App.showToast('error', 'Diff Failed', error.message);
         }
@@ -632,7 +949,9 @@ const Workspace = {
         // Load staged files
         this.loadCommitFiles();
         
-        App.openModal('commit-modal');
+        if (typeof App.openModal === 'function') {
+            App.openModal('commit-modal');
+        }
     },
 
     async loadCommitFiles() {
@@ -654,12 +973,12 @@ const Workspace = {
                 <div class="form-check">
                     <input type="checkbox" 
                            class="form-check-input" 
-                           id="commit-file-${file}"
-                           value="${file}"
+                           id="commit-file-${this.escapeHtml(file)}"
+                           value="${this.escapeHtml(file)}"
                            ${staged.includes(file) ? 'checked' : ''}>
-                    <label class="form-check-label" for="commit-file-${file}">
+                    <label class="form-check-label" for="commit-file-${this.escapeHtml(file)}">
                         <i class="${App.getFileIcon(file)}"></i>
-                        ${file}
+                        ${this.escapeHtml(file)}
                     </label>
                 </div>
             `).join('');
@@ -679,7 +998,8 @@ const Workspace = {
             const result = await API.ai.generateCommitMessage(connection_id, repo_name);
             
             if (result.message) {
-                document.getElementById('commit-message').value = result.message;
+                const msgEl = document.getElementById('commit-message');
+                if (msgEl) msgEl.value = result.message;
             }
             
             App.hideLoading();
@@ -694,9 +1014,13 @@ const Workspace = {
         
         const { connection_id, repo_name } = this.currentRepo;
         
-        const message = document.getElementById('commit-message').value;
-        const description = document.getElementById('commit-description').value;
-        const amend = document.getElementById('commit-amend').checked;
+        const msgEl = document.getElementById('commit-message');
+        const descEl = document.getElementById('commit-description');
+        const amendEl = document.getElementById('commit-amend');
+        
+        const message = msgEl?.value;
+        const description = descEl?.value;
+        const amend = amendEl?.checked;
         
         if (!message) {
             App.showToast('error', 'Missing Message', 'Please enter a commit message');
@@ -730,12 +1054,16 @@ const Workspace = {
             });
             
             App.hideLoading();
-            App.closeModal('commit-modal');
+            
+            if (typeof App.closeModal === 'function') {
+                App.closeModal('commit-modal');
+            }
             
             App.showToast('success', 'Commit Created', `Commit ${result.commit} created`);
             
             // Clear form
-            document.getElementById('commit-form').reset();
+            const formEl = document.getElementById('commit-form');
+            if (formEl) formEl.reset();
             
             // Refresh status
             await this.loadGitStatus();
@@ -846,7 +1174,7 @@ const Workspace = {
         if (!output) return;
         
         // Add command to output
-        output.innerHTML += `<div class="terminal-line">$ ${command}</div>`;
+        output.innerHTML += `<div class="terminal-line">$ ${this.escapeHtml(command)}</div>`;
         
         // Execute based on command
         // This is a simplified terminal - you can expand with more commands
@@ -856,7 +1184,7 @@ const Workspace = {
             output.innerHTML += '<div class="terminal-line">Executing Git command...</div>';
             // You could implement actual git command execution here
         } else {
-            output.innerHTML += `<div class="terminal-line">Command not recognized: ${command}</div>`;
+            output.innerHTML += `<div class="terminal-line">Command not recognized: ${this.escapeHtml(command)}</div>`;
         }
         
         // Scroll to bottom
@@ -910,6 +1238,7 @@ const Workspace = {
     },
 
     escapeHtml(text) {
+        if (typeof text !== 'string') return '';
         const map = {
             '&': '&amp;',
             '<': '&lt;',
@@ -922,7 +1251,7 @@ const Workspace = {
 
     onShow() {
         // Called when workspace view is shown
-        if (!this.currentRepo && Repositories.repos.length > 0) {
+        if (!this.currentRepo && typeof Repositories !== 'undefined' && Repositories.repos && Repositories.repos.length > 0) {
             // Auto-load first repo
             const firstRepo = Repositories.repos[0];
             const [connection_id, repo_name] = firstRepo.id.split('/');
