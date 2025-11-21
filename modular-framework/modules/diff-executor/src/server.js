@@ -37,6 +37,8 @@ const REPOS_DIR = '/workspace/repos';
 const DATA_DIR = process.env.DATA_DIR || '/app/data';
 const CODE_WORKSPACE_URL = process.env.CODE_WORKSPACE_URL || 'http://code-workspace:3006';
 const REDIS_URL = process.env.REDIS_URL || 'redis://redis:6379';
+const LLM_GATEWAY_URL = process.env.LLM_GATEWAY_URL || 'http://192.168.0.10:3010';
+
 
 // Initialize services
 let redisClient, redisPublisher;
@@ -61,11 +63,22 @@ async function initServices() {
   
   jobQueue = new JobQueueService({ dataDir: DATA_DIR, logger, redisPublisher });
   stagingManager = new StagingManager({ stagingDir: STAGING_DIR, reposDir: REPOS_DIR, logger });
-  diffApplicator = new DiffApplicator({ stagingManager, logger });
-  integrationService = new IntegrationService({ codeWorkspaceUrl: CODE_WORKSPACE_URL, redisPublisher, logger });
+    // Enable validation in Phase 2
+  diffApplicator = new DiffApplicator({ 
+    stagingManager, 
+    logger,
+    llmGatewayUrl: LLM_GATEWAY_URL,
+    enableValidation: process.env.ENABLE_VALIDATION !== 'false'
+  });
+  integrationService = new IntegrationService({ 
+    codeWorkspaceUrl: CODE_WORKSPACE_URL, 
+    redisPublisher, 
+    logger 
+  });
+  
   
   await jobQueue.initialize();
-  logger.info('Services initialized');
+  logger.info('Services initialized with syntax validation enabled');
 }
 
 // Middleware

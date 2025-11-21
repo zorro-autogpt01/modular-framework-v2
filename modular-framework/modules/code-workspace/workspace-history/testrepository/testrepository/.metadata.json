@@ -1,6 +1,30 @@
 {
   "snapshots": [
     {
+      "id": "7b54b588-d5a8-42f6-a7ef-1bac0669f840",
+      "timestamp": "2025-11-21T17:40:22.312Z",
+      "type": "diff-executor-promotion",
+      "size": 730,
+      "reason": "Before diff-executor promotion from job 95fe593f-87e0-4392-b8de-4d5cfd5c6415",
+      "source": "diff-executor"
+    },
+    {
+      "id": "bc6fa6da-d978-40bb-8603-1ba84ae48409",
+      "timestamp": "2025-11-21T17:39:55.050Z",
+      "type": "diff-executor-promotion",
+      "size": 710,
+      "reason": "Before diff-executor promotion from job 2167e36f-f907-443f-93a6-1b9a9ca35724",
+      "source": "diff-executor"
+    },
+    {
+      "id": "92ee0cbe-c5ab-4e96-9c2f-8d4e7dcd414f",
+      "timestamp": "2025-11-21T17:36:07.480Z",
+      "type": "diff-executor-promotion",
+      "size": 692,
+      "reason": "Before diff-executor promotion from job d5977df5-4f3a-4bf7-8b6b-b9771f023be0",
+      "source": "diff-executor"
+    },
+    {
       "id": "57c3b50f-53f5-4826-979f-77634e49f344",
       "timestamp": "2025-11-21T15:30:10.549Z",
       "type": "auto",

@@ -295,6 +295,51 @@ ${this.escapeHtml(job.diff)}
                 </div>
             `;
         }
+        if (job.validationResults) {
+            const { allValid, results } = job.validationResults;
+            html += `
+                <div class="detail-section">
+                <h3>Syntax Validation</h3>
+                <div class="validation-status ${allValid ? 'valid' : 'invalid'}">
+                    ${allValid ? '✅ All files passed validation' : '⚠️ Validation issues detected'}
+                </div>
+                <div class="validation-results">
+                    ${results.map(r => `
+                    <div class="validation-item ${r.valid ? 'valid' : r.skipped ? 'skipped' : 'invalid'}">
+                        <span class="file-name">${r.file}</span>
+                        ${r.valid ? '<span class="status">✅ Valid</span>' : 
+                        r.skipped ? '<span class="status">⏭️ Skipped</span>' :
+                        `<span class="status">❌ Error: ${r.error}</span>`}
+                        ${r.line ? `<span class="location">Line ${r.line}:${r.column || 0}</span>` : ''}
+                    </div>
+                    `).join('')}
+                </div>
+                </div>
+            `;
+            
+            // Show repairs if any
+            if (job.repairs && job.repairs.length > 0) {
+                html += `
+                <div class="detail-section">
+                    <h3>LLM Repair Attempts</h3>
+                    ${job.repairs.map(repair => `
+                    <div class="repair-item ${repair.success ? 'success' : 'failed'}">
+                        <div class="repair-header">
+                        <span class="file-name">${repair.file}</span>
+                        <span class="repair-status">${repair.success ? '✅ Repaired' : '❌ Failed'}</span>
+                        </div>
+                        ${repair.originalError ? `<div class="original-error">Original: ${repair.originalError.error}</div>` : ''}
+                        ${repair.revalidation ? `
+                        <div class="revalidation ${repair.revalidation.valid ? 'valid' : 'invalid'}">
+                            Revalidation: ${repair.revalidation.valid ? 'Passed ✅' : 'Failed ❌'}
+                        </div>
+                        ` : ''}
+                    </div>
+                    `).join('')}
+                </div>
+                `;
+                }
+            }
 
         container.innerHTML = html;
     }

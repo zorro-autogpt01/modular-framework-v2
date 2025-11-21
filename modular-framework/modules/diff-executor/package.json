@@ -19,7 +19,11 @@
     "sqlite3": "^5.1.6",
     "axios": "^1.5.1",
     "winston": "^3.11.0",
-    "dotenv": "^16.3.1"
+    "dotenv": "^16.3.1",
+    "acorn": "^8.10.0",
+    "typescript": "^5.2.2",
+    "@typescript-eslint/parser": "^6.7.0",
+    "@typescript-eslint/typescript-estree": "^6.7.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
