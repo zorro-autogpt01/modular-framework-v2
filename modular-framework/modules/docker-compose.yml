@@ -235,8 +235,7 @@ services:
       # History snapshots
       - ./code-workspace/workspace-history:/workspace/history
       # Staging area for reviews
-      - ./code-workspace/workspace-staging:/workspace/staging
-      # File locks database
+      - ./diff-executor/staging:/workspace/staging      # File locks database
       - ./code-workspace/workspace-locks:/workspace/locks
       # App code
       - ./code-workspace:/app
@@ -262,6 +261,67 @@ services:
       - app-network
     restart: unless-stopped
     command: redis-server --appendonly yes
+
+  # NEW: File Watcher container
+  file-watcher:
+    build: ./file-watcher
+    container_name: file-watcher
+    volumes:
+      # SAME shared volume (read-only is safer, but read-write if you need restore)
+      - ./code-workspace/workspace-repos:/workspace/repos
+      # File watcher's own database
+      - ./file-watcher/data:/app/data
+    ports:
+      - "3042:3042"  # File watcher API & Timeline UI
+    networks:
+      - app-network
+    environment:
+      - NODE_ENV=development
+      - REPOS_PATH=/workspace/repos
+      - DB_PATH=/app/data/file-watcher.db
+      - SPLUNK_HEC_URL=${SPLUNK_HEC_URL}
+      - SPLUNK_HEC_TOKEN=${SPLUNK_HEC_TOKEN}
+      - SPLUNK_SOURCE=file-watcher
+      - LOG_TO_CONSOLE=true
+    restart: unless-stopped
+    depends_on:
+      - code-workspace
+      - splunk
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3042/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  diff-executor:
+    build: ./diff-executor
+    container_name: diff-executor
+    ports:
+      - "3045:3045"
+    environment:
+      - PORT=3045
+      - NODE_ENV=production
+      - CODE_WORKSPACE_URL=http://code-workspace:3006
+      - FILE_WATCHER_URL=http://file-watcher:3042
+      - LLM_GATEWAY_URL=http://llm-gateway:3010
+      - REDIS_URL=redis://redis:6379
+      - STAGING_DIR=/workspace/staging        # 👈 use this
+      - DATA_DIR=/app/data
+      - MAX_DIFF_SIZE_MB=10
+      - MAX_FILES_PER_JOB=50
+    volumes:
+      - ./code-workspace/workspace-repos:/workspace/repos:ro
+      - ./diff-executor/staging:/workspace/staging  # 👈 mount here (NOT /workspace/diff-staging)
+      - ./diff-executor/data:/app/data
+    depends_on:
+      - code-workspace
+      - file-watcher
+      - llm-gateway
+      - redis
+    networks:
+      - app-network
+    restart: unless-stopped
 
 
   github-hub-module:
@@ -588,6 +648,10 @@ volumes:
   code-slicer-data:
     driver: local
   code-slicer-cache:
+    driver: local
+  file-watcher-data:
+    driver: local
+  workspace-staging:          # 👈 add this
     driver: local
 
 networks:

@@ -567,6 +567,27 @@ body {
   border-left: 4px solid var(--danger-color);
 }
 
+.diff-unified {
+  font-family: 'Monaco', 'Courier New', monospace;
+  font-size: 0.875rem;
+  background: #f9fafb;
+  border-radius: 4px;
+  padding: 0.5rem;
+}
+
+.diff-file-header {
+  font-weight: 600;
+  color: #1f2937;
+  background: #f3f4f6;
+  padding: 2px 4px;
+}
+
+.diff-index {
+  color: #6b7280;
+  background: #f9fafb;
+  padding: 2px 4px;
+}
+
 @keyframes slideIn {
   from {
     transform: translateX(100%);

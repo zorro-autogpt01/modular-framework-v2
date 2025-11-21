@@ -1,0 +1,45 @@
+:root { --bg:#0f0f10; --panel:#17181a; --line:#2a2c31; --txt:#e6e6e6; --muted:#a0a0a0; --accent:#0e639c; }
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif}
+.header{display:flex;gap:8px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+.grow{flex:1}
+label{font-size:12px;color:var(--muted);margin:6px 0 4px;display:block}
+input,select{width:100%;padding:8px;border:1px solid var(--line);background:#111;color:var(--txt);border-radius:6px}
+button{background:var(--accent);color:#fff;border:none;border-radius:6px;padding:8px 12px;cursor:pointer}
+button.ghost{background:#2a2c31}
+.row{display:flex;gap:8px;align-items:center;margin:8px 0}
+details{margin:8px 0}
+html.embed-side .wrap { grid-template-columns: 1fr; }
+html.embed-side .main { display: none; }
+/* Lighter file names in the tree */
+.tree a.name {
+  color: #dddddd;            /* light gray for dark bg */
+  text-decoration: none;
+}
+.tree a.name:visited {
+  color: #d0d0d0;            /* keep visited readable */
+}
+.tree a.name:hover,
+.tree a.name:focus {
+  color: #ffffff;            /* full white on hover/focus */
+  text-decoration: underline;
+}
+
+/* (nice-to-have) checkbox color to match theme */
+.tree input.sel { accent-color: #0e639c; }
+/* keep the toolbar items readable on narrow sidebars */
+.tree-tools, #copyTools { 
+  flex-wrap: wrap;              /* allow line wrap instead of squishing */
+}
+
+#copyTools .chip,
+.tree-tools .chip {
+  white-space: nowrap;          /* keep "12345 tokens" on one line */
+  flex: 0 0 auto;               /* do not shrink */
+  min-width: max-content;       /* fit to the text width */
+}
+
+#copyTools button,
+.tree-tools button {
+  flex: 0 0 auto;               /* keep buttons from stealing all the width */
+}

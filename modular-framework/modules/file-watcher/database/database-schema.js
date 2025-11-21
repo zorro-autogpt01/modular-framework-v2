@@ -13,10 +13,7 @@ const createSchema = (db) => {
           source_type TEXT,
           source_operation TEXT,
           file_count INTEGER DEFAULT 1,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          
-          INDEX idx_batch_connection_repo (connection_id, repo_name),
-          INDEX idx_batch_created (created_at)
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
       `, (err) => {
         if (err) {
@@ -25,6 +22,7 @@ const createSchema = (db) => {
       });
 
       // Table for individual file snapshots
+      // REMOVED the inline INDEX definitions - they're not valid in SQLite
       db.run(`
         CREATE TABLE IF NOT EXISTS file_snapshots (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -39,17 +37,41 @@ const createSchema = (db) => {
           source_operation TEXT,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           
-          FOREIGN KEY (batch_id) REFERENCES file_snapshots_batches(id) ON DELETE CASCADE,
-          
-          INDEX idx_snapshot_connection_repo (connection_id, repo_name),
-          INDEX idx_snapshot_file (connection_id, repo_name, file_path),
-          INDEX idx_snapshot_created (created_at),
-          INDEX idx_snapshot_batch (batch_id)
+          FOREIGN KEY (batch_id) REFERENCES file_snapshots_batches(id) ON DELETE CASCADE
         )
       `, (err) => {
         if (err) {
           console.error('Error creating file_snapshots table:', err);
         }
+      });
+
+      // Create indexes as separate statements
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_snapshot_connection_repo 
+        ON file_snapshots(connection_id, repo_name)
+      `, (err) => {
+        if (err) console.error('Error creating idx_snapshot_connection_repo:', err);
+      });
+
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_snapshot_file 
+        ON file_snapshots(connection_id, repo_name, file_path)
+      `, (err) => {
+        if (err) console.error('Error creating idx_snapshot_file:', err);
+      });
+
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_snapshot_created 
+        ON file_snapshots(created_at)
+      `, (err) => {
+        if (err) console.error('Error creating idx_snapshot_created:', err);
+      });
+
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_snapshot_batch 
+        ON file_snapshots(batch_id)
+      `, (err) => {
+        if (err) console.error('Error creating idx_snapshot_batch:', err);
       });
 
       // Search index for timeline

@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Diff Viewer</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1e1e1e;
+      color: #e0e0e0;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .diff-container {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    /* Header */
+    .diff-header {
+      background: #252526;
+      border-bottom: 1px solid #3e3e42;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .diff-title {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      flex: 1;
+    }
+
+    .file-path {
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .file-meta {
+      font-size: 11px;
+      color: #808080;
+    }
+
+    .diff-stats {
+      display: flex;
+      gap: 15px;
+      font-size: 12px;
+    }
+
+    .stat-added {
+      color: #4ec9b0;
+    }
+
+    .stat-removed {
+      color: #f48771;
+    }
+
+    .diff-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn {
+      background: #0e639c;
+      border: none;
+      color: white;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 11px;
+    }
+
+    .btn:hover {
+      background: #1177bb;
+    }
+
+    .btn-secondary {
+      background: #3e3e42;
+    }
+
+    .btn-secondary:hover {
+      background: #4e4e52;
+    }
+
+    /* Diff content */
+    .diff-content {
+      flex: 1;
+      overflow: auto;
+      padding: 20px;
+    }
+
+    .diff-content::-webkit-scrollbar {
+      width: 12px;
+      height: 12px;
+    }
+
+    .diff-content::-webkit-scrollbar-track {
+      background: #1e1e1e;
+    }
+
+    .diff-content::-webkit-scrollbar-thumb {
+      background: #3e3e42;
+      border-radius: 6px;
+    }
+
+    /* Unified diff view */
+    .diff-unified {
+      font-family: 'Monaco', 'Consolas', 'Courier New', monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      background: #2d2d30;
+      border: 1px solid #3e3e42;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .diff-line {
+      padding: 2px 10px;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .diff-file-header {
+      background: #3e3e42;
+      color: #e0e0e0;
+      font-weight: 600;
+      padding: 4px 10px;
+    }
+
+    .diff-index {
+      background: #2d2d30;
+      color: #808080;
+      padding: 4px 10px;
+    }
+
+    .hunk-header {
+      background: #569cd6;
+      color: #1e1e1e;
+      font-weight: 600;
+      padding: 4px 10px;
+      margin: 8px 0;
+    }
+
+    .diff-add {
+      background: rgba(78, 201, 176, 0.2);
+      color: #4ec9b0;
+    }
+
+    .diff-del {
+      background: rgba(244, 135, 113, 0.2);
+      color: #f48771;
+    }
+
+    .diff-context {
+      color: #cccccc;
+    }
+
+    /* Loading/Error states */
+    .loading, .error {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      gap: 20px;
+      color: #808080;
+    }
+
+    .spinner {
+      border: 4px solid #3e3e42;
+      border-top: 4px solid #0e639c;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .error-icon {
+      font-size: 48px;
+    }
+
+    .no-diff {
+      text-align: center;
+      padding: 40px;
+      color: #808080;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="diff-container">
+    <!-- Header -->
+    <div class="diff-header">
+      <div class="diff-title">
+        <div class="file-path" id="filePath">Loading...</div>
+        <div class="file-meta" id="fileMeta"></div>
+      </div>
+      <div class="diff-stats" id="diffStats"></div>
+      <div class="diff-actions">
+        <button class="btn btn-secondary" onclick="viewHistory()">History</button>
+        <button class="btn" onclick="restoreFile()" id="restoreBtn">Restore</button>
+      </div>
+    </div>
+
+    <!-- Content -->
+    <div class="diff-content" id="diffContent">
+      <div class="loading">
+        <div class="spinner"></div>
+        <div>Loading diff...</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let snapshotId = null;
+    let connection_id = null;
+    let repo_name = null;
+    let snapshot = null;
+
+    async function init() {
+      // Get parameters from URL
+      const params = new URLSearchParams(window.location.search);
+      snapshotId = params.get('id');
+      connection_id = params.get('connection');
+      repo_name = params.get('repo');
+
+      if (!snapshotId || !connection_id || !repo_name) {
+        renderError('Missing parameters');
+        return;
+      }
+
+      await loadSnapshot();
+    }
+
+    async function loadSnapshot() {
+      try {
+        // Load timeline to find snapshot
+        const response = await fetch(`/api/v1/file-watcher/api/timeline/${connection_id}/${repo_name}`);
+        const data = await response.json();
+        
+        snapshot = data.snapshots.find(s => s.id === parseInt(snapshotId));
+        
+        if (!snapshot) {
+          renderError('Snapshot not found');
+          return;
+        }
+
+        renderSnapshot();
+        
+      } catch (error) {
+        console.error('Error loading snapshot:', error);
+        renderError('Failed to load diff');
+      }
+    }
+
+    function renderSnapshot() {
+      // Update header
+      document.getElementById('filePath').textContent = snapshot.file_path;
+      document.getElementById('fileMeta').innerHTML = `
+        ${getChangeIcon(snapshot.change_type)} ${snapshot.change_type} • 
+        ${formatTime(snapshot.created_at)} • 
+        ${snapshot.source_operation || snapshot.source_type || 'Unknown source'}
+      `;
+
+      // Parse diff
+      const diff = typeof snapshot.diff === 'string' ? 
+        JSON.parse(snapshot.diff) : snapshot.diff;
+
+      // Update stats
+      const stats = getDiffStats(diff);
+      document.getElementById('diffStats').innerHTML = `
+        <span class="stat-added">+${stats.added}</span>
+        <span class="stat-removed">-${stats.removed}</span>
+      `;
+
+      // Hide restore button if deleted
+      if (snapshot.change_type === 'deleted') {
+        document.getElementById('restoreBtn').style.display = 'none';
+      }
+
+      // Render diff
+      const diffHtml = renderDiff(diff);
+      document.getElementById('diffContent').innerHTML = diffHtml;
+    }
+
+    function renderDiff(diff) {
+      if (!diff) {
+        return '<div class="no-diff">No diff available</div>';
+      }
+
+      // Handle unified format
+      if (diff.unified) {
+        const lines = diff.unified.split('\n');
+        let html = '<div class="diff-unified">';
+        
+        lines.forEach(line => {
+          let className = 'diff-context';
+          if (line.startsWith('+++') || line.startsWith('---')) {
+            className = 'diff-file-header';
+          } else if (line.startsWith('@@')) {
+            className = 'hunk-header';
+          } else if (line.startsWith('+')) {
+            className = 'diff-add';
+          } else if (line.startsWith('-')) {
+            className = 'diff-del';
+          } else if (line.startsWith('Index:') || line.startsWith('===')) {
+            className = 'diff-index';
+          }
+          
+          html += `<div class="diff-line ${className}">${escapeHtml(line)}</div>`;
+        });
+        
+        html += '</div>';
+        return html;
+      }
+
+      // Handle hunks format
+      if (diff.hunks && diff.hunks.length > 0) {
+        let html = '<div class="diff-unified">';
+        
+        diff.hunks.forEach(hunk => {
+          html += `<div class="hunk-header">${escapeHtml(hunk.header)}</div>`;
+          
+          hunk.lines.forEach(line => {
+            const lineClass = line.type === 'add' ? 'diff-add' : 
+                            line.type === 'del' ? 'diff-del' : 'diff-context';
+            const prefix = line.type === 'add' ? '+' : 
+                          line.type === 'del' ? '-' : ' ';
+            html += `<div class="diff-line ${lineClass}">${escapeHtml(prefix + line.content)}</div>`;
+          });
+        });
+        
+        html += '</div>';
+        return html;
+      }
+
+      return '<div class="no-diff">No changes to display</div>';
+    }
+
+    function getDiffStats(diff) {
+      let added = 0;
+      let removed = 0;
+
+      if (diff.stats) {
+        return diff.stats;
+      }
+
+      if (diff.hunks) {
+        diff.hunks.forEach(hunk => {
+          hunk.lines.forEach(line => {
+            if (line.type === 'add') added++;
+            if (line.type === 'del') removed++;
+          });
+        });
+      } else if (diff.unified) {
+        const lines = diff.unified.split('\n');
+        lines.forEach(line => {
+          if (line.startsWith('+') && !line.startsWith('+++')) added++;
+          if (line.startsWith('-') && !line.startsWith('---')) removed++;
+        });
+      }
+
+      return { added, removed };
+    }
+
+    async function restoreFile() {
+      if (!confirm('Restore this file version?')) return;
+      
+      try {
+        const response = await fetch(`/api/v1/file-watcher/api/timeline/file-watcher/restore/${snapshotId}`, {
+          method: 'POST'
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+          alert('✅ File restored successfully');
+        } else {
+          alert('❌ Failed to restore: ' + result.error);
+        }
+      } catch (error) {
+        console.error('Error restoring file:', error);
+        alert('❌ Failed to restore file');
+      }
+    }
+
+    function viewHistory() {
+      // Send message to parent to open history view
+      window.parent.postMessage({
+        type: 'OPEN_HISTORY_TAB',
+        filePath: snapshot.file_path,
+        connection_id: connection_id,
+        repo_name: repo_name
+      }, '*');
+    }
+
+    function renderError(message) {
+      document.getElementById('diffContent').innerHTML = `
+        <div class="error">
+          <div class="error-icon">⚠️</div>
+          <div>${message}</div>
+        </div>
+      `;
+    }
+
+    function getChangeIcon(changeType) {
+      const icons = {
+        'created': '➕',
+        'modified': '✏️',
+        'deleted': '🗑️'
+      };
+      return icons[changeType] || '📝';
+    }
+
+    function formatTime(timestamp) {
+      const date = new Date(timestamp);
+      const now = new Date();
+      const diff = now - date;
+      
+      if (diff < 60000) return 'Just now';
+      if (diff < 3600000) return `${Math.floor(diff / 60000)} minutes ago`;
+      if (diff < 86400000) return `${Math.floor(diff / 3600000)} hours ago`;
+      if (diff < 604800000) return `${Math.floor(diff / 86400000)} days ago`;
+      
+      return date.toLocaleString();
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Initialize
+    init();
+  </script>
+</body>
+</html>

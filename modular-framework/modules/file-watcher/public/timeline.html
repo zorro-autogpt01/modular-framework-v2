@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>File Watcher Timeline</title>
+  <link rel="stylesheet" href="/css/timeline-ui.css">
+</head>
+<body>
+  <div class="timeline-wrapper">
+    <!-- Header -->
+    <div class="timeline-header-bar">
+      <h1 class="timeline-title-main">
+        <span class="timeline-icon-main">📊</span>
+        File Change Timeline
+      </h1>
+      <div class="timeline-subtitle">Track and review all file changes in your repository</div>
+    </div>
+
+    <!-- Repository Selector -->
+    <div class="repo-selector-wrapper">
+      <div class="control-group">
+        <label for="repo-selector">
+          <span class="control-icon">📁</span>
+          Repository
+        </label>
+        <select id="repo-selector" class="control-select repo-select">
+          <option value="">Loading repositories...</option>
+        </select>
+      </div>
+      <div class="connection-status">
+        <span id="ws-status" class="status-indicator status-connecting">●</span>
+        <span id="ws-status-text">Connecting...</span>
+      </div>
+    </div>
+
+    <!-- Filters and Search -->
+    <div class="timeline-controls">
+      <div class="control-group">
+        <label for="timeline-search">
+          <span class="control-icon">🔍</span>
+          Search Files
+        </label>
+        <input 
+          type="text" 
+          id="timeline-search" 
+          placeholder="Search by filename..."
+          class="control-input"
+        >
+      </div>
+
+      <div class="control-group">
+        <label for="change-type-filter">
+          <span class="control-icon">📝</span>
+          Change Type
+        </label>
+        <select id="change-type-filter" class="control-select">
+          <option value="">All Changes</option>
+          <option value="created">Created</option>
+          <option value="modified">Modified</option>
+          <option value="deleted">Deleted</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <label for="timeline-source-filter">
+          <span class="control-icon">🏷️</span>
+          Source
+        </label>
+        <select id="timeline-source-filter" class="control-select">
+          <option value="">All Sources</option>
+          <option value="git">Git Operations</option>
+          <option value="editor">Editor Changes</option>
+          <option value="ssh">SSH/Terminal</option>
+          <option value="batch">Batch Operations</option>
+          <option value="unknown">Unknown</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <label for="timeline-start-date">
+          <span class="control-icon">📅</span>
+          From
+        </label>
+        <input 
+          type="datetime-local" 
+          id="timeline-start-date" 
+          class="control-input control-date"
+        >
+      </div>
+
+      <div class="control-group">
+        <label for="timeline-end-date">
+          <span class="control-icon">📅</span>
+          To
+        </label>
+        <input 
+          type="datetime-local" 
+          id="timeline-end-date" 
+          class="control-input control-date"
+        >
+      </div>
+
+      <div class="control-group">
+        <label for="diff-mode-selector">
+          <span class="control-icon">⚙️</span>
+          Diff Mode
+        </label>
+        <select id="diff-mode-selector" class="control-select">
+          <option value="unified">Unified</option>
+          <option value="split">Split</option>
+          <option value="inline">Inline</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <button id="clear-timeline-btn" class="btn-danger">
+          <span class="btn-icon">🗑️</span>
+          Clear Timeline
+        </button>
+      </div>
+    </div>
+
+    <!-- Timeline Container -->
+    <div id="timeline-container" class="timeline-main-container">
+      <div class="timeline-loading">
+        <div class="loading-spinner"></div>
+        <div>Loading timeline...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Diff Modal -->
+  <div id="diff-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="diff-modal-title">Diff View</h2>
+        <span class="modal-close" onclick="document.getElementById('diff-modal').style.display='none'">
+          &times;
+        </span>
+      </div>
+      <div class="modal-body">
+        <div id="diff-modal-content"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- File History Modal -->
+  <div id="history-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="history-modal-title">File History</h2>
+        <span class="modal-close" onclick="document.getElementById('history-modal').style.display='none'">
+          &times;
+        </span>
+      </div>
+      <div class="modal-body">
+        <div id="history-modal-content"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notifications -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <script src="/js/timeline-ui.js"></script>
+  <script>
+    // Auto-init timeline
+    let timelineUI;
+    
+    // Parse connection and repo from URL or auto-detect
+    const pathParts = window.location.pathname.split('/');
+    let connection_id = null;
+    let repo_name = null;
+    
+    if (pathParts[1] === 'timeline' && pathParts[2] && pathParts[3]) {
+      // URL format: /timeline/:connection/:repo
+      connection_id = pathParts[2];
+      repo_name = pathParts[3];
+    }
+    
+    // Initialize timeline
+    timelineUI = new FileWatcherTimeline(connection_id, repo_name);
+  </script>
+</body>
+</html>

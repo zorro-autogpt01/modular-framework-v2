@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diff Executor</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <div id="diff-executor-container">
+        <header>
+            <h1>🔧 Diff Executor</h1>
+            <div class="status-bar">
+                <span id="connection-status" class="status-indicator">⚡ Connecting...</span>
+                <span id="active-jobs">Active Jobs: 0</span>
+                <span id="staging-status">Staging: Ready</span>
+            </div>
+        </header>
+
+        <div class="main-content">
+            <div class="sidebar">
+                <h3>Job Filters</h3>
+                <div class="filter-group">
+                    <button class="filter-btn active" data-status="all">All Jobs</button>
+                    <button class="filter-btn" data-status="pending">Pending</button>
+                    <button class="filter-btn" data-status="processing">Processing</button>
+                    <button class="filter-btn" data-status="staged">Staged</button>
+                    <button class="filter-btn" data-status="promoted">Promoted</button>
+                    <button class="filter-btn" data-status="failed">Failed</button>
+                    <button class="filter-btn" data-status="rejected">Rejected</button>
+                </div>
+
+                <h3>Quick Actions</h3>
+                <button id="create-job-btn" class="action-btn primary">➕ New Job</button>
+                <button id="refresh-btn" class="action-btn">🔄 Refresh</button>
+                <button id="clear-completed-btn" class="action-btn">🗑️ Clear Completed</button>
+            </div>
+
+            <div class="job-list-container">
+                <h2>Jobs</h2>
+                <div id="job-list" class="job-list">
+                    <!-- Jobs will be populated here -->
+                </div>
+            </div>
+
+            <div class="job-details-container">
+                <h2>Job Details</h2>
+                <div id="job-details" class="job-details">
+                    <div class="empty-state">
+                        Select a job to view details
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Create Job Modal -->
+        <div id="create-job-modal" class="modal">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h2>Create New Diff Job</h2>
+                <form id="create-job-form">
+                    <div class="form-group">
+                        <label for="diff-input">Diff Content (Unified Format):</label>
+                        <textarea id="diff-input" name="diff" rows="10" required placeholder="Paste your unified diff here..."></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Target Files:</label>
+                        <div id="target-files-list">
+                            <div class="target-file-entry">
+                                <input type="text" name="connectionId" placeholder="Connection ID" required>
+                                <input type="text" name="repoName" placeholder="Repo Name" required>
+                                <input type="text" name="filePath" placeholder="File Path" required>
+                                <button type="button" class="remove-file-btn">×</button>
+                            </div>
+                        </div>
+                        <button type="button" id="add-file-btn" class="action-btn">+ Add File</button>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="source-type">Source Type:</label>
+                        <select id="source-type" name="sourceType">
+                            <option value="llm-chat">LLM Chat</option>
+                            <option value="llm-workflow">LLM Workflow</option>
+                            <option value="manual">Manual</option>
+                            <option value="api">API</option>
+                        </select>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="action-btn primary">Create Job</button>
+                        <button type="button" class="action-btn cancel-btn">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        <div id="promote-job-modal" class="modal">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h2>Promote to Workspace</h2>
+                <form id="promote-job-form">
+                    <input type="hidden" id="promote-job-id">
+                    
+                    <div class="form-group">
+                        <label for="promote-connection">Connection ID:</label>
+                        <select id="promote-connection" name="connectionId" required>
+                            <!-- Options populated dynamically -->
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="promote-repo">Repository:</label>
+                        <select id="promote-repo" name="repoId" required>
+                            <!-- Options populated dynamically -->
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" name="createSnapshot" checked>
+                            Create snapshot before promotion
+                        </label>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="action-btn primary">Promote</button>
+                        <button type="button" class="action-btn cancel-promote-btn">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/app.js"></script>
+</body>
+</html>

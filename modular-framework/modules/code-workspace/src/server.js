@@ -112,6 +112,50 @@ app.use((req, res) => {
   res.status(404).json({ error: 'Route not found' });
 });
 
+// Add this route to get available workspaces from code-workspace
+app.get('/api/workspaces', async (req, res) => {
+  try {
+    // Call code-workspace to get available repos
+    const response = await axios.get(`${CODE_WORKSPACE_URL}/api/repos`);
+    const repos = response.data;
+    
+    // Transform to connection/repo structure
+    const workspaces = {};
+    repos.forEach(repo => {
+      const connId = repo.connection_id || 'default';
+      if (!workspaces[connId]) {
+        workspaces[connId] = [];
+      }
+      workspaces[connId].push(repo.name);
+    });
+    
+    res.json(workspaces);
+  } catch (error) {
+    logger.error('Error fetching workspaces:', error);
+    // Fall back to extracting from existing jobs
+    const jobs = await jobQueue.getJobs({ limit: 100 });
+    const workspaces = {};
+    
+    jobs.forEach(job => {
+      if (job.targetFiles) {
+        job.targetFiles.forEach(file => {
+          if (!workspaces[file.connectionId]) {
+            workspaces[file.connectionId] = new Set();
+          }
+          workspaces[file.connectionId].add(file.repoName);
+        });
+      }
+    });
+    
+    // Convert Sets to arrays
+    Object.keys(workspaces).forEach(key => {
+      workspaces[key] = Array.from(workspaces[key]);
+    });
+    
+    res.json(workspaces);
+  }
+});
+
 // Initialize services
 async function initializeServices() {
   try {

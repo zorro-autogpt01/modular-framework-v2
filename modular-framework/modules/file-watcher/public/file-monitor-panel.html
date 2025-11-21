@@ -1,0 +1,1187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>File Monitor</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #252526;
+      color: #e0e0e0;
+      height: 100vh;
+      overflow: hidden;
+      font-size: 12px;
+    }
+
+    .monitor-container {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    /* Header with controls */
+    .monitor-header {
+      background: #2d2d30;
+      border-bottom: 1px solid #3e3e42;
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .header-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .repo-selector {
+      flex: 1;
+      background: #1e1e1e;
+      border: 1px solid #3e3e42;
+      color: #e0e0e0;
+      padding: 5px 8px;
+      border-radius: 3px;
+      font-size: 11px;
+    }
+
+    .status-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    .status-connected { background: #4ec9b0; }
+    .status-disconnected { background: #f48771; }
+    .status-connecting { background: #dcdcaa; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .search-box {
+      flex: 1;
+      background: #1e1e1e;
+      border: 1px solid #3e3e42;
+      color: #e0e0e0;
+      padding: 5px 8px;
+      border-radius: 3px;
+      font-size: 11px;
+    }
+
+    .filter-select {
+      background: #1e1e1e;
+      border: 1px solid #3e3e42;
+      color: #e0e0e0;
+      padding: 5px 8px;
+      border-radius: 3px;
+      font-size: 11px;
+    }
+
+    .mini-toggle {
+      background: #0e639c;
+      border: none;
+      color: white;
+      padding: 5px 10px;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 11px;
+    }
+
+    .mini-toggle:hover {
+      background: #1177bb;
+    }
+
+    /* Timeline list */
+    .timeline-list {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 4px;
+    }
+
+    .timeline-list::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    .timeline-list::-webkit-scrollbar-track {
+      background: #252526;
+    }
+
+    .timeline-list::-webkit-scrollbar-thumb {
+      background: #3e3e42;
+      border-radius: 4px;
+    }
+
+    /* Batch group */
+    .batch-group {
+      margin-bottom: 4px;
+      background: #2d2d30;
+      border: 1px solid #3e3e42;
+      border-radius: 4px;
+    }
+
+    .batch-header {
+      display: flex;
+      align-items: center;
+      padding: 6px 8px;
+      cursor: pointer;
+      user-select: none;
+      gap: 6px;
+    }
+
+    .batch-header:hover {
+      background: #3e3e42;
+    }
+
+    .batch-toggle {
+      font-size: 10px;
+      transition: transform 0.2s;
+    }
+
+    .batch-group.expanded .batch-toggle {
+      transform: rotate(90deg);
+    }
+
+    .batch-icon {
+      font-size: 14px;
+    }
+
+    .batch-info {
+      flex: 1;
+      font-size: 11px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .batch-title {
+      font-weight: 500;
+    }
+
+    .batch-meta {
+      color: #808080;
+      font-size: 10px;
+    }
+
+    .batch-files {
+      display: none;
+      border-top: 1px solid #3e3e42;
+    }
+
+    .batch-group.expanded .batch-files {
+      display: block;
+    }
+
+    /* File item */
+    .file-item {
+      display: flex;
+      align-items: center;
+      padding: 6px 8px;
+      gap: 6px;
+      border-bottom: 1px solid #3e3e42;
+    }
+
+    .file-item:last-child {
+      border-bottom: none;
+    }
+
+    .file-item:hover {
+      background: #3e3e42;
+    }
+
+    .file-timestamp {
+        font-size: 10px;
+        color: #c8c8c8;
+        font-family: Menlo, Consolas, "Roboto Mono", monospace;
+        white-space: nowrap;
+        flex: 0 0 auto;
+        min-width: 145px;   /* adjust to taste */
+    }
+
+    .change-icon {
+      font-size: 12px;
+      width: 16px;
+      text-align: center;
+    }
+
+    .change-created { color: #4ec9b0; }
+    .change-modified { color: #569cd6; }
+    .change-deleted { color: #f48771; }
+
+    .file-info {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .file-name {
+      font-size: 11px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      cursor: default;
+    }
+
+    .file-time {
+      font-size: 10px;
+      color: #808080;
+    }
+
+    .file-actions {
+      display: flex;
+      gap: 4px;
+    }
+
+    .file-actions button {
+      background: #0e639c;
+      border: none;
+      color: white;
+      padding: 3px 6px;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 10px;
+      white-space: nowrap;
+    }
+
+    .file-actions button:hover {
+      background: #1177bb;
+    }
+
+    .file-actions button.btn-restore {
+      background: #3e3e42;
+    }
+
+    .file-actions button.btn-restore:hover {
+      background: #4e4e52;
+    }
+
+    /* Mini mode */
+    .mini-mode {
+      display: none;
+    }
+
+    body.mini .monitor-header,
+    body.mini .timeline-list {
+      display: none;
+    }
+
+    body.mini .mini-mode {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      gap: 15px;
+    }
+
+    .mini-badge {
+      position: relative;
+      width: 60px;
+      height: 60px;
+      background: #0e639c;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      cursor: pointer;
+    }
+
+    .mini-badge:hover {
+      background: #1177bb;
+    }
+
+    .mini-count {
+      position: absolute;
+      top: -5px;
+      right: -5px;
+      background: #f48771;
+      color: white;
+      border-radius: 10px;
+      padding: 2px 6px;
+      font-size: 11px;
+      font-weight: bold;
+    }
+
+    .mini-label {
+      font-size: 11px;
+      color: #808080;
+    }
+
+    .mini-expand {
+      background: #0e639c;
+      border: none;
+      color: white;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 11px;
+    }
+
+    .mini-expand:hover {
+      background: #1177bb;
+    }
+
+    /* Empty state */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: #808080;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .empty-icon {
+      font-size: 48px;
+      margin-bottom: 10px;
+      opacity: 0.5;
+    }
+
+    /* Loading */
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: #808080;
+    }
+
+    .spinner {
+      border: 3px solid #3e3e42;
+      border-top: 3px solid #0e639c;
+      border-radius: 50%;
+      width: 30px;
+      height: 30px;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    /* =======================
+       Diff hover preview panel
+       ======================= */
+    .diff-preview {
+      position: fixed;
+      background: #1e1e1e;
+      border: 1px solid #3e3e42;
+      border-radius: 4px;
+      padding: 8px;
+      width: 380px;
+      max-height: 260px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+      z-index: 9999;
+      font-size: 11px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .preview-header {
+      font-weight: 500;
+      font-size: 11px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .preview-meta {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: #808080;
+    }
+
+    .preview-stats {
+      display: flex;
+      gap: 8px;
+      font-size: 10px;
+    }
+
+    .stat-added {
+      color: #4ec9b0;
+    }
+
+    .stat-removed {
+      color: #f48771;
+    }
+
+    .mini-diff {
+      margin-top: 4px;
+      padding-top: 4px;
+      border-top: 1px solid #3e3e42;
+      max-height: 150px;
+      overflow: auto;
+      font-family: Menlo, Monaco, Consolas, "Courier New", monospace;
+      font-size: 11px;
+    }
+
+    .mini-diff .diff-line {
+      white-space: pre;
+    }
+
+    .mini-diff .diff-add {
+      background: rgba(76, 201, 176, 0.15);
+    }
+
+    .mini-diff .diff-del {
+      background: rgba(244, 135, 113, 0.15);
+    }
+
+    .mini-diff .diff-context {
+      color: #c0c0c0;
+    }
+
+    .diff-more {
+      text-align: center;
+      font-size: 10px;
+      color: #808080;
+      padding: 2px 0;
+    }
+
+    .preview-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 6px;
+      margin-top: 4px;
+    }
+
+    .preview-actions button {
+      background: #3e3e42;
+      border: none;
+      color: #e0e0e0;
+      padding: 3px 6px;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 10px;
+    }
+
+    .preview-actions button:hover {
+      background: #4e4e52;
+    }
+
+    .preview-actions .preview-btn-primary {
+      background: #0e639c;
+      color: #fff;
+    }
+
+    .preview-actions .preview-btn-primary:hover {
+      background: #1177bb;
+    }
+  </style>
+</head>
+<body>
+  <div class="monitor-container">
+    <!-- Header -->
+    <div class="monitor-header">
+      <div class="header-row">
+        <span class="status-indicator status-connecting" id="wsStatus"></span>
+        <select class="repo-selector" id="repoSelector">
+          <option value="">Loading...</option>
+        </select>
+        <button class="mini-toggle" onclick="toggleMiniMode()">⚡</button>
+      </div>
+      <div class="header-row">
+        <input type="text" class="search-box" id="searchBox" placeholder="🔍 Search files...">
+        <select class="filter-select" id="changeTypeFilter">
+          <option value="">All Changes</option>
+          <option value="created">➕ Created</option>
+          <option value="modified">✏️ Modified</option>
+          <option value="deleted">🗑️ Deleted</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Timeline -->
+    <div class="timeline-list" id="timelineList">
+      <div class="loading">
+        <div class="spinner"></div>
+      </div>
+    </div>
+
+    <!-- Mini Mode -->
+    <div class="mini-mode">
+      <div class="mini-badge" onclick="toggleMiniMode()">
+        📁
+        <span class="mini-count" id="miniCount">0</span>
+      </div>
+      <div class="mini-label">File Monitor</div>
+      <button class="mini-expand" onclick="toggleMiniMode()">Expand</button>
+    </div>
+  </div>
+
+  <script>
+    let connection_id = null;
+    let repo_name = null;
+    let timeline = [];
+    let filteredTimeline = [];
+    let ws = null;
+    let isMiniMode = false;
+
+    // Hover preview state
+    let diffPreviewEl = null;
+    let diffHideTimeout = null;
+
+    const filters = {
+      search: '',
+      changeType: ''
+    };
+
+    // Initialize
+    async function init() {
+      setupEventListeners();
+      await loadRepositories();
+    }
+
+    function setupEventListeners() {
+      document.getElementById('repoSelector').addEventListener('change', (e) => {
+        if (!e.target.value) return;
+        const [conn, repo] = e.target.value.split(':');
+        switchRepository(conn, repo);
+      });
+
+      document.getElementById('searchBox').addEventListener('input', (e) => {
+        filters.search = e.target.value.toLowerCase();
+        applyFilters();
+      });
+
+      document.getElementById('changeTypeFilter').addEventListener('change', (e) => {
+        filters.changeType = e.target.value;
+        applyFilters();
+      });
+    }
+
+    async function loadRepositories() {
+      try {
+        const response = await fetch('/api/v1/file-watcher/api/repositories');
+        const repos = await response.json();
+
+        const selector = document.getElementById('repoSelector');
+        selector.innerHTML = '';
+
+        if (!Array.isArray(repos) || repos.length === 0) {
+          selector.innerHTML = '<option value="">No repositories</option>';
+          return;
+        }
+
+        repos.forEach(repo => {
+          const option = document.createElement('option');
+          option.value = `${repo.connection_id}:${repo.repo_name}`;
+          option.textContent = `${repo.connection_id}/${repo.repo_name}`;
+          selector.appendChild(option);
+        });
+
+        // Auto-select first
+        const firstRepo = repos[0];
+        connection_id = firstRepo.connection_id;
+        repo_name = firstRepo.repo_name;
+        selector.value = `${connection_id}:${repo_name}`;
+        await loadTimeline();
+        connectWebSocket();
+
+      } catch (error) {
+        console.error('Error loading repositories:', error);
+      }
+    }
+
+    function switchRepository(conn, repo) {
+      connection_id = conn;
+      repo_name = repo;
+      timeline = [];
+      if (ws) ws.close();
+      loadTimeline();
+      connectWebSocket();
+    }
+
+    async function loadTimeline() {
+      if (!connection_id || !repo_name) return;
+
+      try {
+        const response = await fetch(`/api/v1/file-watcher/api/timeline/${connection_id}/${repo_name}`);
+        const data = await response.json();
+
+        timeline = (data.snapshots || []).slice(0, 300); // Limit to 300
+        applyFilters();
+
+      } catch (error) {
+        console.error('Error loading timeline:', error);
+        renderError();
+      }
+    }
+
+    function connectWebSocket() {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/file-watcher-ws`;
+
+      try {
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+          updateStatus('connected');
+          setTimeout(() => {
+            ws.send(JSON.stringify({
+              type: 'subscribe',
+              connection_id,
+              repo_name
+            }));
+          }, 100);
+        };
+
+        ws.onmessage = (event) => {
+          const data = JSON.parse(event.data);
+          if (data.type === 'batch') {
+            addBatchToTimeline(data.data);
+          }
+        };
+
+        ws.onerror = () => updateStatus('error');
+        ws.onclose = () => {
+          updateStatus('disconnected');
+          setTimeout(() => connectWebSocket(), 5000);
+        };
+
+      } catch (error) {
+        console.error('WebSocket error:', error);
+        updateStatus('error');
+      }
+    }
+
+    function updateStatus(status) {
+      const indicator = document.getElementById('wsStatus');
+      indicator.className = 'status-indicator';
+      indicator.classList.add(`status-${status}`);
+    }
+
+    function addBatchToTimeline(batch) {
+      if (batch.snapshots && batch.snapshots.length > 0) {
+        batch.snapshots.forEach(snapshot => {
+          timeline.unshift(snapshot);
+        });
+
+        // Keep only last 300
+        timeline = timeline.slice(0, 300);
+        applyFilters();
+      }
+    }
+
+    function applyFilters() {
+      filteredTimeline = timeline.filter(snapshot => {
+        if (filters.search && !snapshot.file_path.toLowerCase().includes(filters.search)) {
+          return false;
+        }
+        if (filters.changeType && snapshot.change_type !== filters.changeType) {
+          return false;
+        }
+        return true;
+      });
+
+      renderTimeline();
+      updateMiniCount();
+    }
+
+    function renderTimeline() {
+      const container = document.getElementById('timelineList');
+
+      if (filteredTimeline.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-icon">📭</div>
+            <div>No changes found</div>
+          </div>
+        `;
+        return;
+      }
+
+      const batches = groupByBatch(filteredTimeline);
+
+      let html = '';
+      batches.forEach(batch => {
+        html += renderBatch(batch);
+      });
+
+      container.innerHTML = html;
+
+      // Attach hover preview to file items
+      attachHoverPreview();
+    }
+
+    function groupByBatch(snapshots) {
+      const batchMap = new Map();
+
+      snapshots.forEach(snapshot => {
+        const batchId = snapshot.batch_id || `single_${snapshot.id}`;
+
+        if (!batchMap.has(batchId)) {
+          batchMap.set(batchId, {
+            id: batchId,
+            created_at: snapshot.created_at,
+            source_type: snapshot.source_type,
+            source_operation: snapshot.source_operation,
+            snapshots: []
+          });
+        }
+
+        batchMap.get(batchId).snapshots.push(snapshot);
+      });
+
+      return Array.from(batchMap.values()).sort((a, b) =>
+        new Date(b.created_at) - new Date(a.created_at)
+      );
+    }
+
+    function renderBatch(batch) {
+      const icon = getSourceIcon(batch.source_type);
+      const time = formatTime(batch.created_at);
+      const fileCount = batch.snapshots.length;
+      const isMultiple = fileCount > 1;
+
+      if (!isMultiple) {
+        return renderFileItem(batch.snapshots[0]);
+      }
+
+      let html = `
+        <div class="batch-group" id="batch-${batch.id}">
+          <div class="batch-header" onclick="toggleBatch('${batch.id}')">
+            <span class="batch-toggle">▶</span>
+            <span class="batch-icon">${icon}</span>
+            <div class="batch-info">
+              <div class="batch-title">${batch.source_operation || batch.source_type || 'Changes'}</div>
+              <div class="batch-meta">${fileCount} files • ${time}</div>
+            </div>
+          </div>
+          <div class="batch-files">
+      `;
+
+      batch.snapshots.forEach(snapshot => {
+        html += renderFileItem(snapshot);
+      });
+
+      html += `
+          </div>
+        </div>
+      `;
+
+      return html;
+    }
+
+    function renderFileItem(snapshot) {
+        const icon = getChangeIcon(snapshot.change_type);
+        const className = `change-${snapshot.change_type}`;
+        const fileName = snapshot.file_path.split('/').pop();
+        const timeExact = formatExactTime(snapshot.created_at);
+        const timeRelative = formatTime(snapshot.created_at);
+
+        return `
+            <div class="file-item ${className}" data-snapshot-id="${snapshot.id}">
+            <span class="change-icon">${icon}</span>
+
+            <!-- exact timestamp column -->
+            <div class="file-timestamp">${timeExact}</div>
+
+            <div class="file-info">
+                <div class="file-name" title="${snapshot.file_path}">${fileName}</div>
+                <div class="file-time">${timeRelative}</div>
+            </div>
+
+            <div class="file-actions">
+                <button onclick="openDiff(${snapshot.id}, '${escapeHtml(snapshot.file_path)}')">Diff</button>
+                ${snapshot.change_type !== 'deleted' ? 
+                `<button class="btn-restore" onclick="restoreFile(${snapshot.id})">↶</button>` : ''}
+            </div>
+            </div>
+        `;
+    }
+
+
+
+    function toggleBatch(batchId) {
+      const batch = document.getElementById(`batch-${batchId}`);
+      if (batch) {
+        batch.classList.toggle('expanded');
+      }
+    }
+
+    function openDiff(snapshotId, filePath) {
+      // Send message to parent framework to open diff in main pane
+      window.parent.postMessage({
+        type: 'OPEN_DIFF_TAB',
+        snapshotId: snapshotId,
+        filePath: filePath,
+        connection_id: connection_id,
+        repo_name: repo_name
+      }, '*');
+    }
+
+    async function restoreFile(snapshotId) {
+      if (!confirm('Restore this file version?')) return;
+
+      try {
+        const response = await fetch(
+          `/api/v1/file-watcher/api/file-watcher/restore/${snapshotId}`,
+          { method: 'POST' }
+        );
+
+        const result = await response.json();
+        if (result.success) {
+          alert('File restored successfully');
+        } else {
+          alert('Failed to restore: ' + result.error);
+        }
+      } catch (error) {
+        console.error('Error restoring file:', error);
+        alert('Failed to restore file');
+      }
+    }
+
+    function toggleMiniMode() {
+      isMiniMode = !isMiniMode;
+      document.body.classList.toggle('mini', isMiniMode);
+      if (isMiniMode) {
+        hideDiffPreview();
+      }
+    }
+
+    function updateMiniCount() {
+      document.getElementById('miniCount').textContent = filteredTimeline.length;
+    }
+
+    function renderError() {
+      document.getElementById('timelineList').innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">⚠️</div>
+          <div>Failed to load timeline</div>
+        </div>
+      `;
+    }
+
+    function getChangeIcon(changeType) {
+      const icons = {
+        'created': '➕',
+        'modified': '✏️',
+        'deleted': '🗑️'
+      };
+      return icons[changeType] || '📝';
+    }
+
+    function getSourceIcon(sourceType) {
+      const icons = {
+        'git': '🔀',
+        'editor': '📝',
+        'ssh': '💻',
+        'batch': '📦',
+        'unknown': '❓'
+      };
+      return icons[sourceType] || '❓';
+    }
+
+    function formatTime(timestamp) {
+      const date = new Date(timestamp);
+      const now = new Date();
+      const diff = now - date;
+
+      if (diff < 60000) return 'Just now';
+      if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+      if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+      if (diff < 604800000) return `${Math.floor(diff / 86400000)}d ago`;
+
+      return date.toLocaleDateString();
+    }
+
+    function formatExactTime(timestamp) {
+        const date = new Date(timestamp);
+        // Example: 2025-11-16 21:34:12
+        const pad = n => n.toString().padStart(2, '0');
+
+        const year = date.getFullYear();
+        const month = pad(date.getMonth() + 1);
+        const day = pad(date.getDate());
+        const hours = pad(date.getHours());
+        const minutes = pad(date.getMinutes());
+        const seconds = pad(date.getSeconds());
+
+        return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // ====== Hover diff preview helpers ======
+
+    function attachHoverPreview() {
+      const items = document.querySelectorAll('.file-item');
+      items.forEach(item => {
+        item.addEventListener('mouseenter', (e) => {
+          const id = parseInt(item.dataset.snapshotId, 10);
+          const snapshot = timeline.find(s => s.id === id);
+          if (!snapshot) return;
+          showDiffPreview(snapshot, item);
+        });
+
+        item.addEventListener('mouseleave', () => {
+          scheduleHideDiffPreview();
+        });
+      });
+    }
+
+    function getSnapshotDiff(snapshot) {
+      if (!snapshot) return null;
+      if (snapshot._parsedDiff) return snapshot._parsedDiff;
+      if (!snapshot.diff) return null;
+
+      try {
+        const diff = typeof snapshot.diff === 'string'
+          ? JSON.parse(snapshot.diff)
+          : snapshot.diff;
+        snapshot._parsedDiff = diff;
+        return diff;
+      } catch (e) {
+        console.error('Failed to parse diff for snapshot', snapshot.id, e);
+        return null;
+      }
+    }
+
+    function getDiffStats(diff) {
+  // Structured format with hunks
+  if (diff && Array.isArray(diff.hunks)) {
+    let added = 0;
+    let removed = 0;
+
+    diff.hunks.forEach(hunk => {
+      hunk.lines.forEach(line => {
+        if (line.type === 'add') added++;
+        if (line.type === 'del') removed++;
+      });
+    });
+
+    return { added, removed };
+  }
+
+  // Unified format: { unified: "..." }
+  if (diff && typeof diff.unified === 'string') {
+    const lines = diff.unified.split('\n');
+    let added = 0;
+    let removed = 0;
+
+    for (const line of lines) {
+      // Skip headers
+      if (
+        line.startsWith('+++') ||
+        line.startsWith('---') ||
+        line.startsWith('Index:') ||
+        line.startsWith('===') ||
+        line.startsWith('@@')
+      ) {
+        continue;
+      }
+      if (line.startsWith('+')) added++;
+      else if (line.startsWith('-')) removed++;
+    }
+
+    return { added, removed };
+  }
+
+  return { added: 0, removed: 0 };
+}
+
+    function renderMiniDiff(diff) {
+    // Structured format with hunks
+    if (diff && Array.isArray(diff.hunks)) {
+        let html = '<div class="mini-diff">';
+        const maxLines = 12;
+        let lineCount = 0;
+
+        for (const hunk of diff.hunks) {
+        if (lineCount >= maxLines) break;
+
+        for (const line of hunk.lines) {
+            if (lineCount >= maxLines) break;
+
+            const lineClass =
+            line.type === 'add' ? 'add' :
+            line.type === 'del' ? 'del' : 'context';
+            const prefix =
+            line.type === 'add' ? '+' :
+            line.type === 'del' ? '-' : ' ';
+            html += `<div class="diff-line diff-${lineClass}">${escapeHtml(prefix + line.content)}</div>`;
+            lineCount++;
+        }
+        }
+
+        if (lineCount >= maxLines) {
+        html += '<div class="diff-more">...</div>';
+        }
+
+        html += '</div>';
+        return html;
+    }
+
+    // Unified format: { unified: "..." }
+    if (diff && typeof diff.unified === 'string') {
+        const lines = diff.unified.split('\n');
+        let html = '<div class="mini-diff">';
+        const maxLines = 12;
+        let lineCount = 0;
+
+        for (const line of lines) {
+        if (lineCount >= maxLines) break;
+
+        let className = 'diff-context';
+
+        if (line.startsWith('+++') || line.startsWith('---') ||
+            line.startsWith('Index:') || line.startsWith('===')) {
+            // File/index headers – keep very faint or skip entirely if you like
+            className = 'diff-context';
+        } else if (line.startsWith('@@')) {
+            className = 'hunk-header';
+        } else if (line.startsWith('+')) {
+            className = 'diff-add';
+        } else if (line.startsWith('-')) {
+            className = 'diff-del';
+        }
+
+        // Optional: skip pure header lines from preview
+        if (line.startsWith('Index:') || line.startsWith('===')) {
+            continue;
+        }
+
+        html += `<div class="diff-line ${className}">${escapeHtml(line)}</div>`;
+        lineCount++;
+        }
+
+        if (lineCount >= maxLines) {
+        html += '<div class="diff-more">...</div>';
+        }
+
+        html += '</div>';
+        return html;
+    }
+
+    return '<div class="mini-diff"><div class="diff-line diff-context">No diff data available</div></div>';
+    }
+
+
+    function showDiffPreview(snapshot, anchorEl) {
+      clearTimeout(diffHideTimeout);
+      hideDiffPreview();
+
+      const diff = getSnapshotDiff(snapshot);
+      const stats = getDiffStats(diff);
+      const createdAt = formatTime(snapshot.created_at);
+
+      const preview = document.createElement('div');
+      preview.id = 'diff-preview';
+      preview.className = 'diff-preview';
+
+      preview.innerHTML = `
+        <div class="preview-header" title="${escapeHtml(snapshot.file_path)}">
+          ${escapeHtml(snapshot.file_path)}
+        </div>
+        <div class="preview-meta">
+          <span>${snapshot.change_type || 'change'}</span>
+          <span>${createdAt}</span>
+        </div>
+        <div class="preview-stats">
+          <span class="stat-added">+${stats.added}</span>
+          <span class="stat-removed">-${stats.removed}</span>
+        </div>
+        ${renderMiniDiff(diff)}
+        <div class="preview-actions">
+          <button class="preview-btn-copy" type="button">Copy path</button>
+          ${snapshot.change_type !== 'deleted' ? `
+            <button class="preview-btn-restore" type="button">Restore</button>
+          ` : ''}
+          <button class="preview-btn-primary preview-btn-open" type="button">Open diff</button>
+        </div>
+      `;
+
+      document.body.appendChild(preview);
+      diffPreviewEl = preview;
+
+      // Position panel
+      const rect = anchorEl.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const panelWidth = preview.offsetWidth || 380;
+      let left = rect.right + 10;
+      if (left + panelWidth > viewportWidth - 10) {
+        left = Math.max(10, rect.left - panelWidth - 10);
+      }
+      preview.style.top = `${rect.top}px`;
+      preview.style.left = `${left}px`;
+
+      // Keep alive on hover
+      preview.addEventListener('mouseenter', () => {
+        clearTimeout(diffHideTimeout);
+      });
+      preview.addEventListener('mouseleave', () => {
+        scheduleHideDiffPreview();
+      });
+
+      // Buttons
+      const openBtn = preview.querySelector('.preview-btn-open');
+      if (openBtn) {
+        openBtn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          openDiff(snapshot.id, snapshot.file_path);
+        });
+      }
+
+      const restoreBtn = preview.querySelector('.preview-btn-restore');
+      if (restoreBtn) {
+        restoreBtn.addEventListener('click', async (ev) => {
+          ev.stopPropagation();
+          await restoreFile(snapshot.id);
+        });
+      }
+
+      const copyBtn = preview.querySelector('.preview-btn-copy');
+      if (copyBtn) {
+        copyBtn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          try {
+            navigator.clipboard.writeText(snapshot.file_path);
+          } catch (e) {
+            console.warn('Clipboard write failed', e);
+          }
+        });
+      }
+    }
+
+    function scheduleHideDiffPreview() {
+      clearTimeout(diffHideTimeout);
+      diffHideTimeout = setTimeout(() => {
+        hideDiffPreview();
+      }, 150);
+    }
+
+    function hideDiffPreview() {
+      if (diffPreviewEl) {
+        diffPreviewEl.remove();
+        diffPreviewEl = null;
+      }
+    }
+
+    // Initialize on load
+    init();
+  </script>
+</body>
+</html>

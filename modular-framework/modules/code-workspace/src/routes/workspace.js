@@ -10,6 +10,7 @@ const SnapshotService = require('../services/snapshot');
 const WORKSPACE_ROOT = '/workspace/repos';
 const STAGING_ROOT = '/workspace/staging';
 
+
 // Configure multer for file uploads
 const storage = multer.diskStorage({
   destination: async (req, file, cb) => {
@@ -406,6 +407,147 @@ router.post('/search/:connection_id/:repo_name', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+// Promote files from diff-executor staging to workspace
+router.post('/promote-from-staging', async (req, res) => {
+  try {
+    const { repoId, connectionId, stagingPath, files, source, createSnapshot } = req.body;
+
+    // Log entire incoming payload
+    console.log('========================================');
+    console.log('[promote-from-staging] incoming body:');
+    console.log(JSON.stringify(req.body, null, 2));
+    console.log('========================================');
+
+    if (!repoId || !connectionId || !stagingPath || !files) {
+      console.error('[promote-from-staging] Missing required fields', {
+        hasRepoId: !!repoId,
+        hasConnectionId: !!connectionId,
+        hasStagingPath: !!stagingPath,
+        hasFiles: !!files && Array.isArray(files),
+      });
+      return res.status(400).json({ 
+        error: 'Missing required fields' 
+      });
+    }
+
+    const repoPath = path.join(WORKSPACE_ROOT, connectionId, repoId);
+    console.log('[promote-from-staging] repoPath:', repoPath);
+    console.log('[promote-from-staging] WORKSPACE_ROOT:', WORKSPACE_ROOT);
+
+    // Check if repo exists
+    let repoExists = false;
+    try {
+      const stats = await fs.stat(repoPath);
+      repoExists = stats.isDirectory();
+      console.log('[promote-from-staging] repo exists:', repoExists, 'stats:', stats);
+    } catch (err) {
+      if (err.code === 'ENOENT') {
+        console.error('[promote-from-staging] repo does not exist:', repoPath);
+      } else {
+        console.error('[promote-from-staging] error stat repoPath:', repoPath, err);
+      }
+      repoExists = false;
+    }
+
+    if (!repoExists) {
+      return res.status(404).json({ 
+        error: 'Repository not found',
+        repoPath
+      });
+    }
+
+    // Create snapshot if requested
+    let snapshotId = null;
+    if (createSnapshot) {
+      try {
+        console.log('[promote-from-staging] creating snapshot for repoPath:', repoPath);
+        snapshotId = await SnapshotService.createSnapshot(
+          repoPath,
+          'diff-executor-promotion',
+          {
+            reason: `Before diff-executor promotion from job ${source?.jobId}`,
+            source: 'diff-executor'
+          }
+        );
+        console.log('[promote-from-staging] snapshot created:', snapshotId);
+      } catch (err) {
+        console.error('[promote-from-staging] error creating snapshot:', err);
+      }
+    }
+
+    const copiedFiles = [];
+
+    for (const file of files) {
+      // Reconstruct the same layout diff-executor uses:
+      // STAGING_DIR/jobId/connectionId/repoId/filePath
+      const stagingFile = path.join(stagingPath, connectionId, repoId, file.filePath);
+      const targetFile  = path.join(repoPath, file.filePath);
+
+      console.log('[promote-from-staging] processing file:', {
+        filePath: file.filePath,
+        stagingPath,
+        stagingFile,
+        targetFile
+      });
+
+      let stagingExists = false;
+      try {
+        const s = await fs.stat(stagingFile);
+        stagingExists = s.isFile();
+        console.log('[promote-from-staging] staging file exists:', stagingFile);
+      } catch (err) {
+        if (err.code === 'ENOENT') {
+          console.warn('[promote-from-staging] staging file not found:', stagingFile);
+        } else {
+          console.error('[promote-from-staging] error stat stagingFile:', stagingFile, err);
+        }
+        stagingExists = false;
+      }
+
+      if (!stagingExists) continue;
+
+      await fs.mkdir(path.dirname(targetFile), { recursive: true });
+      await fs.copyFile(stagingFile, targetFile);
+      console.log('[promote-from-staging] copied file', { from: stagingFile, to: targetFile });
+      copiedFiles.push(file.filePath);
+    }
+
+    if (copiedFiles.length === 0) {
+      console.warn('[promote-from-staging] no files were copied from staging', {
+        repoPath,
+        stagingPath,
+        requestedFiles: files.map(f => f.filePath)
+      });
+    } else {
+      console.log('[promote-from-staging] copied files:', copiedFiles);
+    }
+
+    WebSocketService.broadcast({
+      type: 'files:promoted',
+      data: {
+        connectionId,
+        repoId,
+        files: copiedFiles,
+        source,
+        snapshotId
+      }
+    });
+
+    res.json({
+      success: true,
+      filesPromoted: copiedFiles.length,
+      snapshotId,
+      message: `Promoted ${copiedFiles.length} files from staging to ${repoId}`,
+      copiedFiles
+    });
+  } catch (error) {
+    console.error('Error promoting from staging:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
 
 // Helper functions
 async function browseDirectory(dirPath, depth = 1, currentDepth = 0) {
